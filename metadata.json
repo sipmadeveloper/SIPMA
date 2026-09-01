@@ -1,0 +1,10 @@
+{
+  "name": "Sistem Penerimaan Murid Madrasah",
+  "description": "Sistem Informasi Penerimaan Murid Baru (PPDB/PMB) Madrasah berbasis web modern, multi-role, sistem zonasi koordinat peta interaktif, jalur afirmasi, verifikasi berkas, dan terintegrasi Google Apps Script (Sheets \u0026 Drive).",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
