@@ -7,6 +7,7 @@ import {
   ShieldCheck,
   GraduationCap,
   ChevronDown,
+  UserCheck,
 } from 'lucide-react';
 import { User as UserType, School, SystemSettings } from '../../types/sipma';
 import { normalizeImageUrl } from '../../utils/imageUrl';
@@ -41,6 +42,12 @@ export const Navbar: React.FC<Props> = ({
           label: `Panitia ${currentSchool?.school_name || 'Madrasah'}`,
           bg: 'bg-blue-100 text-blue-800 border-blue-200',
           icon: Building2,
+        };
+      case 'operator_sekolah':
+        return {
+          label: `Operator ${currentSchool?.school_name || 'Madrasah'}`,
+          bg: 'bg-teal-100 text-teal-800 border-teal-200',
+          icon: UserCheck,
         };
       default:
         return {
@@ -132,6 +139,8 @@ export const Navbar: React.FC<Props> = ({
                       ? 'Admin Pusat'
                       : currentUser.role === 'admin_sekolah'
                       ? 'Panitia PPDB'
+                      : currentUser.role === 'operator_sekolah'
+                      ? 'Operator Madrasah'
                       : 'Calon Murid'} &bull; Profil
                   </div>
                 </div>

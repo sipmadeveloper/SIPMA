@@ -26,6 +26,7 @@ import {
   Download,
   Info,
   AlertCircle,
+  Lock,
 } from 'lucide-react';
 import {
   StudentProfile,
@@ -298,10 +299,20 @@ export const RegistrationWizard: React.FC<Props> = ({
     );
   };
 
-  // Review & Agreement Checkbox
+  // Review & Data Validity Checklists
+  const [validityStudentChecked, setValidityStudentChecked] = useState<boolean>(false);
+  const [validityDocsChecked, setValidityDocsChecked] = useState<boolean>(false);
+  const [validityLockChecked, setValidityLockChecked] = useState<boolean>(false);
   const [agreementChecked, setAgreementChecked] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [submitSuccess, setSubmitSuccess] = useState<boolean>(false);
+
+  const isFormLocked = Boolean(
+    application?.is_locked ||
+    (application?.final_status && application.final_status !== 'draft' && application.final_status !== 'perlu_perbaikan')
+  );
+
+  const allValidityConfirmed = validityStudentChecked && validityDocsChecked && validityLockChecked;
 
   // Load initial data
   useEffect(() => {
@@ -318,11 +329,19 @@ export const RegistrationWizard: React.FC<Props> = ({
         const sch = loadedSchools.find((s) => s.school_id === app.school_id) || null;
         setSelectedSchool(sch);
       }
-      if (app.step_completed > 1 && app.step_completed < 9 && !app.is_locked) {
-        setCurrentStep(app.step_completed);
-      }
-      if (app.final_status !== 'draft') {
+      const locked = Boolean(
+        app.is_locked ||
+        (app.final_status && app.final_status !== 'draft' && app.final_status !== 'perlu_perbaikan')
+      );
+      if (locked) {
         setSubmitSuccess(true);
+        setValidityStudentChecked(true);
+        setValidityDocsChecked(true);
+        setValidityLockChecked(true);
+        setAgreementChecked(true);
+        setCurrentStep(9);
+      } else if (app.step_completed > 1 && app.step_completed < 9) {
+        setCurrentStep(app.step_completed);
       }
     }
 
@@ -344,7 +363,7 @@ export const RegistrationWizard: React.FC<Props> = ({
 
   // Auto-save function
   const triggerAutoSave = () => {
-    if (!student || !application) return;
+    if (!student || !application || isFormLocked) return;
     setIsAutosaving(true);
 
     try {
@@ -494,13 +513,23 @@ export const RegistrationWizard: React.FC<Props> = ({
   };
 
   const handleSubmitFinal = () => {
-    if (!agreementChecked) {
-      showAlert('Persetujuan Diperlukan', 'Anda harus mencentang pernyataan kebenaran data terlebih dahulu sebelum melakukan submit final.', 'warning');
+    if (isFormLocked) {
+      showAlert('Pendaftaran Telah Dikunci', 'Formulir pendaftaran ini telah dikirim dan dikunci secara permanen. Anda tidak dapat mengisi ulang formulir.', 'info');
+      setCurrentStep(9);
+      return;
+    }
+
+    if (!allValidityConfirmed) {
+      showAlert(
+        'Ceklist Kevalidan Data Diperlukan',
+        'Mohon centang seluruh checklist pernyataan kevalidan data (Keabsahan Biodata Siswa, Keaslian Berkas & Zonasi, serta Penguncian Permanen) sebelum mengirim pendaftaran final.',
+        'warning'
+      );
       return;
     }
 
     setIsSubmitting(true);
-    showLoading('Memproses pengiriman pendaftaran final dan sinkronisasi berkas...');
+    showLoading('Memproses pengiriman pendaftaran final dan mengunci formulir secara permanen...');
     setTimeout(() => {
       try {
         storageService.submitApplication(activeRegNumber || registrationNumber);
@@ -511,7 +540,7 @@ export const RegistrationWizard: React.FC<Props> = ({
         setSubmitSuccess(true);
         setCurrentStep(9);
         hideLoading();
-        showToast('Pendaftaran berhasil dikirim!', 'success');
+        showToast('Pendaftaran berhasil dikirim dan dikunci permanen!', 'success');
       } catch (err: any) {
         hideLoading();
         showAlert('Gagal Mengirim Pendaftaran', err.message || 'Terjadi kesalahan saat memproses data pendaftaran.', 'error');
@@ -2591,8 +2620,10 @@ export const RegistrationWizard: React.FC<Props> = ({
                 {
                   type: 'ijazah_skl',
                   title: 'Ijazah / Surat Keterangan Lulus (SKL)',
-                  required: true,
-                  desc: 'Diterbitkan madrasah/sekolah jenjang sebelumnya',
+                  required: schoolOrigin.previous_level !== 'Belum Pernah Sekolah',
+                  desc: schoolOrigin.previous_level === 'Belum Pernah Sekolah'
+                    ? 'Opsional / tidak wajib bagi calon murid yang belum pernah bersekolah sebelumnya'
+                    : 'Diterbitkan madrasah/sekolah jenjang sebelumnya',
                 },
                 ...(application.pathway === 'afirmasi'
                   ? application.afirmasi_category === 'luar_zonasi'
@@ -2779,13 +2810,19 @@ export const RegistrationWizard: React.FC<Props> = ({
               <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
                 <div className="flex justify-between items-center border-b border-slate-200 pb-2 mb-3">
                   <h4 className="font-bold text-sm text-slate-800">1. Data Pribadi</h4>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentStep(1)}
-                    className="text-xs text-emerald-700 font-bold hover:underline"
-                  >
-                    Edit
-                  </button>
+                  {!isFormLocked ? (
+                    <button
+                      type="button"
+                      onClick={() => setCurrentStep(1)}
+                      className="text-xs text-emerald-700 font-bold hover:underline cursor-pointer"
+                    >
+                      Edit
+                    </button>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400">
+                      <Lock className="w-3 h-3 text-slate-400" /> Terkunci
+                    </span>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                   <div>
@@ -2823,13 +2860,19 @@ export const RegistrationWizard: React.FC<Props> = ({
               <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
                 <div className="flex justify-between items-center border-b border-slate-200 pb-2 mb-3">
                   <h4 className="font-bold text-sm text-slate-800">2. Orang Tua / Wali</h4>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentStep(2)}
-                    className="text-xs text-emerald-700 font-bold hover:underline"
-                  >
-                    Edit
-                  </button>
+                  {!isFormLocked ? (
+                    <button
+                      type="button"
+                      onClick={() => setCurrentStep(2)}
+                      className="text-xs text-emerald-700 font-bold hover:underline cursor-pointer"
+                    >
+                      Edit
+                    </button>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400">
+                      <Lock className="w-3 h-3 text-slate-400" /> Terkunci
+                    </span>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                   <div>
@@ -2872,13 +2915,19 @@ export const RegistrationWizard: React.FC<Props> = ({
               <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
                 <div className="flex justify-between items-center border-b border-slate-200 pb-2 mb-3">
                   <h4 className="font-bold text-sm text-slate-800">3. Madrasah / Sekolah Asal</h4>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentStep(3)}
-                    className="text-xs text-emerald-700 font-bold hover:underline"
-                  >
-                    Edit
-                  </button>
+                  {!isFormLocked ? (
+                    <button
+                      type="button"
+                      onClick={() => setCurrentStep(3)}
+                      className="text-xs text-emerald-700 font-bold hover:underline cursor-pointer"
+                    >
+                      Edit
+                    </button>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400">
+                      <Lock className="w-3 h-3 text-slate-400" /> Terkunci
+                    </span>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                   <div>
@@ -2904,13 +2953,31 @@ export const RegistrationWizard: React.FC<Props> = ({
               <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
                 <div className="flex justify-between items-center border-b border-slate-200 pb-2 mb-3">
                   <h4 className="font-bold text-sm text-slate-800">4. Lokasi & Zonasi</h4>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentStep(5)}
-                    className="text-xs text-emerald-700 font-bold hover:underline"
-                  >
-                    Edit
-                  </button>
+                  {!isFormLocked ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentStep(1)}
+                        className="text-xs text-emerald-700 font-bold hover:underline cursor-pointer"
+                        title="Ubah atau ganti madrasah tujuan"
+                      >
+                        Edit Pilihan
+                      </button>
+                      <span className="text-slate-300">|</span>
+                      <button
+                        type="button"
+                        onClick={handleCancelSchool}
+                        className="text-xs text-rose-600 font-bold hover:underline cursor-pointer"
+                        title="Batalkan pilihan madrasah tujuan saat ini"
+                      >
+                        Batalkan Pilihan
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400">
+                      <Lock className="w-3 h-3 text-slate-400" /> Terkunci
+                    </span>
+                  )}
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
                   <div>
@@ -2971,14 +3038,20 @@ export const RegistrationWizard: React.FC<Props> = ({
               {/* Dokumen Card */}
               <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
                 <div className="flex justify-between items-center border-b border-slate-200 pb-2 mb-3">
-                  <h4 className="font-bold text-sm text-slate-800">4. Dokumen Persyaratan ({documents.length} Berkas)</h4>
-                  <button
-                    type="button"
-                    onClick={() => setCurrentStep(7)}
-                    className="text-xs text-emerald-700 font-bold hover:underline"
-                  >
-                    Edit
-                  </button>
+                  <h4 className="font-bold text-sm text-slate-800">5. Dokumen Persyaratan ({documents.length} Berkas)</h4>
+                  {!isFormLocked ? (
+                    <button
+                      type="button"
+                      onClick={() => setCurrentStep(7)}
+                      className="text-xs text-emerald-700 font-bold hover:underline cursor-pointer"
+                    >
+                      Edit
+                    </button>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-400">
+                      <Lock className="w-3 h-3 text-slate-400" /> Terkunci
+                    </span>
+                  )}
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                   {documents.map((d) => {
@@ -3029,20 +3102,114 @@ export const RegistrationWizard: React.FC<Props> = ({
               </div>
             </div>
 
-            {/* Declaration & Checkbox */}
-            <div className="p-5 bg-emerald-50/70 border-2 border-emerald-300/80 rounded-2xl space-y-3">
-              <label className="flex items-start gap-3 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={agreementChecked}
-                  onChange={(e) => setAgreementChecked(e.target.checked)}
-                  className="mt-1 w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300"
-                />
-                <span className="text-xs font-semibold text-emerald-950 leading-relaxed">
-                  Saya menyatakan dengan sesungguhnya bahwa seluruh data dan dokumen yang saya masukkan ke dalam Sistem Informasi Penerimaan Murid Madrasah (SIPMA) ini adalah <strong>BENAR, SAH, dan SESUAI DENGAN DOKUMEN ASLI</strong>. Apabila di kemudian hari ditemukan ketidaksesuaian data atau pemalsuan dokumen, saya bersedia menerima sanksi pembatalan pendaftaran.
-                </span>
-              </label>
-            </div>
+            {/* Ceklist Tanda Kevalidan Data & Penguncian Permanen */}
+            {isFormLocked ? (
+              <div className="p-5 bg-emerald-50 border-2 border-emerald-400 rounded-2xl space-y-3 shadow-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <CheckCircle2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-emerald-950">
+                      Formulir Pendaftaran Telah Dikirim & Dikunci Permanen
+                    </h4>
+                    <p className="text-xs text-emerald-800 mt-0.5">
+                      Seluruh checklist kevalidan data telah disetujui. Formulir ini tidak dapat diisi ulang atau diubah kembali demi menjaga integritas data.
+                    </p>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-emerald-200 flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-emerald-900 font-mono">
+                    Status Dokumen: Terkunci Permanen ({application?.final_status?.toUpperCase() || 'SUBMITTED'})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentStep(9)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                  >
+                    <span>Buka Bukti Pendaftaran (Step 9)</span>
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="p-5 bg-amber-50/80 border-2 border-amber-300 rounded-2xl space-y-4 shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-amber-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                      ✓
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-slate-900">
+                        Ceklist Tanda Kevalidan Data & Penguncian Permanen
+                      </h4>
+                      <p className="text-[11px] text-slate-600 mt-0.5">
+                        Wajib mencentang ketiga checklist berikut sebelum formulir dikirimkan ke sistem panitia.
+                      </p>
+                    </div>
+                  </div>
+                  <span
+                    className={`text-xs font-bold px-3 py-1 rounded-full shrink-0 ${
+                      allValidityConfirmed
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        : 'bg-amber-100 text-amber-900 border border-amber-300'
+                    }`}
+                  >
+                    {allValidityConfirmed ? '✓ 3/3 Checklist Lengkap' : 'Wajib 3 Checklist'}
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  {/* Checklist 1: Keabsahan Biodata */}
+                  <label className="flex items-start gap-3 cursor-pointer select-none group bg-white/70 p-3 rounded-xl border border-amber-200/80 hover:bg-white transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={validityStudentChecked}
+                      onChange={(e) => {
+                        setValidityStudentChecked(e.target.checked);
+                        setAgreementChecked(e.target.checked && validityDocsChecked && validityLockChecked);
+                      }}
+                      className="mt-0.5 w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 cursor-pointer shrink-0"
+                    />
+                    <div className="text-xs text-slate-800 leading-relaxed group-hover:text-slate-950">
+                      <strong>1. Keabsahan Data Pribadi & Keluarga:</strong> Saya telah memeriksa dengan teliti dan menyatakan bahwa seluruh biodata siswa (Nama, NIK, NISN, Tempat/Tanggal Lahir), data orang tua/wali, serta riwayat sekolah asal adalah <strong>BENAR, VALID, dan SAH</strong> sesuai dokumen Kartu Keluarga dan Akta Kelahiran.
+                    </div>
+                  </label>
+
+                  {/* Checklist 2: Keabsahan Berkas & Lokasi Zonasi */}
+                  <label className="flex items-start gap-3 cursor-pointer select-none group bg-white/70 p-3 rounded-xl border border-amber-200/80 hover:bg-white transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={validityDocsChecked}
+                      onChange={(e) => {
+                        setValidityDocsChecked(e.target.checked);
+                        setAgreementChecked(validityStudentChecked && e.target.checked && validityLockChecked);
+                      }}
+                      className="mt-0.5 w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300 cursor-pointer shrink-0"
+                    />
+                    <div className="text-xs text-slate-800 leading-relaxed group-hover:text-slate-950">
+                      <strong>2. Keaslian Dokumen & Titik Koordinat Rumah:</strong> Saya menyatakan bahwa seluruh berkas persyaratan yang diunggah adalah <strong>DOKUMEN ASLI</strong> (bukan rekayasa), serta titik penandaan rumah pada peta zonasi akurat sesuai alamat domisili Kartu Keluarga sebenarnya.
+                    </div>
+                  </label>
+
+                  {/* Checklist 3: Komitmen Kunci Permanen & Tidak Dapat Diisi Ulang */}
+                  <label className="flex items-start gap-3 cursor-pointer select-none group bg-rose-50/60 p-3.5 rounded-xl border border-rose-300 hover:bg-rose-50 transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={validityLockChecked}
+                      onChange={(e) => {
+                        setValidityLockChecked(e.target.checked);
+                        setAgreementChecked(validityStudentChecked && validityDocsChecked && e.target.checked);
+                      }}
+                      className="mt-0.5 w-4 h-4 rounded text-rose-600 focus:ring-rose-500 border-rose-300 cursor-pointer shrink-0"
+                    />
+                    <div className="text-xs text-slate-900 leading-relaxed group-hover:text-black">
+                      <strong className="text-rose-700 font-bold">3. Penguncian Permanen Formulir:</strong> Saya memahami dan menyetujui sepenuhnya bahwa setelah menekan tombol kirim, <strong>SELURUH DATA PENDAFTARAN AKAN DIKUNCI PERMANEN, TIDAK DAPAT DIUBAH KEMBALI, DAN TIDAK BISA DIISI ULANG</strong> dengan akun ini demi menjaga ketertiban seleksi.
+                    </div>
+                  </label>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -3129,15 +3296,24 @@ export const RegistrationWizard: React.FC<Props> = ({
                 <span>Lanjutkan</span>
                 <ChevronRight className="w-4 h-4" />
               </button>
+            ) : isFormLocked ? (
+              <button
+                type="button"
+                onClick={() => setCurrentStep(9)}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-sm font-bold shadow-md transition-all cursor-pointer"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Lihat Bukti Pendaftaran (Step 9)</span>
+              </button>
             ) : (
               <button
                 type="button"
                 onClick={handleSubmitFinal}
-                disabled={!agreementChecked || isSubmitting}
-                className="inline-flex items-center gap-2 px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-md transition-all disabled:opacity-50"
+                disabled={!allValidityConfirmed || isSubmitting}
+                className="inline-flex items-center gap-2 px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-md transition-all disabled:opacity-50 cursor-pointer"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>{isSubmitting ? 'Mengirim Formulir...' : 'Kirim Pendaftaran Final'}</span>
+                <span>{isSubmitting ? 'Mengunci & Mengirim Formulir...' : 'Kirim Pendaftaran Final & Kunci'}</span>
               </button>
             )}
           </div>

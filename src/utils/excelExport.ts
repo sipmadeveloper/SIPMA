@@ -12,6 +12,8 @@ export interface ExcelExportOptions {
   fileName?: string;
   sheetTitle?: string;
   schoolName?: string;
+  filterType?: 'all' | 'lulus' | 'filtered';
+  filterLabel?: string;
 }
 
 /**
@@ -87,6 +89,7 @@ export function exportApplicantsToExcel(
     'NIK',
     'NISN',
     'Jenis Kelamin',
+    'No. HP / WA Calon Siswa',
     'Tempat Lahir',
     'Tanggal Lahir',
     'Agama',
@@ -103,6 +106,7 @@ export function exportApplicantsToExcel(
     'Radius Maks Zonasi (km)',
     'Status Zonasi',
     'Pelimpahan Kuota (Auto-Reroute)',
+    'Skor / Nilai Seleksi',
     'Nama Sekolah Asal',
     'NPSN / NSM Sekolah Asal',
     'Jenjang Asal',
@@ -145,10 +149,42 @@ export function exportApplicantsToExcel(
   const rows: (string | number)[][] = [headers];
 
   applications.forEach((app, index) => {
-    const student = students[app.registration_number];
-    const parent = parents[app.registration_number];
-    const origin = schoolOrigins[app.registration_number];
-    const address = addresses[app.registration_number];
+    const student =
+      students[app.registration_number] ||
+      Object.values(students).find(
+        (s) =>
+          s.registration_number === app.registration_number ||
+          s.student_id === app.student_id ||
+          (s.user_id && s.user_id === app.user_id)
+      );
+
+    const parent =
+      parents[app.registration_number] ||
+      (student?.student_id && parents[student.student_id]) ||
+      Object.values(parents).find(
+        (p) =>
+          (student?.student_id && p.student_id === student.student_id) ||
+          (p as any).registration_number === app.registration_number
+      );
+
+    const origin =
+      schoolOrigins[app.registration_number] ||
+      (student?.student_id && schoolOrigins[student.student_id]) ||
+      Object.values(schoolOrigins).find(
+        (o) =>
+          (student?.student_id && o.student_id === student.student_id) ||
+          (o as any).registration_number === app.registration_number
+      );
+
+    const address =
+      addresses[app.registration_number] ||
+      (student?.student_id && addresses[student.student_id]) ||
+      Object.values(addresses).find(
+        (a) =>
+          (student?.student_id && a.student_id === student.student_id) ||
+          (a as any).registration_number === app.registration_number
+      );
+
     const targetSchool = schoolMap.get(app.school_id);
 
     const genderText = student?.gender === 'L' ? 'Laki-laki' : student?.gender === 'P' ? 'Perempuan' : '-';
@@ -174,10 +210,11 @@ export function exportApplicantsToExcel(
         ? 'Perlu Perbaikan Dokumen'
         : 'Ditolak';
 
+    const isLulus = app.final_status === 'lulus' || app.selection_status === 'lulus';
     const finalStatusText =
-      app.final_status === 'lulus'
+      isLulus
         ? 'LULUS SELEKSI'
-        : app.final_status === 'tidak_lulus'
+        : app.final_status === 'tidak_lulus' || app.selection_status === 'tidak_lulus'
         ? 'TIDAK LULUS'
         : 'Dalam Proses / Belum Diumumkan';
 
@@ -192,6 +229,7 @@ export function exportApplicantsToExcel(
       student?.nik ? `'${student.nik}` : '-',
       student?.nisn ? `'${student.nisn}` : '-',
       genderText,
+      student?.phone ? `'${student.phone}` : '-',
       student?.birth_place || '-',
       student?.birth_date || '-',
       student?.religion || 'Islam',
@@ -208,6 +246,7 @@ export function exportApplicantsToExcel(
       app.max_distance_km || targetSchool?.zoning_radius_km || 5,
       app.zoning_status === 'memenuhi' ? 'MEMENUHI ZONASI' : 'MELEBIHI BATAS ZONASI',
       rerouteInfo,
+      app.score !== undefined ? Number(app.score.toFixed(1)) : '-',
       origin?.school_name || '-',
       origin?.npsn_nsm ? `'${origin.npsn_nsm}` : '-',
       origin?.previous_level || '-',
@@ -260,21 +299,36 @@ export function exportApplicantsToExcel(
   const countFix = applications.filter((a) => a.verification_status === 'perlu_perbaikan').length;
   const countRejected = applications.filter((a) => a.verification_status === 'ditolak').length;
 
-  const countLulus = applications.filter((a) => a.final_status === 'lulus').length;
-  const countTidakLulus = applications.filter((a) => a.final_status === 'tidak_lulus').length;
+  const countLulus = applications.filter((a) => a.final_status === 'lulus' || a.selection_status === 'lulus').length;
+  const countTidakLulus = applications.filter((a) => a.final_status === 'tidak_lulus' || a.selection_status === 'tidak_lulus').length;
   const countProses = totalApps - countLulus - countTidakLulus;
 
-  const countLaki = applications.filter((a) => students[a.registration_number]?.gender === 'L').length;
-  const countPerempuan = applications.filter((a) => students[a.registration_number]?.gender === 'P').length;
+  const countLaki = applications.filter((a) => {
+    const s = students[a.registration_number];
+    return s?.gender === 'L';
+  }).length;
+  const countPerempuan = applications.filter((a) => {
+    const s = students[a.registration_number];
+    return s?.gender === 'P';
+  }).length;
+
+  const filterCategory =
+    options?.filterLabel ||
+    (options?.filterType === 'lulus'
+      ? 'Khusus Siswa yang Lolos (Diterima)'
+      : options?.filterType === 'filtered'
+      ? 'Hasil Filter Khusus'
+      : 'Seluruh Pendaftar Madrasah');
 
   const statsRows: (string | number)[][] = [
     ['LAPORAN REKAPITULASI PENERIMAAN MURID BARU MADRASAH (SIPMA)'],
-    ['Sistem Informasi Penerimaan Murid Baru Madrasah'],
+    ['Sistem Informasi Penerimaan Murid Baru Madrasah - Berkas Resmi (.xlsx)'],
     [''],
     ['PARAMETER LAPORAN', 'KETERANGAN'],
     ['Satuan Pendidikan / Madrasah', options?.schoolName || 'Seluruh Satuan Pendidikan Madrasah'],
+    ['Kategori / Filter Data', filterCategory],
     ['Waktu Unduh / Export', `${dateStr}, Pukul ${timeStr} WIB`],
-    ['Total Seluruh Pendaftar', totalApps],
+    ['Total Data Diekspor', `${totalApps} Siswa`],
     [''],
     ['REKAPITULASI BERDASARKAN JALUR PENDAFTARAN', 'JUMLAH SISWA', 'PERSENTASE (%)'],
     ['Jalur Zonasi Presisi', countZonasi, totalApps > 0 ? `${((countZonasi / totalApps) * 100).toFixed(1)}%` : '0%'],
@@ -291,7 +345,7 @@ export function exportApplicantsToExcel(
     [''],
     ['HASIL SELEKSI AKHIR', 'JUMLAH SISWA', 'PERSENTASE (%)'],
     ['Lulus Seleksi', countLulus, totalApps > 0 ? `${((countLulus / totalApps) * 100).toFixed(1)}%` : '0%'],
-    ['Tidak Lulus', countTidakLulus, totalApps > 0 ? `${((countTidakLulus / totalApps) * 100).toFixed(1)}%` : '0%'],
+    ['Tidak Lolos', countTidakLulus, totalApps > 0 ? `${((countTidakLulus / totalApps) * 100).toFixed(1)}%` : '0%'],
     ['Dalam Proses Seleksi', countProses, totalApps > 0 ? `${((countProses / totalApps) * 100).toFixed(1)}%` : '0%'],
     [''],
     ['KOMPOSISI GENDER', 'JUMLAH SISWA', 'PERSENTASE (%)'],
@@ -302,15 +356,34 @@ export function exportApplicantsToExcel(
   // 3. Create Workbook & Add Sheets
   const wb = XLSX.utils.book_new();
 
-  // Data Sheet
+  // Data Sheet Name
+  const dataSheetName =
+    options?.sheetTitle ||
+    (options?.filterType === 'lulus'
+      ? 'Siswa Lolos Seleksi'
+      : options?.filterType === 'filtered'
+      ? 'Data Terfilter'
+      : 'Data Pendaftar Lengkap');
+
   const wsData = XLSX.utils.aoa_to_sheet(rows);
   wsData['!cols'] = calculateColWidths(rows);
-  XLSX.utils.book_append_sheet(wb, wsData, 'Data Pendaftar Lengkap');
+  
+  // Enable auto-filter on header row in Excel
+  if (rows.length > 1) {
+    wsData['!autofilter'] = {
+      ref: XLSX.utils.encode_range({
+        s: { c: 0, r: 0 },
+        e: { c: headers.length - 1, r: rows.length - 1 },
+      }),
+    };
+  }
+
+  XLSX.utils.book_append_sheet(wb, wsData, dataSheetName);
 
   // Summary Sheet
   const wsStats = XLSX.utils.aoa_to_sheet(statsRows);
   wsStats['!cols'] = [
-    { wch: 42 },
+    { wch: 44 },
     { wch: 30 },
     { wch: 20 },
   ];
@@ -321,7 +394,17 @@ export function exportApplicantsToExcel(
     .replace(/[^a-zA-Z0-9_-]/g, '_')
     .substring(0, 30);
   const formattedDate = exportDate.toISOString().split('T')[0];
-  const finalFileName = options?.fileName || `Rekap_Pendaftar_${cleanSchool}_${formattedDate}.xlsx`;
+
+  let defaultName = `Data_Lengkap_Pendaftar_${cleanSchool}_${formattedDate}.xlsx`;
+  if (options?.filterType === 'lulus') {
+    defaultName = `Data_Lengkap_Siswa_Lolos_${cleanSchool}_${formattedDate}.xlsx`;
+  } else if (options?.filterType === 'all') {
+    defaultName = `Data_Lengkap_Seluruh_Pendaftar_${cleanSchool}_${formattedDate}.xlsx`;
+  } else if (options?.filterType === 'filtered') {
+    defaultName = `Data_Lengkap_Terfilter_${cleanSchool}_${formattedDate}.xlsx`;
+  }
+
+  const finalFileName = options?.fileName || defaultName;
 
   XLSX.writeFile(wb, finalFileName);
 }

@@ -16,7 +16,7 @@ export type CentralTab =
   | 'logs'
   | 'announcements';
 
-export type SchoolTab = 'overview' | 'applicants' | 'selection' | 'map' | 'settings';
+export type SchoolTab = 'overview' | 'applicants' | 'selection' | 'operators' | 'map' | 'settings';
 
 export type StudentTab = 'overview' | 'form' | 'print' | 'announcements' | 'profile';
 
@@ -156,7 +156,7 @@ export function hashToRoute(hashStr: string, userRole?: string): AppRoute {
     if (userRole === 'admin_pusat') {
       return { viewMode: 'app', centralTab: 'overview' };
     }
-    if (userRole === 'admin_sekolah') {
+    if (userRole === 'admin_sekolah' || userRole === 'operator_sekolah') {
       return { viewMode: 'app', schoolTab: 'overview' };
     }
     if (userRole === 'calon_murid') {
@@ -182,8 +182,8 @@ export function hashToRoute(hashStr: string, userRole?: string): AppRoute {
     }
   }
 
-  if (userRole === 'admin_sekolah') {
-    const validSchoolTabs: SchoolTab[] = ['overview', 'applicants', 'selection', 'map', 'settings'];
+  if (userRole === 'admin_sekolah' || userRole === 'operator_sekolah') {
+    const validSchoolTabs: SchoolTab[] = ['overview', 'applicants', 'selection', 'operators', 'map', 'settings'];
     if (validSchoolTabs.includes(pathPart as SchoolTab)) {
       return { viewMode: 'app', schoolTab: pathPart as SchoolTab };
     }
@@ -263,7 +263,7 @@ export function getInitialRoute(userRole?: string | null): AppRoute {
     if (userRole && (saved.viewMode === 'login' || saved.viewMode === 'register')) {
       // User is already logged in, send to app
       if (userRole === 'admin_pusat') return { viewMode: 'app', centralTab: 'overview' };
-      if (userRole === 'admin_sekolah') return { viewMode: 'app', schoolTab: 'overview' };
+      if (userRole === 'admin_sekolah' || userRole === 'operator_sekolah') return { viewMode: 'app', schoolTab: 'overview' };
       if (userRole === 'calon_murid') return { viewMode: 'app', studentTab: 'overview' };
       return { viewMode: 'app' };
     }
@@ -273,7 +273,7 @@ export function getInitialRoute(userRole?: string | null): AppRoute {
   // Default fallback
   if (userRole) {
     if (userRole === 'admin_pusat') return { viewMode: 'app', centralTab: 'overview' };
-    if (userRole === 'admin_sekolah') return { viewMode: 'app', schoolTab: 'overview' };
+    if (userRole === 'admin_sekolah' || userRole === 'operator_sekolah') return { viewMode: 'app', schoolTab: 'overview' };
     if (userRole === 'calon_murid') return { viewMode: 'app', studentTab: 'overview' };
     return { viewMode: 'app' };
   }

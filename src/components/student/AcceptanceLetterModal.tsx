@@ -14,11 +14,13 @@ import {
   Clock,
   Phone,
   FileCheck,
+  Loader2,
 } from 'lucide-react';
 import { Application, StudentProfile, ParentData, SchoolOrigin, AddressData, School } from '../../types/sipma';
 import { formatDistanceIndonesian } from '../../utils/geo';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { storageService } from '../../services/storageService';
+import { downloadElementAsPdf } from '../../utils/pdfGenerator';
 
 interface Props {
   isOpen?: boolean;
@@ -42,6 +44,7 @@ export const AcceptanceLetterModal: React.FC<Props> = ({
   application: propApplication,
 }) => {
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
 
   const settings = storageService.getSettings();
   const currentUser = storageService.getCurrentUser();
@@ -243,6 +246,20 @@ export const AcceptanceLetterModal: React.FC<Props> = ({
     }
   };
 
+  const handleDownloadPdf = async () => {
+    setIsGeneratingPdf(true);
+    try {
+      const success = await downloadElementAsPdf('sipma-acceptance-sheet', `Surat_Keterangan_Diterima_${regNum}.pdf`);
+      if (!success) {
+        handlePrint();
+      }
+    } catch {
+      handlePrint();
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
   const handlePrintDedicatedWindow = () => {
     try {
       const win = window.open('', '_blank', 'width=850,height=900');
@@ -400,12 +417,17 @@ export const AcceptanceLetterModal: React.FC<Props> = ({
             {/* Download PDF / Print as PDF (Strictly PDF only) */}
             <button
               type="button"
-              onClick={handlePrint}
+              onClick={handleDownloadPdf}
+              disabled={isGeneratingPdf}
               title="Unduh dan simpan dokumen sebagai file PDF resmi (A4)"
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-60"
             >
-              <FileDown className="w-4 h-4 text-emerald-400" />
-              <span>Unduh Format PDF</span>
+              {isGeneratingPdf ? (
+                <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+              ) : (
+                <FileDown className="w-4 h-4 text-emerald-400" />
+              )}
+              <span>{isGeneratingPdf ? 'Membuat PDF...' : 'Unduh Format PDF'}</span>
             </button>
 
             <button

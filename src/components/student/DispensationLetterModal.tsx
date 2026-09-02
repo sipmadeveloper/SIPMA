@@ -2,19 +2,15 @@ import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import {
   Printer,
-  Download,
   ArrowLeft,
   X,
   FileDown,
-  CheckCircle,
-  ShieldCheck,
-  FileText,
-  Copy,
-  Check,
+  Loader2,
 } from 'lucide-react';
 import { Application, StudentProfile, ParentData, SchoolOrigin, AddressData, School } from '../../types/sipma';
-import { formatDistanceIndonesian, formatCoordinates } from '../../utils/geo';
+import { formatDistanceIndonesian } from '../../utils/geo';
 import { storageService } from '../../services/storageService';
+import { downloadElementAsPdf } from '../../utils/pdfGenerator';
 
 interface Props {
   isOpen?: boolean;
@@ -40,7 +36,7 @@ export const DispensationLetterModal: React.FC<Props> = ({
   reason,
 }) => {
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
-  const [copiedNotification, setCopiedNotification] = useState<boolean>(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
 
   const settings = storageService.getSettings();
   const currentUser = storageService.getCurrentUser();
@@ -286,44 +282,18 @@ export const DispensationLetterModal: React.FC<Props> = ({
 </html>
   `;
 
-  const handleDownloadPdf = () => {
-    handlePrint();
-  };
-
-  const handleCopyText = () => {
-    const textContent = `SURAT PERNYATAAN & PERMOHONAN DISPENSASI PENDAFTARAN
-JALUR AFIRMASI (LUAR ZONASI) - TAHUN AJARAN 2026/2027
-
-A. IDENTITAS ORANG TUA / WALI:
-- Nama Lengkap: ${applicantParentName}
-- NIK: ${applicantParentNik}
-- Pekerjaan: ${applicantParentJob}
-- Telepon/WA: ${applicantParentPhone}
-- Alamat KK: ${fullAddressSafe}
-- Hubungan: ${parentRoleLabel}
-
-B. IDENTITAS CALON MURID:
-- Nama Lengkap: ${studentSafeName}
-- No. Pendaftaran: ${studentSafeReg}
-- NIK / NISN: ${studentSafeNik} / ${studentSafeNisn}
-- Tempat/Tgl Lahir: ${studentSafeBirth}
-- Asal Sekolah: ${schoolOriginSafe}
-- Madrasah Tujuan: ${schoolNameSafe}
-- Jarak: ${formatDistanceIndonesian(distanceKmSafe)} (Radius Standar: ${schoolRadiusSafe} km)
-
-C. ALASAN & KOMITMEN:
-1. ${dispensationReasonSafe}
-2. Sanggup memfasilitasi akomodasi dan transportasi harian.
-3. Patuh tata tertib dan jadwal belajar madrasah.
-4. Menjamin keabsahan data dan dokumen.
-
-${citySafe}, ${todayStr}
-Orang Tua / Wali: ${applicantParentName}
-Calon Murid: ${studentSafeName}`;
-
-    navigator.clipboard.writeText(textContent);
-    setCopiedNotification(true);
-    setTimeout(() => setCopiedNotification(false), 2500);
+  const handleDownloadPdf = async () => {
+    setIsGeneratingPdf(true);
+    try {
+      const success = await downloadElementAsPdf('sipma-dispensasi-sheet', `Surat_Dispensasi_${studentSafeReg}.pdf`);
+      if (!success) {
+        handlePrint();
+      }
+    } catch {
+      handlePrint();
+    } finally {
+      setIsGeneratingPdf(false);
+    }
   };
 
   return (
@@ -345,11 +315,16 @@ Calon Murid: ${studentSafeName}`;
             <button
               type="button"
               onClick={handleDownloadPdf}
+              disabled={isGeneratingPdf}
               title="Unduh dan simpan dokumen sebagai file PDF resmi (A4)"
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-sm font-semibold shadow-xs transition-colors cursor-pointer"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-sm font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-60"
             >
-              <FileDown className="w-4 h-4 text-emerald-400" />
-              <span>Unduh Format PDF</span>
+              {isGeneratingPdf ? (
+                <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+              ) : (
+                <FileDown className="w-4 h-4 text-emerald-400" />
+              )}
+              <span>{isGeneratingPdf ? 'Membuat PDF...' : 'Unduh Format PDF'}</span>
             </button>
 
             <button
@@ -374,7 +349,10 @@ Calon Murid: ${studentSafeName}`;
         </div>
 
         {/* Official Printable Sheet (A4 format - identical to PrintBuktiPendaftaran) */}
-        <div className="bg-white p-8 sm:p-12 rounded-2xl border border-slate-300 shadow-lg text-slate-900 print:border-none print:shadow-none print:p-0 print:m-0 print:rounded-none">
+        <div
+          id="sipma-dispensasi-sheet"
+          className="bg-white p-8 sm:p-12 rounded-2xl border border-slate-300 shadow-lg text-slate-900 print:border-none print:shadow-none print:p-0 print:m-0 print:rounded-none"
+        >
           
           {/* Kop Surat Resmi Madrasah */}
           <div className="flex items-center justify-between border-b-4 border-double border-slate-800 pb-5 mb-6">

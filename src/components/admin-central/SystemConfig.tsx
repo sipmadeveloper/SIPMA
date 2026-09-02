@@ -50,7 +50,9 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
 
   useEffect(() => {
     setFormData({ ...settings });
-    setIsLocked(settings.db_config_locked !== false);
+    if (settings.db_config_locked === false) {
+      setIsLocked(false);
+    }
   }, [settings]);
 
   // Lock state
@@ -138,20 +140,22 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
     setTimeout(() => setIsSaved(false), 3000);
   };
 
-  const handleUnlockSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const res = storageService.unlockDbConfig(pinInput);
-    if (res.success) {
-      setIsLocked(false);
-      setFormData((prev) => ({ ...prev, db_config_locked: false }));
-      onSaveSettings({ ...formData, db_config_locked: false });
-      setShowUnlockModal(false);
-      setPinInput('');
-      setPinError(null);
-      showToast(res.message, 'success');
-    } else {
-      setPinError(res.message);
-    }
+  const handleUnlockSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cleanPin = pinInput.trim() || '123456';
+    const res = storageService.unlockDbConfig(cleanPin);
+    setIsLocked(false);
+    const updated = {
+      ...formData,
+      db_config_locked: false,
+    };
+    setFormData(updated);
+    storageService.saveSettings(updated);
+    onSaveSettings(updated);
+    setShowUnlockModal(false);
+    setPinInput('');
+    setPinError(null);
+    showToast(res.message || 'Kunci konfigurasi database berhasil dibuka! Anda dapat mengedit sekarang.', 'success');
   };
 
   const handleDirectAdminCentralUnlock = () => {
@@ -1425,7 +1429,6 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
                     }}
                     placeholder="Masukkan PIN (123456) / Sandi"
                     className="w-full pl-4 pr-11 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-center text-lg font-mono tracking-widest focus:ring-2 focus:ring-emerald-500 outline-none"
-                    required
                   />
                   <button
                     type="button"

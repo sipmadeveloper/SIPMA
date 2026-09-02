@@ -47,12 +47,15 @@ export const LoginPage: React.FC<Props> = ({
   const resolveAdminRole = (adminEmail: string): UserRole => {
     const existingUsers = storageService.getUsers();
     const found = existingUsers.find((u) => u.email.toLowerCase() === adminEmail.trim().toLowerCase());
-    if (found && (found.role === 'admin_sekolah' || found.role === 'admin_pusat')) {
+    if (found && (found.role === 'admin_sekolah' || found.role === 'operator_sekolah' || found.role === 'admin_pusat')) {
       return found.role;
     }
     const lower = adminEmail.toLowerCase();
     if (lower.includes('pusat') || lower.includes('kemenag') || lower.includes('kanwil')) {
       return 'admin_pusat';
+    }
+    if (lower.includes('operator') || lower.includes('opr')) {
+      return 'operator_sekolah';
     }
     return 'admin_sekolah';
   };
@@ -91,7 +94,13 @@ export const LoginPage: React.FC<Props> = ({
         if (foundUser.role !== 'calon_murid') {
           showAlert(
             'Peran Akun Tidak Sesuai',
-            `Email "${cleanEmail}" terdaftar sebagai ${foundUser.role === 'admin_pusat' ? 'Admin Pusat' : 'Admin Madrasah'}. Silakan pilih tab "Admin" untuk masuk.`,
+            `Email "${cleanEmail}" terdaftar sebagai ${
+              foundUser.role === 'admin_pusat'
+                ? 'Admin Pusat'
+                : foundUser.role === 'operator_sekolah'
+                ? 'Operator Madrasah'
+                : 'Admin Madrasah'
+            }. Silakan pilih tab "Admin & Operator" untuk masuk.`,
             'warning'
           );
           return;
@@ -99,18 +108,24 @@ export const LoginPage: React.FC<Props> = ({
 
         onLogin(cleanEmail, 'calon_murid');
       } else {
-        // Admin tab
-        if (!foundUser || (foundUser.role !== 'admin_sekolah' && foundUser.role !== 'admin_pusat')) {
-          // Check if it matches an admin email pattern
+        // Admin / Operator tab
+        if (!foundUser || (foundUser.role !== 'admin_sekolah' && foundUser.role !== 'operator_sekolah' && foundUser.role !== 'admin_pusat')) {
+          // Check if it matches an admin/operator email pattern
           const resolvedRole = resolveAdminRole(cleanEmail);
-          if (cleanEmail.includes('admin') || cleanEmail.includes('madrasah') || cleanEmail.includes('kemenag')) {
+          if (
+            cleanEmail.includes('admin') ||
+            cleanEmail.includes('madrasah') ||
+            cleanEmail.includes('kemenag') ||
+            cleanEmail.includes('operator') ||
+            cleanEmail.includes('opr')
+          ) {
             onLogin(cleanEmail, resolvedRole);
             return;
           }
 
           showAlert(
-            'Akun Admin Tidak Ditemukan',
-            `Email "${cleanEmail}" tidak terdaftar sebagai Administrator Madrasah ataupun Admin Pusat. Hubungi administrator madrasah Anda untuk verifikasi hak akses.`,
+            'Akun Tidak Ditemukan',
+            `Email "${cleanEmail}" tidak terdaftar sebagai Administrator Madrasah, Operator Madrasah, ataupun Admin Pusat. Hubungi panitia madrasah Anda untuk verifikasi hak akses.`,
             'error'
           );
           return;
@@ -192,14 +207,14 @@ export const LoginPage: React.FC<Props> = ({
                   }`}
                 >
                   <ShieldCheck className="w-4 h-4 shrink-0" />
-                  <span className="truncate">Admin Madrasah / Pusat</span>
+                  <span className="truncate">Admin & Operator</span>
                 </button>
               </div>
             </div>
 
             <div>
               <label className="block font-semibold text-slate-700 mb-1">
-                {selectedTab === 'calon_murid' ? 'Email Calon Murid Terdaftar' : 'Email Administrator'}
+                {selectedTab === 'calon_murid' ? 'Email Calon Murid Terdaftar' : 'Email Admin / Operator Madrasah'}
               </label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
@@ -207,7 +222,11 @@ export const LoginPage: React.FC<Props> = ({
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder={selectedTab === 'calon_murid' ? 'Masukkan email akun pendaftar...' : 'Masukkan email admin madrasah...'}
+                  placeholder={
+                    selectedTab === 'calon_murid'
+                      ? 'Masukkan email akun pendaftar...'
+                      : 'Masukkan email admin atau operator madrasah...'
+                  }
                   className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none font-medium text-xs"
                   required
                 />

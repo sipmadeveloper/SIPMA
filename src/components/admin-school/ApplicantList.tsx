@@ -64,6 +64,7 @@ export const ApplicantList: React.FC<Props> = ({
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [pathwayFilter, setPathwayFilter] = useState<string>('all');
   const [verificationFilter, setVerificationFilter] = useState<string>('all');
+  const [selectionFilter, setSelectionFilter] = useState<'all' | 'lulus' | 'tidak_lulus' | 'menunggu'>('all');
   const [sortBy, setSortBy] = useState<'distance' | 'name' | 'date'>('distance');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
@@ -71,6 +72,18 @@ export const ApplicantList: React.FC<Props> = ({
   const [initialVerificationTab, setInitialVerificationTab] = useState<'profile' | 'location' | 'docs'>('profile');
   const [resetPasswordApp, setResetPasswordApp] = useState<Application | null>(null);
   const [appToDelete, setAppToDelete] = useState<Application | null>(null);
+
+  // Export Excel Modal & Options state
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false);
+  const [exportChoice, setExportChoice] = useState<'lulus' | 'all' | 'filtered'>('lulus');
+
+  // Counts for badge & export
+  const countLulus = useMemo(() => {
+    return applications.filter((a) => a.final_status === 'lulus' || a.selection_status === 'lulus').length;
+  }, [applications]);
+
+  const countTotal = applications.length;
 
   // Filtered & Sorted Applicants
   const filteredApps = useMemo(() => {
@@ -87,7 +100,16 @@ export const ApplicantList: React.FC<Props> = ({
         const matchPathway = pathwayFilter === 'all' || app.pathway === pathwayFilter;
         const matchVerification = verificationFilter === 'all' || app.verification_status === verificationFilter;
 
-        return matchQuery && matchPathway && matchVerification;
+        const isLulus = app.final_status === 'lulus' || app.selection_status === 'lulus';
+        const isTidakLulus = app.final_status === 'tidak_lulus' || app.selection_status === 'tidak_lulus';
+        const isMenunggu = !isLulus && !isTidakLulus;
+        const matchSelection =
+          selectionFilter === 'all' ||
+          (selectionFilter === 'lulus' && isLulus) ||
+          (selectionFilter === 'tidak_lulus' && isTidakLulus) ||
+          (selectionFilter === 'menunggu' && isMenunggu);
+
+        return matchQuery && matchPathway && matchVerification && matchSelection;
       })
       .sort((a, b) => {
         if (sortBy === 'distance') {
@@ -103,7 +125,62 @@ export const ApplicantList: React.FC<Props> = ({
         const dateB = new Date(b.created_at).getTime();
         return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
       });
-  }, [applications, students, searchQuery, pathwayFilter, verificationFilter, sortBy, sortOrder]);
+  }, [applications, students, searchQuery, pathwayFilter, verificationFilter, selectionFilter, sortBy, sortOrder]);
+
+  const handleExportPassed = () => {
+    const passedApps = applications.filter((a) => a.final_status === 'lulus' || a.selection_status === 'lulus');
+    exportApplicantsToExcel(
+      passedApps,
+      students,
+      parents,
+      schoolOrigins,
+      addresses,
+      [school],
+      {
+        filterType: 'lulus',
+        filterLabel: 'Khusus Siswa yang Lolos (Diterima)',
+        schoolName: school.school_name,
+      }
+    );
+    setIsExportModalOpen(false);
+    setIsExportDropdownOpen(false);
+  };
+
+  const handleExportAll = () => {
+    exportApplicantsToExcel(
+      applications,
+      students,
+      parents,
+      schoolOrigins,
+      addresses,
+      [school],
+      {
+        filterType: 'all',
+        filterLabel: 'Seluruh Pendaftar Madrasah',
+        schoolName: school.school_name,
+      }
+    );
+    setIsExportModalOpen(false);
+    setIsExportDropdownOpen(false);
+  };
+
+  const handleExportCurrent = () => {
+    exportApplicantsToExcel(
+      filteredApps,
+      students,
+      parents,
+      schoolOrigins,
+      addresses,
+      [school],
+      {
+        filterType: 'filtered',
+        filterLabel: `Tampilan Terfilter (${selectionFilter === 'lulus' ? 'Khusus Lolos' : selectionFilter}, Jalur: ${pathwayFilter})`,
+        schoolName: school.school_name,
+      }
+    );
+    setIsExportModalOpen(false);
+    setIsExportDropdownOpen(false);
+  };
 
   const toggleSort = (field: 'distance' | 'name' | 'date') => {
     if (sortBy === field) {
@@ -169,32 +246,100 @@ export const ApplicantList: React.FC<Props> = ({
             <option value="ditolak">Ditolak</option>
           </select>
 
-          {/* Export Excel button */}
-          <button
-            type="button"
-            onClick={() => {
-              if (onExportExcel) {
-                onExportExcel();
-              } else if (onExportCsv) {
-                onExportCsv();
-              } else {
-                exportApplicantsToExcel(
-                  applications,
-                  students,
-                  parents,
-                  schoolOrigins,
-                  addresses,
-                  [school],
-                  { schoolName: school.school_name }
-                );
-              }
-            }}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs cursor-pointer"
-            title="Unduh data pendaftar dalam format spreadsheet Excel (.xlsx) yang rapi"
+          {/* Selection status filter */}
+          <select
+            value={selectionFilter}
+            onChange={(e) => setSelectionFilter(e.target.value as any)}
+            className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500 outline-none"
+            title="Filter pendaftar berdasarkan hasil seleksi kelulusan"
           >
-            <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span>Export Excel (.xlsx)</span>
-          </button>
+            <option value="all">Semua Status Seleksi</option>
+            <option value="lulus">🟢 Khusus Siswa Lolos ({countLulus})</option>
+            <option value="tidak_lulus">🔴 Tidak Lolos</option>
+            <option value="menunggu">⏳ Dalam Proses Seleksi</option>
+          </select>
+
+          {/* Export Excel Button with Dropdown & Modal */}
+          <div className="relative inline-block text-left">
+            <div className="inline-flex rounded-xl shadow-xs">
+              <button
+                type="button"
+                onClick={() => setIsExportModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-l-xl text-xs font-bold transition-colors cursor-pointer"
+                title="Unduh data pendaftar dalam format spreadsheet Excel (.xlsx) yang rapi"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>Export Excel (.xlsx)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
+                className="px-2 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-r-xl border-l border-emerald-500/50 text-xs font-bold transition-colors cursor-pointer"
+                title="Pilihan Cepat Unduh Excel"
+              >
+                ▼
+              </button>
+            </div>
+
+            {isExportDropdownOpen && (
+              <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-white border border-slate-200 shadow-xl z-30 p-2 space-y-1">
+                <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Pilihan Unduh Format Excel (.xlsx)
+                </div>
+                <button
+                  type="button"
+                  onClick={handleExportPassed}
+                  className="w-full text-left px-3 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-50 rounded-xl flex items-center justify-between transition-colors cursor-pointer"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <span>Unduh Khusus Siswa Lolos</span>
+                  </span>
+                  <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-mono font-bold">
+                    {countLulus}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportAll}
+                  className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-xl flex items-center justify-between transition-colors cursor-pointer"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                    <span>Unduh Seluruh Pendaftar</span>
+                  </span>
+                  <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-mono font-bold">
+                    {countTotal}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportCurrent}
+                  className="w-full text-left px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 rounded-xl flex items-center justify-between transition-colors cursor-pointer"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                    <span>Unduh Filter Tampilan</span>
+                  </span>
+                  <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-mono font-bold">
+                    {filteredApps.length}
+                  </span>
+                </button>
+                <div className="border-t border-slate-100 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsExportDropdownOpen(false);
+                      setIsExportModalOpen(true);
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-[11px] font-semibold text-slate-500 hover:text-emerald-700 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
+                  >
+                    Buka Panduan & Opsi Lengkap...
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -410,6 +555,174 @@ export const ApplicantList: React.FC<Props> = ({
           </div>
         </div>
       </div>
+
+      {/* Export Excel (.xlsx) Filtered Modal */}
+      {isExportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-slate-200 space-y-5 animate-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                  <FileSpreadsheet className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Unduh Data Lengkap Excel (.xlsx)
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Format spreadsheet resmi Microsoft Excel yang rapi & terstruktur (Bukan CSV)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsExportModalOpen(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Filter selection options */}
+            <div className="space-y-2.5">
+              <label className="text-xs font-bold text-slate-700 block">
+                Pilih Cakupan Data Pendaftar:
+              </label>
+
+              {/* Option 1: Khusus Siswa Lolos */}
+              <div
+                onClick={() => setExportChoice('lulus')}
+                className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex items-start gap-3 ${
+                  exportChoice === 'lulus'
+                    ? 'border-emerald-500 bg-emerald-50/60 shadow-xs'
+                    : 'border-slate-200 hover:border-slate-300 bg-white'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="exportChoice"
+                  checked={exportChoice === 'lulus'}
+                  onChange={() => setExportChoice('lulus')}
+                  className="mt-1 text-emerald-600 focus:ring-emerald-500"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-slate-900">
+                      Khusus Siswa yang Lolos (Diterima)
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-mono">
+                      {countLulus} Siswa
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                    Hanya mengunduh berkas dan data pendaftar yang status akhirnya <strong>LULUS SELEKSI</strong> untuk kebutuhan daftar ulang & arsip siswa baru.
+                  </p>
+                </div>
+              </div>
+
+              {/* Option 2: Seluruh Pendaftar */}
+              <div
+                onClick={() => setExportChoice('all')}
+                className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex items-start gap-3 ${
+                  exportChoice === 'all'
+                    ? 'border-emerald-500 bg-emerald-50/60 shadow-xs'
+                    : 'border-slate-200 hover:border-slate-300 bg-white'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="exportChoice"
+                  checked={exportChoice === 'all'}
+                  onChange={() => setExportChoice('all')}
+                  className="mt-1 text-emerald-600 focus:ring-emerald-500"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-slate-900">
+                      Seluruh Pendaftar Madrasah
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-mono">
+                      {countTotal} Siswa
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                    Mengunduh seluruh calon murid (status lolos, tidak lolos, maupun masih dalam proses verifikasi) lengkap dengan statistik.
+                  </p>
+                </div>
+              </div>
+
+              {/* Option 3: Filter Tampilan Tabel */}
+              <div
+                onClick={() => setExportChoice('filtered')}
+                className={`p-3.5 rounded-2xl border-2 transition-all cursor-pointer flex items-start gap-3 ${
+                  exportChoice === 'filtered'
+                    ? 'border-emerald-500 bg-emerald-50/60 shadow-xs'
+                    : 'border-slate-200 hover:border-slate-300 bg-white'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="exportChoice"
+                  checked={exportChoice === 'filtered'}
+                  onChange={() => setExportChoice('filtered')}
+                  className="mt-1 text-emerald-600 focus:ring-emerald-500"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-slate-900">
+                      Sesuai Filter Tabel Saat Ini
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-mono">
+                      {filteredApps.length} Siswa
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                    Mengunduh data pendaftar yang sedang tampil berdasarkan filter pencarian, jalur, atau status verifikasi aktif.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Information Notice */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl text-[11px] text-slate-600 space-y-1">
+              <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Format Standar Resmi Excel (.xlsx)</span>
+              </div>
+              <p className="text-slate-500 text-[10px] leading-relaxed">
+                Menyertakan 50+ data kolom lengkap (Biodata Siswa, NIK, NISN, Orang Tua/Wali, Sekolah Asal, Titik Zonasi, Jalur & Nilai Skor, Status Verifikasi, Hasil Seleksi) beserta Lembar Rekapitulasi Statistik.
+              </p>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsExportModalOpen(false)}
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (exportChoice === 'lulus') {
+                    handleExportPassed();
+                  } else if (exportChoice === 'all') {
+                    handleExportAll();
+                  } else {
+                    handleExportCurrent();
+                  }
+                }}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-sm"
+              >
+                <Download className="w-4 h-4" />
+                <span>Unduh File Excel (.xlsx)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Modal */}
       {appToDelete && (

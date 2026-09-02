@@ -1,4 +1,4 @@
-export type UserRole = 'admin_pusat' | 'admin_sekolah' | 'calon_murid';
+export type UserRole = 'admin_pusat' | 'admin_sekolah' | 'operator_sekolah' | 'calon_murid';
 
 export type PathwayType = 'zonasi' | 'afirmasi' | 'prestasi' | 'mutasi';
 
@@ -265,7 +265,7 @@ export interface Announcement {
   content: string;
   date: string;
   is_published: boolean;
-  target_role: 'all' | 'calon_murid' | 'admin_sekolah';
+  target_role: 'all' | 'calon_murid' | 'admin_sekolah' | 'operator_sekolah';
   school_id?: string;
   author_name: string;
 }
