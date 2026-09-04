@@ -152,37 +152,71 @@ async function pullDataFromGasDirectly(gasUrl: string, spreadsheetId: string): P
   }
 }
 
+const DEMO_STUDENT_IDS = new Set(['STD-001', 'STD-002', 'STD-003', 'STD-004', 'STD-005', 'STD-006']);
+const DEMO_REG_PREFIX = 'SIPMA-MAN01-00000';
+
+function isDemoStudentRecord(regOrKey: string, stdId?: string): boolean {
+  if (regOrKey && typeof regOrKey === 'string' && regOrKey.startsWith(DEMO_REG_PREFIX)) return true;
+  if (stdId && DEMO_STUDENT_IDS.has(stdId)) return true;
+  if (regOrKey && DEMO_STUDENT_IDS.has(regOrKey)) return true;
+  return false;
+}
+
 // Function to update serverDb from pulled GAS data
 function mergeGasDataIntoServerDb(gasData: any): boolean {
   if (!gasData || typeof gasData !== 'object') return false;
   let mutated = false;
 
   if (gasData.users && Array.isArray(gasData.users) && gasData.users.length > 0) {
-    serverDb.users = gasData.users;
+    serverDb.users = gasData.users.filter((u: any) => u.role !== 'calon_murid' || !isDemoStudentRecord(u?.registration_number));
     mutated = true;
   }
   if (gasData.students && typeof gasData.students === 'object') {
-    serverDb.students = gasData.students;
+    const cleanStudents: Record<string, any> = {};
+    for (const [k, v] of Object.entries(gasData.students)) {
+      if (!isDemoStudentRecord(k, (v as any)?.student_id)) {
+        cleanStudents[k] = v;
+      }
+    }
+    serverDb.students = cleanStudents;
     mutated = true;
   }
   if (gasData.parents && typeof gasData.parents === 'object') {
-    serverDb.parents = gasData.parents;
+    const cleanParents: Record<string, any> = {};
+    for (const [k, v] of Object.entries(gasData.parents)) {
+      if (!isDemoStudentRecord(k, (v as any)?.student_id)) {
+        cleanParents[k] = v;
+      }
+    }
+    serverDb.parents = cleanParents;
     mutated = true;
   }
   if (gasData.school_origins && typeof gasData.school_origins === 'object') {
-    serverDb.school_origins = gasData.school_origins;
+    const cleanOrigins: Record<string, any> = {};
+    for (const [k, v] of Object.entries(gasData.school_origins)) {
+      if (!isDemoStudentRecord(k, (v as any)?.student_id)) {
+        cleanOrigins[k] = v;
+      }
+    }
+    serverDb.school_origins = cleanOrigins;
     mutated = true;
   }
   if (gasData.addresses && typeof gasData.addresses === 'object') {
-    serverDb.addresses = gasData.addresses;
+    const cleanAddresses: Record<string, any> = {};
+    for (const [k, v] of Object.entries(gasData.addresses)) {
+      if (!isDemoStudentRecord(k, (v as any)?.student_id)) {
+        cleanAddresses[k] = v;
+      }
+    }
+    serverDb.addresses = cleanAddresses;
     mutated = true;
   }
   if (gasData.applications && Array.isArray(gasData.applications)) {
-    serverDb.applications = gasData.applications;
+    serverDb.applications = gasData.applications.filter((a: any) => !isDemoStudentRecord(a?.registration_number, a?.student_id));
     mutated = true;
   }
   if (gasData.documents && Array.isArray(gasData.documents)) {
-    serverDb.documents = gasData.documents;
+    serverDb.documents = gasData.documents.filter((d: any) => !isDemoStudentRecord(d?.registration_number, d?.student_id));
     mutated = true;
   }
   if (gasData.schools && Array.isArray(gasData.schools) && gasData.schools.length > 0) {
@@ -364,25 +398,49 @@ app.post('/api/data/sync', async (req: Request, res: Response) => {
       serverDb.settings = { ...serverDb.settings, ...payload.settings };
     }
     if (payload.users !== undefined && Array.isArray(payload.users)) {
-      serverDb.users = payload.users;
+      serverDb.users = payload.users.filter((u: any) => u.role !== 'calon_murid' || !isDemoStudentRecord(u?.registration_number));
     }
     if (payload.students !== undefined && typeof payload.students === 'object') {
-      serverDb.students = payload.students;
+      const cleanStudents: Record<string, any> = {};
+      for (const [k, v] of Object.entries(payload.students)) {
+        if (!isDemoStudentRecord(k, (v as any)?.student_id)) {
+          cleanStudents[k] = v;
+        }
+      }
+      serverDb.students = cleanStudents;
     }
     if (payload.parents !== undefined && typeof payload.parents === 'object') {
-      serverDb.parents = payload.parents;
+      const cleanParents: Record<string, any> = {};
+      for (const [k, v] of Object.entries(payload.parents)) {
+        if (!isDemoStudentRecord(k, (v as any)?.student_id)) {
+          cleanParents[k] = v;
+        }
+      }
+      serverDb.parents = cleanParents;
     }
     if (payload.school_origins !== undefined && typeof payload.school_origins === 'object') {
-      serverDb.school_origins = payload.school_origins;
+      const cleanOrigins: Record<string, any> = {};
+      for (const [k, v] of Object.entries(payload.school_origins)) {
+        if (!isDemoStudentRecord(k, (v as any)?.student_id)) {
+          cleanOrigins[k] = v;
+        }
+      }
+      serverDb.school_origins = cleanOrigins;
     }
     if (payload.addresses !== undefined && typeof payload.addresses === 'object') {
-      serverDb.addresses = payload.addresses;
+      const cleanAddresses: Record<string, any> = {};
+      for (const [k, v] of Object.entries(payload.addresses)) {
+        if (!isDemoStudentRecord(k, (v as any)?.student_id)) {
+          cleanAddresses[k] = v;
+        }
+      }
+      serverDb.addresses = cleanAddresses;
     }
     if (payload.applications !== undefined && Array.isArray(payload.applications)) {
-      serverDb.applications = payload.applications;
+      serverDb.applications = payload.applications.filter((a: any) => !isDemoStudentRecord(a?.registration_number, a?.student_id));
     }
     if (payload.documents !== undefined && Array.isArray(payload.documents)) {
-      serverDb.documents = payload.documents;
+      serverDb.documents = payload.documents.filter((d: any) => !isDemoStudentRecord(d?.registration_number, d?.student_id));
     }
     if (payload.schools !== undefined && Array.isArray(payload.schools)) {
       serverDb.schools = payload.schools;

@@ -216,6 +216,96 @@ class StorageService {
         localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(INITIAL_AUDIT_LOGS));
       }
 
+      // Clean up legacy demo students from localStorage if present
+      try {
+        const demoRegPrefix = 'SIPMA-MAN01-00000';
+        const demoStdIds = new Set(['STD-001', 'STD-002', 'STD-003', 'STD-004', 'STD-005', 'STD-006']);
+        
+        const rawStudents = localStorage.getItem(STORAGE_KEYS.STUDENTS);
+        if (rawStudents) {
+          const parsed = JSON.parse(rawStudents);
+          let mutated = false;
+          for (const key of Object.keys(parsed)) {
+            if (key.startsWith(demoRegPrefix) || demoStdIds.has(parsed[key]?.student_id)) {
+              delete parsed[key];
+              mutated = true;
+            }
+          }
+          if (mutated) {
+            localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(parsed));
+          }
+        }
+
+        const rawApps = localStorage.getItem(STORAGE_KEYS.APPLICATIONS);
+        if (rawApps) {
+          const parsed = JSON.parse(rawApps);
+          if (Array.isArray(parsed)) {
+            const filtered = parsed.filter((a: any) => !a.registration_number?.startsWith(demoRegPrefix) && !demoStdIds.has(a.student_id));
+            if (filtered.length !== parsed.length) {
+              localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(filtered));
+            }
+          }
+        }
+
+        const rawParents = localStorage.getItem(STORAGE_KEYS.PARENTS);
+        if (rawParents) {
+          const parsed = JSON.parse(rawParents);
+          let mutated = false;
+          for (const key of Object.keys(parsed)) {
+            if (demoStdIds.has(key)) {
+              delete parsed[key];
+              mutated = true;
+            }
+          }
+          if (mutated) {
+            localStorage.setItem(STORAGE_KEYS.PARENTS, JSON.stringify(parsed));
+          }
+        }
+
+        const rawOrigins = localStorage.getItem(STORAGE_KEYS.SCHOOL_ORIGINS);
+        if (rawOrigins) {
+          const parsed = JSON.parse(rawOrigins);
+          let mutated = false;
+          for (const key of Object.keys(parsed)) {
+            if (demoStdIds.has(key)) {
+              delete parsed[key];
+              mutated = true;
+            }
+          }
+          if (mutated) {
+            localStorage.setItem(STORAGE_KEYS.SCHOOL_ORIGINS, JSON.stringify(parsed));
+          }
+        }
+
+        const rawAddresses = localStorage.getItem(STORAGE_KEYS.ADDRESSES);
+        if (rawAddresses) {
+          const parsed = JSON.parse(rawAddresses);
+          let mutated = false;
+          for (const key of Object.keys(parsed)) {
+            if (demoStdIds.has(key)) {
+              delete parsed[key];
+              mutated = true;
+            }
+          }
+          if (mutated) {
+            localStorage.setItem(STORAGE_KEYS.ADDRESSES, JSON.stringify(parsed));
+          }
+        }
+
+        const rawDocs = localStorage.getItem(STORAGE_KEYS.DOCUMENTS);
+        if (rawDocs) {
+          const parsed = JSON.parse(rawDocs);
+          if (Array.isArray(parsed)) {
+            const filtered = parsed.filter((d: any) => !d.registration_number?.startsWith(demoRegPrefix) && !demoStdIds.has(d.student_id));
+            if (filtered.length !== parsed.length) {
+              localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(filtered));
+            }
+          }
+        }
+      } catch {
+        // ignore parsing error
+      }
+
       // Auto-import config from Environment Variables (e.g. Vercel build-time or runtime envs)
       const currentSettings = this.getSettings();
       let settingsChanged = false;
