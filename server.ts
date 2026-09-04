@@ -60,22 +60,22 @@ function loadInitialServerDb(): ServerDbState {
   const envMaps = process.env.VITE_MAPS_API_KEY || process.env.MAPS_API_KEY || '';
 
   const initialSettings = {
-    spreadsheet_id: envSs || '1aBcDeFgHiJkLmNoPqRsTuVwXyZ_SIPMA2026_SampleID',
-    drive_root_folder_id: envDrive || '1FolderId_SIPMA_Root_SampleStorage',
-    gas_web_app_url: envGas || '',
-    maps_api_key: envMaps || '',
-    application_year: '2027',
+    spreadsheet_id: envSs || '1n1nNgm4eW0O7bSyWv7TF5tVPr38yFU81x50MGUFD5i4',
+    drive_root_folder_id: envDrive || '14tpMbwj63kVA8j378LD0NYzJ2_UqNuO1',
+    gas_web_app_url: envGas || 'https://script.google.com/macros/s/AKfycbyLB706ICQ9EK77ihqcpUu0nKGUVM2AuZLueY0KhDY-mt1nndP51SFf3kikcraCA65a2Q/exec',
+    maps_api_key: envMaps || 'AIzaSyC2V4lt0ZSPo5G8shUpRuiBys5udgSVQ3k',
+    application_year: 2027,
     academic_year_label: '2027/2028',
     app_name: 'SIPMA',
     app_tagline: 'Sistem Penerimaan Murid Madrasah',
-    app_logo: '',
-    default_school_id: 'SCH-MAN1',
-    max_file_size_mb: 5,
+    app_logo: 'https://cdn.phototourl.com/free/2026-09-01-6c787787-6585-4830-b0a6-9bfab3f1dba4.png',
+    default_school_id: 'SCH-NEW-1787905953621',
+    max_file_size_mb: 2,
     registration_open: true,
     announcement_open: true,
-    demo_mode: true,
+    demo_mode: false,
     db_config_locked: true,
-    db_config_pin: '123456',
+    db_config_pin: 123456,
     realtime_sync_enabled: true,
     auto_sync_interval_sec: 15,
   };
@@ -252,6 +252,20 @@ setTimeout(async () => {
   }
 }, 2000);
 
+// Background periodic pull from GAS every 45s so serverDb stays in sync without blocking any device
+setInterval(async () => {
+  const gasUrl = serverDb.settings?.gas_web_app_url;
+  const ssId = serverDb.settings?.spreadsheet_id;
+  if (gasUrl && gasUrl.startsWith('http') && ssId && !ssId.includes('SampleID')) {
+    try {
+      const res = await pullDataFromGasDirectly(gasUrl, ssId);
+      if (res.success && res.data) {
+        mergeGasDataIntoServerDb(res.data);
+      }
+    } catch {}
+  }
+}, 45000);
+
 // ================= API ROUTES =================
 
 // 1. Health Check
@@ -306,8 +320,8 @@ app.get('/api/data', async (req: Request, res: Response) => {
   const gasUrl = serverDb.settings?.gas_web_app_url;
   const ssId = serverDb.settings?.spreadsheet_id;
 
-  // Auto-pull from GAS if requested or if server memory is empty but GAS URL exists
-  if ((forcePull || (serverDb.applications.length === 0 && serverDb.users.length <= 2)) && gasUrl && gasUrl.startsWith('http')) {
+  // Auto-pull from GAS ONLY if explicitly requested via ?force_pull_gas=true
+  if (forcePull && gasUrl && gasUrl.startsWith('http')) {
     try {
       const gasResult = await pullDataFromGasDirectly(gasUrl, ssId || '');
       if (gasResult.success && gasResult.data) {

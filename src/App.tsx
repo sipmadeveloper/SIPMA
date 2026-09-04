@@ -176,23 +176,46 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    refreshData();
-    const user = storageService.getCurrentUser();
-    if (user) {
-      setCurrentUser(user);
-    }
+    let isMounted = true;
+
+    // Immediately fetch centralized database state so all devices see the latest data
+    const performBootSync = async () => {
+      try {
+        await storageService.syncWithServer(false);
+      } catch (err) {
+        console.warn('Initial server sync warning:', err);
+      } finally {
+        if (isMounted) {
+          refreshData();
+          const user = storageService.getCurrentUser();
+          if (user) {
+            setCurrentUser(user);
+          }
+          setIsAppInitialLoading(false);
+        }
+      }
+    };
+
+    performBootSync();
+
+    // Safety fallback timer: ensure UI displays promptly even on slower connections
+    const fallbackTimer = setTimeout(() => {
+      if (isMounted) {
+        refreshData();
+        setIsAppInitialLoading(false);
+      }
+    }, 1500);
+
     const unsubscribe = storageService.subscribe(() => {
-      refreshData();
+      if (isMounted) {
+        refreshData();
+      }
     });
 
-    // Initial Splash Screen loading timer to allow data synchronization
-    const timer = setTimeout(() => {
-      setIsAppInitialLoading(false);
-    }, 600);
-
     return () => {
+      isMounted = false;
       unsubscribe();
-      clearTimeout(timer);
+      clearTimeout(fallbackTimer);
     };
   }, [refreshData]);
 

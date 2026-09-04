@@ -50,9 +50,11 @@ const STORAGE_KEYS = {
 
 class StorageService {
   private initialized = false;
+  private hasSyncedWithServer = false;
   private subscribers: Array<(event: string, data?: any) => void> = [];
   private autoSyncTimeout: any = null;
   private autoPullTimer: any = null;
+  private serverSyncTimer: any = null;
   private isAutoSyncing: boolean = false;
   private lastAutoSyncStatus: { success: boolean; message: string; timestamp: string } | null = null;
 
@@ -91,6 +93,12 @@ class StorageService {
 
   triggerAutoSync(isSettingsUpdate: boolean = false): void {
     this.notifySubscribers('data_mutated');
+
+    // Only broadcast local mutations to server after initial server sync has completed
+    // (avoids pushing stale initial defaults before real database data is loaded)
+    if (!this.hasSyncedWithServer) {
+      return;
+    }
 
     // 1. Always immediately push the complete local state to centralized server (/api/data/sync)
     const dataPayload = {
@@ -154,18 +162,29 @@ class StorageService {
     if (this.autoPullTimer) {
       clearInterval(this.autoPullTimer);
     }
+    if (this.serverSyncTimer) {
+      clearInterval(this.serverSyncTimer);
+    }
 
-    // Auto-pull every 40 seconds in background if configured
+    // Real-time server sync: Poll centralized server every 12 seconds so all devices get instant updates
+    this.serverSyncTimer = setInterval(() => {
+      if (!document.hidden) {
+        this.syncWithServer(false).catch(() => {});
+      }
+    }, 12000);
+
+    // Auto-pull from GAS every 45 seconds in background if configured
     this.autoPullTimer = setInterval(() => {
       const s = this.getSettings();
       if (s.gas_web_app_url && s.gas_web_app_url.startsWith('http') && s.realtime_sync_enabled !== false && !document.hidden) {
         this.pullAllFromGAS().catch(() => {});
       }
-    }, 40000);
+    }, 45000);
 
-    // Auto-pull on window focus / tab visibility
+    // Instant sync on window focus and tab visibility change
     const handleVisibility = () => {
       if (!document.hidden) {
+        this.syncWithServer(false).catch(() => {});
         const s = this.getSettings();
         if (s.gas_web_app_url && s.gas_web_app_url.startsWith('http') && s.realtime_sync_enabled !== false) {
           this.pullAllFromGAS().catch(() => {});
@@ -175,6 +194,8 @@ class StorageService {
 
     window.removeEventListener('focus', handleVisibility);
     window.addEventListener('focus', handleVisibility);
+    document.removeEventListener('visibilitychange', handleVisibility);
+    document.addEventListener('visibilitychange', handleVisibility);
   }
 
   private init() {
@@ -389,102 +410,158 @@ class StorageService {
    * Centralized multi-device server synchronization
    * Loads locked database configurations and shared state from server.ts and Google Sheets
    */
-  async syncWithServer(): Promise<void> {
+  async syncWithServer(forcePullGas: boolean = false): Promise<boolean> {
     try {
-      const res = await fetch('/api/settings');
-      let gasUrlToPull: string | null = null;
-      let ssIdToPull: string | null = null;
+      const url = forcePullGas ? '/api/data?force_pull_gas=true' : '/api/data';
+      const dataRes = await fetch(url);
+      if (!dataRes.ok) return false;
 
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.settings && typeof json.settings === 'object') {
-          const serverSettings: SystemSettings = json.settings;
-          const localSettings = this.getSettings();
+      const dataJson = await dataRes.json();
+      if (!dataJson.success || !dataJson.data) return false;
 
-          // Unconditionally adopt server configuration so all devices stay 100% in sync
-          const merged: SystemSettings = {
-            ...localSettings,
-            ...serverSettings,
-          };
+      const d = dataJson.data;
+      let changed = false;
 
-          // Guarantee consistent academic year text
-          if (!merged.academic_year_label) {
-            const yr = merged.application_year || '2027';
-            const nextYr = (parseInt(yr, 10) || 2027) + 1;
-            merged.academic_year_label = `${yr}/${nextYr}`;
-          }
+      // 1. Settings
+      if (d.settings && typeof d.settings === 'object') {
+        const localSettings = this.getSettings();
+        const merged: SystemSettings = {
+          ...localSettings,
+          ...d.settings,
+        };
 
-          localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(merged));
+        if (!merged.academic_year_label) {
+          const yr = merged.application_year || '2027';
+          const nextYr = (parseInt(String(yr), 10) || 2027) + 1;
+          merged.academic_year_label = `${yr}/${nextYr}`;
+        }
+
+        const prevStr = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+        const newStr = JSON.stringify(merged);
+        if (prevStr !== newStr) {
+          localStorage.setItem(STORAGE_KEYS.SETTINGS, newStr);
           this.notifySubscribers('settings_updated', merged);
-
-          if (merged.gas_web_app_url && merged.gas_web_app_url.startsWith('http')) {
-            gasUrlToPull = merged.gas_web_app_url;
-            ssIdToPull = merged.spreadsheet_id;
-          }
+          changed = true;
         }
       }
 
-      // Also pull shared database items from server if available
-      const dataRes = await fetch('/api/data?force_pull_gas=true');
-      if (dataRes.ok) {
-        const dataJson = await dataRes.json();
-        if (dataJson.success && dataJson.data) {
-          const d = dataJson.data;
-          let changed = false;
-          if (d.users && Array.isArray(d.users) && d.users.length > 0) {
-            localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(d.users));
-            changed = true;
-          }
-          if (d.students && typeof d.students === 'object') {
-            localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(d.students));
-            changed = true;
-          }
-          if (d.parents && typeof d.parents === 'object') {
-            localStorage.setItem(STORAGE_KEYS.PARENTS, JSON.stringify(d.parents));
-            changed = true;
-          }
-          if (d.school_origins && typeof d.school_origins === 'object') {
-            localStorage.setItem(STORAGE_KEYS.SCHOOL_ORIGINS, JSON.stringify(d.school_origins));
-            changed = true;
-          }
-          if (d.addresses && typeof d.addresses === 'object') {
-            localStorage.setItem(STORAGE_KEYS.ADDRESSES, JSON.stringify(d.addresses));
-            changed = true;
-          }
-          if (d.applications && Array.isArray(d.applications)) {
-            localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(d.applications));
-            changed = true;
-          }
-          if (d.documents && Array.isArray(d.documents)) {
-            localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(d.documents));
-            changed = true;
-          }
-          if (d.schools && Array.isArray(d.schools) && d.schools.length > 0) {
-            localStorage.setItem(STORAGE_KEYS.SCHOOLS, JSON.stringify(d.schools));
-            changed = true;
-          }
-          if (d.announcements && Array.isArray(d.announcements)) {
-            localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(d.announcements));
-            changed = true;
-          }
-          if (d.audit_logs && Array.isArray(d.audit_logs)) {
-            localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(d.audit_logs));
-            changed = true;
-          }
-          if (changed) {
-            this.notifySubscribers('data_mutated');
-          }
+      // 2. Users
+      if (d.users && Array.isArray(d.users)) {
+        const prevStr = localStorage.getItem(STORAGE_KEYS.USERS);
+        const newStr = JSON.stringify(d.users);
+        if (prevStr !== newStr) {
+          localStorage.setItem(STORAGE_KEYS.USERS, newStr);
+          changed = true;
         }
       }
 
-      // If GAS is configured, also perform a live pull to guarantee freshest Google Sheets data
-      if (gasUrlToPull && gasUrlToPull.startsWith('http')) {
-        setTimeout(() => {
+      // 3. Students
+      if (d.students && typeof d.students === 'object') {
+        const prevStr = localStorage.getItem(STORAGE_KEYS.STUDENTS);
+        const newStr = JSON.stringify(d.students);
+        if (prevStr !== newStr) {
+          localStorage.setItem(STORAGE_KEYS.STUDENTS, newStr);
+          changed = true;
+        }
+      }
+
+      // 4. Parents
+      if (d.parents && typeof d.parents === 'object') {
+        const prevStr = localStorage.getItem(STORAGE_KEYS.PARENTS);
+        const newStr = JSON.stringify(d.parents);
+        if (prevStr !== newStr) {
+          localStorage.setItem(STORAGE_KEYS.PARENTS, newStr);
+          changed = true;
+        }
+      }
+
+      // 5. School Origins
+      if (d.school_origins && typeof d.school_origins === 'object') {
+        const prevStr = localStorage.getItem(STORAGE_KEYS.SCHOOL_ORIGINS);
+        const newStr = JSON.stringify(d.school_origins);
+        if (prevStr !== newStr) {
+          localStorage.setItem(STORAGE_KEYS.SCHOOL_ORIGINS, newStr);
+          changed = true;
+        }
+      }
+
+      // 6. Addresses
+      if (d.addresses && typeof d.addresses === 'object') {
+        const prevStr = localStorage.getItem(STORAGE_KEYS.ADDRESSES);
+        const newStr = JSON.stringify(d.addresses);
+        if (prevStr !== newStr) {
+          localStorage.setItem(STORAGE_KEYS.ADDRESSES, newStr);
+          changed = true;
+        }
+      }
+
+      // 7. Applications
+      if (d.applications && Array.isArray(d.applications)) {
+        const prevStr = localStorage.getItem(STORAGE_KEYS.APPLICATIONS);
+        const newStr = JSON.stringify(d.applications);
+        if (prevStr !== newStr) {
+          localStorage.setItem(STORAGE_KEYS.APPLICATIONS, newStr);
+          changed = true;
+        }
+      }
+
+      // 8. Documents
+      if (d.documents && Array.isArray(d.documents)) {
+        const prevStr = localStorage.getItem(STORAGE_KEYS.DOCUMENTS);
+        const newStr = JSON.stringify(d.documents);
+        if (prevStr !== newStr) {
+          localStorage.setItem(STORAGE_KEYS.DOCUMENTS, newStr);
+          changed = true;
+        }
+      }
+
+      // 9. Schools
+      if (d.schools && Array.isArray(d.schools) && d.schools.length > 0) {
+        const prevStr = localStorage.getItem(STORAGE_KEYS.SCHOOLS);
+        const newStr = JSON.stringify(d.schools);
+        if (prevStr !== newStr) {
+          localStorage.setItem(STORAGE_KEYS.SCHOOLS, newStr);
+          changed = true;
+        }
+      }
+
+      // 10. Announcements
+      if (d.announcements && Array.isArray(d.announcements)) {
+        const prevStr = localStorage.getItem(STORAGE_KEYS.ANNOUNCEMENTS);
+        const newStr = JSON.stringify(d.announcements);
+        if (prevStr !== newStr) {
+          localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, newStr);
+          changed = true;
+        }
+      }
+
+      // 11. Audit Logs
+      if (d.audit_logs && Array.isArray(d.audit_logs)) {
+        const prevStr = localStorage.getItem(STORAGE_KEYS.AUDIT_LOGS);
+        const newStr = JSON.stringify(d.audit_logs);
+        if (prevStr !== newStr) {
+          localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, newStr);
+          changed = true;
+        }
+      }
+
+      this.hasSyncedWithServer = true;
+
+      if (changed) {
+        this.notifySubscribers('data_mutated');
+      }
+
+      // If forcePullGas is true and GAS is configured, also trigger client GAS sync
+      if (forcePullGas) {
+        const currentSettings = this.getSettings();
+        if (currentSettings.gas_web_app_url && currentSettings.gas_web_app_url.startsWith('http')) {
           this.pullAllFromGAS().catch(() => {});
-        }, 500);
+        }
       }
+
+      return true;
     } catch {
-      // Offline or direct client mode
+      return false;
     }
   }
 
