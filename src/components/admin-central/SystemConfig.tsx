@@ -16,21 +16,14 @@ import {
   Upload,
   Image as ImageIcon,
   Trash2,
-  Lock,
-  Unlock,
-  KeyRound,
   Cloud,
   CloudRain,
   Download,
   AlertTriangle,
   Layers,
   ArrowUpDown,
-  ShieldCheck,
   Globe,
-  Eye,
-  EyeOff,
-  RotateCcw,
-  HelpCircle,
+  Info,
 } from 'lucide-react';
 import { SystemSettings, ApiResponse } from '../../types/sipma';
 import { GAS_BACKEND_CODE, GAS_SETUP_STEPS } from '../../services/gasBackendCode';
@@ -50,30 +43,7 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
 
   useEffect(() => {
     setFormData({ ...settings });
-    if (settings.db_config_locked === false) {
-      setIsLocked(false);
-    }
   }, [settings]);
-
-  // Lock state
-  const [isLocked, setIsLocked] = useState<boolean>(settings.db_config_locked !== false);
-  const [showUnlockModal, setShowUnlockModal] = useState<boolean>(false);
-  const [pinInput, setPinInput] = useState<string>('');
-  const [pinError, setPinError] = useState<string | null>(null);
-  const [showPinInputText, setShowPinInputText] = useState<boolean>(false);
-
-  // Change PIN modal state
-  const [showChangePinModal, setShowChangePinModal] = useState<boolean>(false);
-  const [oldPin, setOldPin] = useState<string>('');
-  const [newPin, setNewPin] = useState<string>('');
-  const [confirmNewPin, setConfirmNewPin] = useState<string>('');
-  const [changePinError, setChangePinError] = useState<string | null>(null);
-
-  // Reset PIN modal state
-  const [showResetPinModal, setShowResetPinModal] = useState<boolean>(false);
-  const [resetNewPin, setResetNewPin] = useState<string>('123456');
-  const [resetConfirmPin, setResetConfirmPin] = useState<string>('123456');
-  const [resetPinError, setResetPinError] = useState<string | null>(null);
 
   // Connection Test States
   const [sheetsStatus, setSheetsStatus] = useState<{ loading: boolean; result?: ApiResponse }>({ loading: false });
@@ -87,6 +57,9 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(settings.last_synced_at || null);
 
   const [copiedCode, setCopiedCode] = useState<boolean>(false);
+  const [copiedGasUrl, setCopiedGasUrl] = useState<boolean>(false);
+  const [copiedSsId, setCopiedSsId] = useState<boolean>(false);
+  const [copiedDriveId, setCopiedDriveId] = useState<boolean>(false);
   const [isSaved, setIsSaved] = useState<boolean>(false);
 
   const handleCopyCode = () => {
@@ -95,11 +68,27 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
     setTimeout(() => setCopiedCode(false), 2500);
   };
 
+  const handleCopyText = (text: string, type: 'gas' | 'ss' | 'drive') => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    if (type === 'gas') {
+      setCopiedGasUrl(true);
+      setTimeout(() => setCopiedGasUrl(false), 2000);
+    } else if (type === 'ss') {
+      setCopiedSsId(true);
+      setTimeout(() => setCopiedSsId(false), 2000);
+    } else if (type === 'drive') {
+      setCopiedDriveId(true);
+      setTimeout(() => setCopiedDriveId(false), 2000);
+    }
+    showToast('Berhasil disalin ke clipboard!', 'info');
+  };
+
   const handleInitDatabase = async () => {
     if (!formData.gas_web_app_url) {
       showAlert(
         'URL Web App Belum Terisi',
-        'Silakan masukkan Google Apps Script Web App URL terlebih dahulu sebelum inisialisasi database otomatis.',
+        'Silakan masukkan Google Apps Script Web App URL terlebih dahulu di lembar spreadsheet sebelum inisialisasi database otomatis.',
         'warning'
       );
       return;
@@ -129,138 +118,20 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
-    const updated = {
+    const current = storageService.getSettings();
+    // ID Spreadsheet, Drive Folder, and GAS URL are permanent (paten) and cannot be changed through the app UI
+    const updated: SystemSettings = {
       ...formData,
-      db_config_locked: isLocked,
+      gas_web_app_url: current.gas_web_app_url || formData.gas_web_app_url,
+      spreadsheet_id: current.spreadsheet_id || formData.spreadsheet_id,
+      drive_root_folder_id: current.drive_root_folder_id || formData.drive_root_folder_id,
+      db_config_locked: false,
     };
     onSaveSettings(updated);
     storageService.saveSettings(updated);
     setIsSaved(true);
-    showToast('Konfigurasi sistem berhasil disimpan', 'success');
+    showToast('Konfigurasi umum sistem berhasil disimpan', 'success');
     setTimeout(() => setIsSaved(false), 3000);
-  };
-
-  const handleUnlockSubmit = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const cleanPin = pinInput.trim() || '123456';
-    const res = storageService.unlockDbConfig(cleanPin);
-    setIsLocked(false);
-    const updated = {
-      ...formData,
-      db_config_locked: false,
-    };
-    setFormData(updated);
-    storageService.saveSettings(updated);
-    onSaveSettings(updated);
-    setShowUnlockModal(false);
-    setPinInput('');
-    setPinError(null);
-    showToast(res.message || 'Kunci konfigurasi database berhasil dibuka! Anda dapat mengedit sekarang.', 'success');
-  };
-
-  const handleDirectAdminCentralUnlock = () => {
-    storageService.unlockDbConfig('123456');
-    const updated = {
-      ...formData,
-      db_config_locked: false,
-    };
-    setIsLocked(false);
-    setFormData(updated);
-    onSaveSettings(updated);
-    setShowUnlockModal(false);
-    setShowResetPinModal(false);
-    setPinInput('');
-    setPinError(null);
-    showToast('Kunci konfigurasi database berhasil dibuka dengan Otoritas Admin Pusat.', 'success');
-  };
-
-  const handleLockNow = () => {
-    storageService.lockDbConfig();
-    const updated = {
-      ...formData,
-      db_config_locked: true,
-    };
-    setIsLocked(true);
-    setFormData(updated);
-    onSaveSettings(updated);
-    showToast('Konfigurasi database berhasil dikunci kembali demi keamanan.', 'info');
-  };
-
-  const handleChangePinSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (newPin !== confirmNewPin) {
-      setChangePinError('Konfirmasi PIN baru tidak cocok!');
-      return;
-    }
-    const res = storageService.changeDbConfigPin(oldPin, newPin);
-    if (res.success) {
-      setShowChangePinModal(false);
-      setOldPin('');
-      setNewPin('');
-      setConfirmNewPin('');
-      setChangePinError(null);
-      showToast(res.message, 'success');
-    } else {
-      setChangePinError(res.message);
-    }
-  };
-
-  const handleDirectResetToDefault = () => {
-    const res = storageService.resetDbConfigPin('123456');
-    if (res.success) {
-      const updated = {
-        ...formData,
-        db_config_locked: false,
-        db_config_pin: '123456',
-      };
-      setIsLocked(false);
-      setFormData(updated);
-      onSaveSettings(updated);
-      setShowUnlockModal(false);
-      setShowResetPinModal(false);
-      setPinInput('');
-      setPinError(null);
-      showAlert(
-        'PIN Berhasil Direset ke Default!',
-        'PIN keamanan database telah diatur ulang menjadi 123456 dan konfigurasi database kini telah dibuka secara otomatis.',
-        'success'
-      );
-    }
-  };
-
-  const handleCustomResetSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!resetNewPin || resetNewPin.trim().length < 4) {
-      setResetPinError('PIN baru minimal harus 4 karakter!');
-      return;
-    }
-    if (resetNewPin !== resetConfirmPin) {
-      setResetPinError('Konfirmasi PIN baru tidak cocok!');
-      return;
-    }
-    const res = storageService.resetDbConfigPin(resetNewPin);
-    if (res.success) {
-      const updated = {
-        ...formData,
-        db_config_locked: false,
-        db_config_pin: resetNewPin.trim(),
-      };
-      setIsLocked(false);
-      setFormData(updated);
-      onSaveSettings(updated);
-      setShowUnlockModal(false);
-      setShowResetPinModal(false);
-      setPinInput('');
-      setPinError(null);
-      setResetPinError(null);
-      showAlert(
-        'PIN Keamanan Berhasil Diperbarui!',
-        res.message,
-        'success'
-      );
-    } else {
-      setResetPinError(res.message);
-    }
   };
 
   const testSheets = async () => {
@@ -374,70 +245,12 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Lock Status Pill */}
-          {isLocked ? (
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={handleDirectAdminCentralUnlock}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs"
-                title="Buka kunci database langsung (Otoritas Admin Pusat)"
-              >
-                <Unlock className="w-3.5 h-3.5" />
-                <span>Buka Kunci Database</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setPinError(null);
-                  setShowUnlockModal(true);
-                }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs"
-                title="Klik untuk membuka kunci edit link database"
-              >
-                <Lock className="w-3.5 h-3.5 text-amber-700" />
-                <span>Link Terkunci (Buka Kunci)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setResetPinError(null);
-                  setShowResetPinModal(true);
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                title="Reset sandi / PIN kunci database"
-              >
-                <RotateCcw className="w-3.5 h-3.5 text-slate-600" />
-                <span>Reset Sandi</span>
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={handleLockNow}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs"
-                title="Klik untuk mengunci kembali konfigurasi"
-              >
-                <Unlock className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Kunci Terbuka (Kunci Sekarang)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setResetPinError(null);
-                  setShowResetPinModal(true);
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                title="Reset atau atur ulang PIN keamanan"
-              >
-                <RotateCcw className="w-3.5 h-3.5 text-slate-600" />
-                <span>Atur Ulang PIN</span>
-              </button>
-            </div>
-          )}
+          <div className="flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold shadow-2xs">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Integrasi Paten Aktif</span>
+            </span>
+          </div>
 
           {isSaved && (
             <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl">
@@ -533,105 +346,58 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
             </button>
           </div>
 
-          {/* Security Banner */}
-          <div
-            className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${
-              isLocked
-                ? 'bg-amber-50/80 border-amber-200 text-amber-950'
-                : 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
-            }`}
-          >
+          {/* Patent Configuration Notice */}
+          <div className="p-4.5 rounded-2xl border border-emerald-200 bg-emerald-50/70 text-emerald-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-start gap-3">
-              <div
-                className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold shrink-0 ${
-                  isLocked ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
-                }`}
-              >
-                {isLocked ? <Lock className="w-5 h-5" /> : <Unlock className="w-5 h-5" />}
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold shrink-0">
+                <Database className="w-5 h-5" />
               </div>
               <div>
-                <h4 className="font-bold text-xs">
-                  {isLocked
-                    ? 'Konfigurasi Link Database Terkunci & Dilindungi'
-                    : 'Mode Edit Terbuka (Link Database Dapat Diubah)'}
-                </h4>
-                <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">
-                  {isLocked
-                    ? 'Spreadsheet ID, Drive Folder ID, URL GAS, dan API Key saat ini dilindungi dari perubahan yang tidak disengaja. Buka kunci dengan PIN untuk mengedit.'
-                    : 'Perubahan pada URL Web App GAS dan ID Database akan langsung tersimpan. Pastikan mengunci kembali setelah selesai mengedit.'}
+                <div className="flex items-center gap-2">
+                  <h4 className="font-bold text-xs text-emerald-950">
+                    Konfigurasi Backend Paten (Terkunci Permanen)
+                  </h4>
+                  <span className="text-[10px] bg-emerald-200/80 text-emerald-900 font-bold px-2 py-0.5 rounded-full">
+                    Read-Only
+                  </span>
+                </div>
+                <p className="text-xs text-emerald-800 mt-1 leading-relaxed">
+                  Data <strong>Google Apps Script URL</strong>, <strong>Spreadsheet ID</strong>, dan <strong>Google Drive Folder ID</strong> bersifat paten (tidak dapat diedit lewat aplikasi). Perubahan parameter ini hanya dapat dilakukan langsung di lembar spreadsheet database.
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 shrink-0 flex-wrap">
-              {isLocked ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleDirectAdminCentralUnlock}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center gap-1.5 ring-2 ring-emerald-500/20"
-                    title="Buka kunci database langsung tanpa perlu input PIN"
-                  >
-                    <Unlock className="w-3.5 h-3.5" />
-                    <span>Buka Kunci (Langsung)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPinError(null);
-                      setShowUnlockModal(true);
-                    }}
-                    className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
-                  >
-                    <KeyRound className="w-3.5 h-3.5" />
-                    <span>Input PIN</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setResetPinError(null);
-                      setShowResetPinModal(true);
-                    }}
-                    className="px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5 text-slate-600" />
-                    <span>Reset Sandi / PIN</span>
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setChangePinError(null);
-                      setShowChangePinModal(true);
-                    }}
-                    className="px-3 py-2 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
-                  >
-                    <KeyRound className="w-3.5 h-3.5" />
-                    <span>Ubah PIN Keamanan</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setResetPinError(null);
-                      setShowResetPinModal(true);
-                    }}
-                    className="px-3 py-2 bg-slate-100 border border-slate-300 text-slate-700 hover:bg-slate-200 rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Reset PIN</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleLockNow}
-                    className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
-                  >
-                    <Lock className="w-3.5 h-3.5" />
-                    <span>Kunci Kembali Sekarang</span>
-                  </button>
-                </>
+              {formData.spreadsheet_id && !formData.spreadsheet_id.includes('SampleID') && (
+                <a
+                  href={`https://docs.google.com/spreadsheets/d/${formData.spreadsheet_id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Buka Spreadsheet</span>
+                </a>
               )}
+              <button
+                type="button"
+                onClick={async () => {
+                  showLoading('Menghubungkan dan menarik parameter konfigurasi dari Google Spreadsheet...');
+                  const res = await storageService.pullAllFromGAS();
+                  hideLoading();
+                  if (res.success) {
+                    const fresh = storageService.getSettings();
+                    setFormData({ ...fresh });
+                    showToast('Konfigurasi terbaru berhasil diselaraskan dari Spreadsheet!', 'success');
+                  } else {
+                    showAlert('Gagal Menyinkronkan', res.message || 'Pastikan Web App URL aktif dan koneksi internet stabil.', 'error');
+                  }
+                }}
+                className="px-3.5 py-2 bg-white hover:bg-slate-50 text-emerald-900 border border-emerald-300 rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Tarik dari Spreadsheet</span>
+              </button>
             </div>
           </div>
 
@@ -762,12 +528,10 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
               <h3 className="text-sm font-bold text-slate-900">
                 Parameter Konfigurasi Database & Cloud
               </h3>
-              {isLocked && (
-                <span className="text-[11px] text-amber-700 bg-amber-50 px-2.5 py-1 rounded-lg border border-amber-200 font-bold flex items-center gap-1">
-                  <Lock className="w-3 h-3" />
-                  <span>Bidang Database Terkunci (Hanya Baca)</span>
-                </span>
-              )}
+              <span className="text-[11px] text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 font-bold flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Backend Paten: Dikelola via Spreadsheet</span>
+              </span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-xs">
@@ -877,42 +641,61 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
 
               {/* Protected Database Link 1: GAS Web App URL */}
               <div className="md:col-span-2">
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
                   <label className="font-semibold text-slate-700 flex items-center gap-1.5">
-                    {isLocked && <Lock className="w-3.5 h-3.5 text-amber-600" />}
+                    <Globe className="w-3.5 h-3.5 text-emerald-600" />
                     <span>Google Apps Script Web App Deployment URL</span>
                   </label>
-                  {isLocked && (
-                    <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded font-bold">
-                      Terkunci
+                  <div className="flex items-center gap-2">
+                    {formData.gas_web_app_url && (
+                      <a
+                        href={formData.gas_web_app_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-0.5 underline"
+                        title="Buka Endpoint Web App di Tab Baru"
+                      >
+                        <span>Buka URL</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                    <span className="text-[10px] text-emerald-800 bg-emerald-100/70 border border-emerald-200 px-2 py-0.5 rounded font-bold">
+                      Paten • Dari Spreadsheet
                     </span>
-                  )}
+                  </div>
                 </div>
-                <input
-                  type="url"
-                  disabled={isLocked}
-                  value={formData.gas_web_app_url}
-                  onChange={(e) => setFormData({ ...formData, gas_web_app_url: e.target.value })}
-                  placeholder="https://script.google.com/macros/s/.../exec"
-                  className={`w-full px-3.5 py-2.5 rounded-xl font-mono outline-none transition-all ${
-                    isLocked
-                      ? 'bg-slate-100 text-slate-500 border border-slate-200 cursor-not-allowed'
-                      : 'bg-white text-slate-900 border border-emerald-400 focus:ring-2 focus:ring-emerald-500 shadow-xs'
-                  }`}
-                />
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    readOnly
+                    value={formData.gas_web_app_url || ''}
+                    placeholder="Masukkan langsung URL Web App di lembar Spreadsheet..."
+                    className="w-full pl-3.5 pr-20 py-2.5 rounded-xl font-mono text-xs bg-slate-100/90 text-slate-700 border border-slate-300 select-all cursor-default focus:outline-none"
+                    title="Nilai ini paten dan tidak dapat diubah lewat aplikasi. Ubah langsung di Spreadsheet."
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleCopyText(formData.gas_web_app_url, 'gas')}
+                    className="absolute right-2 px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                    title="Salin URL Web App"
+                  >
+                    {copiedGasUrl ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedGasUrl ? 'Tersalin' : 'Salin'}</span>
+                  </button>
+                </div>
                 <p className="text-[11px] text-slate-500 mt-1">
-                  Dapatkan URL ini setelah menerapkan kode Code.gs sebagai Web App di Google Apps Script (Who has access: Anyone).
+                  Parameter ini paten dan hanya dapat diatur atau diubah langsung dari file Google Spreadsheet. Aplikasi tidak memiliki izin mengubah link ini.
                 </p>
               </div>
 
               {/* Protected Database Link 2: Google Spreadsheet ID */}
               <div>
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
                   <label className="font-semibold text-slate-700 flex items-center gap-1.5">
-                    {isLocked && <Lock className="w-3.5 h-3.5 text-amber-600" />}
-                    <span>Google Spreadsheet ID (Database) *</span>
+                    <Database className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Google Spreadsheet ID (Database)</span>
                   </label>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-2">
                     {formData.spreadsheet_id && !formData.spreadsheet_id.includes('SampleID') && (
                       <a
                         href={`https://docs.google.com/spreadsheets/d/${formData.spreadsheet_id}`}
@@ -925,35 +708,43 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
                         <ExternalLink className="w-3 h-3" />
                       </a>
                     )}
-                    {isLocked && (
-                      <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded font-bold">
-                        Terkunci
-                      </span>
-                    )}
+                    <span className="text-[10px] text-emerald-800 bg-emerald-100/70 border border-emerald-200 px-2 py-0.5 rounded font-bold">
+                      Paten • Dari Spreadsheet
+                    </span>
                   </div>
                 </div>
-                <input
-                  type="text"
-                  disabled={isLocked}
-                  value={formData.spreadsheet_id}
-                  onChange={(e) => setFormData({ ...formData, spreadsheet_id: e.target.value })}
-                  className={`w-full px-3.5 py-2.5 rounded-xl font-mono outline-none transition-all ${
-                    isLocked
-                      ? 'bg-slate-100 text-slate-500 border border-slate-200 cursor-not-allowed'
-                      : 'bg-white text-slate-900 border border-emerald-400 focus:ring-2 focus:ring-emerald-500 shadow-xs'
-                  }`}
-                  required
-                />
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    readOnly
+                    value={formData.spreadsheet_id || ''}
+                    placeholder="Masukkan langsung ID Spreadsheet..."
+                    className="w-full pl-3.5 pr-20 py-2.5 rounded-xl font-mono text-xs bg-slate-100/90 text-slate-700 border border-slate-300 select-all cursor-default focus:outline-none"
+                    title="Nilai ini paten dan tidak dapat diubah lewat aplikasi. Ubah langsung di Spreadsheet."
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleCopyText(formData.spreadsheet_id, 'ss')}
+                    className="absolute right-2 px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                    title="Salin ID Spreadsheet"
+                  >
+                    {copiedSsId ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedSsId ? 'Tersalin' : 'Salin'}</span>
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  ID file Spreadsheet penyimpanan utama. Nilai ini paten dan tidak dapat diedit melalui antarmuka aplikasi.
+                </p>
               </div>
 
               {/* Protected Database Link 3: Google Drive Root Folder ID */}
               <div>
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
                   <label className="font-semibold text-slate-700 flex items-center gap-1.5">
-                    {isLocked && <Lock className="w-3.5 h-3.5 text-amber-600" />}
-                    <span>Google Drive Root Folder ID (Storage) *</span>
+                    <HardDrive className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Google Drive Root Folder ID (Storage)</span>
                   </label>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-2">
                     {formData.drive_root_folder_id && !formData.drive_root_folder_id.includes('SampleStorage') && (
                       <a
                         href={`https://drive.google.com/drive/folders/${formData.drive_root_folder_id}`}
@@ -966,25 +757,33 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
                         <ExternalLink className="w-3 h-3" />
                       </a>
                     )}
-                    {isLocked && (
-                      <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded font-bold">
-                        Terkunci
-                      </span>
-                    )}
+                    <span className="text-[10px] text-emerald-800 bg-emerald-100/70 border border-emerald-200 px-2 py-0.5 rounded font-bold">
+                      Paten • Dari Spreadsheet
+                    </span>
                   </div>
                 </div>
-                <input
-                  type="text"
-                  disabled={isLocked}
-                  value={formData.drive_root_folder_id}
-                  onChange={(e) => setFormData({ ...formData, drive_root_folder_id: e.target.value })}
-                  className={`w-full px-3.5 py-2.5 rounded-xl font-mono outline-none transition-all ${
-                    isLocked
-                      ? 'bg-slate-100 text-slate-500 border border-slate-200 cursor-not-allowed'
-                      : 'bg-white text-slate-900 border border-emerald-400 focus:ring-2 focus:ring-emerald-500 shadow-xs'
-                  }`}
-                  required
-                />
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    readOnly
+                    value={formData.drive_root_folder_id || ''}
+                    placeholder="Masukkan langsung ID Folder Drive..."
+                    className="w-full pl-3.5 pr-20 py-2.5 rounded-xl font-mono text-xs bg-slate-100/90 text-slate-700 border border-slate-300 select-all cursor-default focus:outline-none"
+                    title="Nilai ini paten dan tidak dapat diubah lewat aplikasi. Ubah langsung di Spreadsheet."
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleCopyText(formData.drive_root_folder_id, 'drive')}
+                    className="absolute right-2 px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                    title="Salin ID Folder Drive"
+                  >
+                    {copiedDriveId ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedDriveId ? 'Tersalin' : 'Salin'}</span>
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  ID folder induk Google Drive penyimpanan berkas. Nilai ini paten dan terlindungi secara permanen.
+                </p>
               </div>
 
               <div>
@@ -1052,12 +851,9 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
             </div>
 
             <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="text-xs text-slate-500">
-                {isLocked ? (
-                  <span>🔒 Pengaturan link terlindungi. Klik tombol &quot;Buka Kunci&quot; di atas untuk merubah.</span>
-                ) : (
-                  <span className="text-emerald-700 font-semibold">🔓 Mode edit terbuka. Jangan lupa klik simpan dan kunci kembali.</span>
-                )}
+              <div className="text-xs text-slate-500 flex items-center gap-1.5">
+                <Info className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Parameter ID Spreadsheet, Drive, & URL GAS bersifat paten. Perubahan parameter ini hanya melalui spreadsheet.</span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -1066,7 +862,7 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
                   className="inline-flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
                 >
                   <Save className="w-4 h-4" />
-                  <span>Simpan Seluruh Konfigurasi</span>
+                  <span>Simpan Pengaturan Portal</span>
                 </button>
               </div>
             </div>
@@ -1372,331 +1168,6 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
           <pre className="p-4 bg-slate-900 text-emerald-300 font-mono text-xs rounded-xl overflow-x-auto max-h-[500px] leading-relaxed select-all">
             {GAS_BACKEND_CODE}
           </pre>
-        </div>
-      )}
-
-      {/* ================= MODAL UNLOCK PIN ================= */}
-      {showUnlockModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center font-bold shrink-0">
-                  <Lock className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">Buka Kunci Konfigurasi</h3>
-                  <p className="text-xs text-slate-500">Masukkan PIN Keamanan / Password Admin</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowUnlockModal(false);
-                  setPinInput('');
-                  setPinError(null);
-                }}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold p-1 rounded-lg"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl text-xs text-emerald-950 space-y-1">
-              <div className="flex items-center gap-1.5 font-bold text-emerald-900">
-                <HelpCircle className="w-4 h-4 text-emerald-700" />
-                <span>Petunjuk Akses Kunci</span>
-              </div>
-              <p className="text-emerald-800 leading-relaxed text-[11px]">
-                PIN bawaan sistem adalah <span className="font-mono font-bold bg-white px-1.5 py-0.5 rounded border border-emerald-300">123456</span>. Anda juga dapat menggunakan kata sandi login akun Admin Pusat Anda.
-              </p>
-            </div>
-
-            <form onSubmit={handleUnlockSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  PIN Keamanan / Sandi Master
-                </label>
-                <div className="relative">
-                  <input
-                    type={showPinInputText ? 'text' : 'password'}
-                    autoFocus
-                    maxLength={20}
-                    value={pinInput}
-                    onChange={(e) => {
-                      setPinInput(e.target.value);
-                      setPinError(null);
-                    }}
-                    placeholder="Masukkan PIN (123456) / Sandi"
-                    className="w-full pl-4 pr-11 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-center text-lg font-mono tracking-widest focus:ring-2 focus:ring-emerald-500 outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPinInputText(!showPinInputText)}
-                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 p-1"
-                    title={showPinInputText ? 'Sembunyikan' : 'Tampilkan'}
-                  >
-                    {showPinInputText ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                {pinError && (
-                  <p className="text-[11px] text-rose-600 font-bold mt-1.5 text-center leading-snug">{pinError}</p>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowUnlockModal(false);
-                    setPinInput('');
-                    setPinError(null);
-                  }}
-                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
-                >
-                  Buka Kunci Sekarang
-                </button>
-              </div>
-
-              {/* Direct 1-Click Unlock for Admin Central */}
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={handleDirectAdminCentralUnlock}
-                  className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>Buka Kunci Otoritas Admin Pusat (1-Klik)</span>
-                </button>
-              </div>
-            </form>
-
-            {/* Reset option footer */}
-            <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
-              <span className="text-slate-500">Lupa PIN atau ingin ganti?</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowUnlockModal(false);
-                  setResetPinError(null);
-                  setShowResetPinModal(true);
-                }}
-                className="text-amber-700 hover:text-amber-900 font-bold inline-flex items-center gap-1 hover:underline cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset Sandi / PIN</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ================= MODAL RESET PIN ================= */}
-      {showResetPinModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-xl bg-indigo-100 text-indigo-800 flex items-center justify-center font-bold shrink-0">
-                  <RotateCcw className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">Reset Sandi / PIN Database</h3>
-                  <p className="text-xs text-slate-500">Atur ulang PIN keamanan konfigurasi sistem</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowResetPinModal(false);
-                  setResetPinError(null);
-                }}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold p-1 rounded-lg"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-950 space-y-1.5">
-              <div className="font-bold flex items-center gap-1.5 text-amber-900">
-                <ShieldCheck className="w-4 h-4 text-amber-700" />
-                <span>Otoritas Admin Pusat</span>
-              </div>
-              <p className="text-amber-800 text-[11px] leading-relaxed">
-                Sebagai Admin Pusat, Anda dapat langsung mengembalikan PIN ke setelan bawaan pabrik (<strong>123456</strong>) atau menentukan PIN baru pilihan Anda tanpa memerlukan PIN lama.
-              </p>
-            </div>
-
-            {/* Quick 1-Click Reset to Default Button */}
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
-              <div>
-                <h4 className="text-xs font-bold text-slate-900">Reset Cepat ke Default (123456)</h4>
-                <p className="text-[11px] text-slate-500">Kembalikan PIN ke 123456 dan buka kunci seketika</p>
-              </div>
-              <button
-                type="button"
-                onClick={handleDirectResetToDefault}
-                className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors shrink-0 cursor-pointer flex items-center gap-1.5"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset ke 123456</span>
-              </button>
-            </div>
-
-            <div className="relative flex py-1 items-center">
-              <div className="grow border-t border-slate-200"></div>
-              <span className="shrink mx-3 text-slate-400 text-[11px] font-bold uppercase">Atau Buat PIN Baru</span>
-              <div className="grow border-t border-slate-200"></div>
-            </div>
-
-            <form onSubmit={handleCustomResetSubmit} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">PIN Baru (Min. 4 digit angka/huruf)</label>
-                <input
-                  type="text"
-                  value={resetNewPin}
-                  onChange={(e) => setResetNewPin(e.target.value)}
-                  placeholder="Contoh: 123456 atau 889900"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono text-base focus:ring-2 focus:ring-emerald-500 outline-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Konfirmasi PIN Baru</label>
-                <input
-                  type="text"
-                  value={resetConfirmPin}
-                  onChange={(e) => setResetConfirmPin(e.target.value)}
-                  placeholder="Ulangi PIN baru"
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono text-base focus:ring-2 focus:ring-emerald-500 outline-none"
-                  required
-                />
-              </div>
-
-              {resetPinError && (
-                <p className="text-[11px] text-rose-600 font-bold text-center">{resetPinError}</p>
-              )}
-
-              <div className="flex items-center gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowResetPinModal(false);
-                    setResetPinError(null);
-                  }}
-                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
-                >
-                  Simpan & Buka Kunci
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ================= MODAL CHANGE PIN ================= */}
-      {showChangePinModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-sky-100 text-sky-800 flex items-center justify-center font-bold shrink-0">
-                <KeyRound className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">Ubah PIN Keamanan</h3>
-                <p className="text-xs text-slate-500">Perbarui PIN kunci konfigurasi</p>
-              </div>
-            </div>
-
-            <form onSubmit={handleChangePinSubmit} className="space-y-3.5 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">PIN Lama (atau 123456)</label>
-                <input
-                  type="password"
-                  value={oldPin}
-                  onChange={(e) => setOldPin(e.target.value)}
-                  placeholder="PIN saat ini"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono focus:ring-2 focus:ring-emerald-500 outline-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">PIN Baru (Min. 4 digit)</label>
-                <input
-                  type="password"
-                  value={newPin}
-                  onChange={(e) => setNewPin(e.target.value)}
-                  placeholder="PIN baru"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono focus:ring-2 focus:ring-emerald-500 outline-none"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Konfirmasi PIN Baru</label>
-                <input
-                  type="password"
-                  value={confirmNewPin}
-                  onChange={(e) => setConfirmNewPin(e.target.value)}
-                  placeholder="Ulangi PIN baru"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono focus:ring-2 focus:ring-emerald-500 outline-none"
-                  required
-                />
-              </div>
-
-              {changePinError && (
-                <div className="space-y-1">
-                  <p className="text-[11px] text-rose-600 font-bold text-center">{changePinError}</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowChangePinModal(false);
-                      setShowResetPinModal(true);
-                    }}
-                    className="text-[11px] text-indigo-600 hover:underline block mx-auto font-bold"
-                  >
-                    Gunakan Menu Reset PIN
-                  </button>
-                </div>
-              )}
-
-              <div className="flex items-center gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowChangePinModal(false);
-                    setOldPin('');
-                    setNewPin('');
-                    setConfirmNewPin('');
-                    setChangePinError(null);
-                  }}
-                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
-                >
-                  Simpan PIN Baru
-                </button>
-              </div>
-            </form>
-          </div>
         </div>
       )}
     </div>

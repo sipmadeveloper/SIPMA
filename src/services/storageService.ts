@@ -872,6 +872,166 @@ class StorageService {
     }
   }
 
+  getSchoolOperators(schoolId?: string): User[] {
+    const users = this.getUsers();
+    return users.filter((u) => {
+      if (u.role !== 'operator_sekolah') return false;
+      if (schoolId && u.school_id !== schoolId) return false;
+      return true;
+    });
+  }
+
+  saveSchoolOperatorUser(
+    userData: {
+      user_id?: string;
+      name: string;
+      email: string;
+      phone?: string;
+      school_id: string;
+      nip?: string;
+      position?: string;
+      password?: string;
+      status?: 'active' | 'inactive';
+    },
+    actorName?: string
+  ): { success: boolean; user?: User; generatedPassword?: string; message: string } {
+    try {
+      if (!userData.name || !userData.name.trim()) {
+        return { success: false, message: 'Nama lengkap operator wajib diisi.' };
+      }
+      if (!userData.email || !userData.email.trim()) {
+        return { success: false, message: 'Alamat email login operator wajib diisi.' };
+      }
+      if (!userData.school_id) {
+        return { success: false, message: 'ID Madrasah wajib ditentukan.' };
+      }
+
+      const users = this.getUsers();
+      const cleanEmail = userData.email.trim().toLowerCase();
+      const isNew = !userData.user_id;
+
+      // Check unique email
+      const existingUserWithEmail = users.find(
+        (u) => u.email.trim().toLowerCase() === cleanEmail && u.user_id !== userData.user_id
+      );
+      if (existingUserWithEmail) {
+        return {
+          success: false,
+          message: `Email "${cleanEmail}" sudah digunakan oleh akun lain (${existingUserWithEmail.name}).`,
+        };
+      }
+
+      const now = new Date().toISOString();
+      let generatedPass = userData.password?.trim();
+      if (!generatedPass && isNew) {
+        generatedPass = `opr${Math.floor(100000 + Math.random() * 900000)}`;
+      }
+
+      let savedUser: User;
+      const school = this.getSchoolById(userData.school_id);
+      const schoolCode = school?.school_code || (school?.school_id ? school.school_id.replace(/^SCH-/, '') : 'SCH');
+
+      if (isNew) {
+        savedUser = {
+          user_id: `USR-OPR-${schoolCode}-${Date.now().toString(36).toUpperCase()}`,
+          name: userData.name.trim(),
+          email: cleanEmail,
+          phone: userData.phone?.trim() || '',
+          school_id: userData.school_id,
+          nip: userData.nip?.trim() || '',
+          position: userData.position?.trim() || 'Operator Seleksi & Verifikasi PPDB',
+          role: 'operator_sekolah',
+          status: userData.status || 'active',
+          password_hash: generatedPass || 'operator123',
+          created_at: now,
+          updated_at: now,
+        };
+        users.push(savedUser);
+        this.addAuditLog(
+          'CREATE_SCHOOL_OPERATOR',
+          savedUser.name,
+          `Akun operator baru (${savedUser.name} - ${cleanEmail}) berhasil dibuat oleh ${actorName || 'Admin Madrasah'} untuk ${school?.school_name || userData.school_id}.`
+        );
+      } else {
+        const index = users.findIndex((u) => u.user_id === userData.user_id);
+        if (index < 0) {
+          return { success: false, message: 'Akun operator madrasah tidak ditemukan.' };
+        }
+        savedUser = {
+          ...users[index],
+          name: userData.name.trim(),
+          email: cleanEmail,
+          phone: userData.phone?.trim() || users[index].phone,
+          school_id: userData.school_id,
+          nip: userData.nip !== undefined ? userData.nip.trim() : users[index].nip,
+          position: userData.position !== undefined ? userData.position.trim() : users[index].position,
+          status: userData.status || users[index].status || 'active',
+          updated_at: now,
+        };
+        if (generatedPass) {
+          savedUser.password_hash = generatedPass;
+        }
+        users[index] = savedUser;
+        this.addAuditLog(
+          'UPDATE_SCHOOL_OPERATOR',
+          savedUser.name,
+          `Data akun operator (${savedUser.name} - ${cleanEmail}) diperbarui oleh ${actorName || 'Admin Madrasah'}.`
+        );
+      }
+
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+      this.triggerAutoSync();
+
+      return {
+        success: true,
+        user: savedUser,
+        generatedPassword: isNew ? generatedPass : undefined,
+        message: isNew
+          ? `Akun operator madrasah untuk ${savedUser.name} berhasil ditambahkan.`
+          : `Data akun operator ${savedUser.name} berhasil diperbarui.`,
+      };
+    } catch (err: any) {
+      return { success: false, message: `Gagal menyimpan akun operator: ${err?.message || 'Error'}` };
+    }
+  }
+
+  resetSchoolOperatorPassword(
+    userId: string,
+    customNewPassword?: string,
+    operatorName?: string
+  ): { success: boolean; newPassword?: string; user?: User; message: string } {
+    try {
+      const users = this.getUsers();
+      const index = users.findIndex((u) => u.user_id === userId);
+      if (index < 0) {
+        return { success: false, message: 'Akun operator madrasah tidak ditemukan.' };
+      }
+
+      const user = users[index];
+      const generatedPass = customNewPassword?.trim() || `opr${Math.floor(100000 + Math.random() * 900000)}`;
+      user.password_hash = generatedPass;
+      user.updated_at = new Date().toISOString();
+      users[index] = user;
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+
+      this.addAuditLog(
+        'OPERATOR_PASSWORD_RESET',
+        user.name,
+        `Password akun operator ${user.name} (${user.email}) di-reset oleh ${operatorName || 'Admin Madrasah'}. Password baru: ${generatedPass}`
+      );
+      this.triggerAutoSync();
+
+      return {
+        success: true,
+        newPassword: generatedPass,
+        user,
+        message: `Kata sandi akun operator ${user.name} berhasil di-reset menjadi "${generatedPass}".`,
+      };
+    } catch (err: any) {
+      return { success: false, message: `Gagal mereset kata sandi operator: ${err?.message || 'Error'}` };
+    }
+  }
+
   generateRegistrationNumber(schoolId?: string): string {
     const targetSchoolId = schoolId || this.getSettings().default_school_id || 'SCH-MAN1';
     const school = this.getSchoolById(targetSchoolId);

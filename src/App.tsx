@@ -81,7 +81,7 @@ export default function App() {
         nextRoute = {
           viewMode: 'app',
           centralTab: user?.role === 'admin_pusat' ? (currentRoute.centralTab || 'overview') : undefined,
-          schoolTab: user?.role === 'admin_sekolah' ? (currentRoute.schoolTab || 'overview') : undefined,
+          schoolTab: (user?.role === 'admin_sekolah' || user?.role === 'operator_sekolah') ? (currentRoute.schoolTab || 'overview') : undefined,
           studentTab: user?.role === 'calon_murid' ? (currentRoute.studentTab || 'overview') : undefined,
         };
       } else {
@@ -408,7 +408,7 @@ export default function App() {
       let targetApps = applications;
       let schoolTitle = 'Seluruh Satuan Pendidikan Madrasah';
 
-      if (currentUser?.role === 'admin_sekolah' && currentSchool) {
+      if ((currentUser?.role === 'admin_sekolah' || currentUser?.role === 'operator_sekolah') && currentSchool) {
         targetApps = applications.filter(
           (a) => a.school_id === currentSchool.school_id || !a.school_id
         );
@@ -568,8 +568,8 @@ export default function App() {
               })()
             )}
 
-            {/* Admin Sekolah Dashboard */}
-            {currentUser.role === 'admin_sekolah' && (
+            {/* Admin Sekolah & Operator Madrasah Dashboard */}
+            {(currentUser.role === 'admin_sekolah' || currentUser.role === 'operator_sekolah') && (
               <SchoolDashboard
                 school={currentSchool}
                 applications={applications}
@@ -578,6 +578,7 @@ export default function App() {
                 schoolOrigins={schoolOrigins}
                 addresses={addresses}
                 documents={documents}
+                currentUser={currentUser}
                 onVerify={handleVerify}
                 onUpdateSelection={handleUpdateSelection}
                 onBulkSelection={handleBulkSelection}
@@ -587,6 +588,7 @@ export default function App() {
                 onExportExcel={handleExportExcel}
                 onOpenProfile={() => setIsProfileModalOpen(true)}
                 onDeleteApplicant={handleDeleteApplicant}
+                onRefreshData={refreshData}
                 activeTab={currentRoute.schoolTab || 'overview'}
                 onTabChange={(tab) => navigate({ schoolTab: tab })}
               />

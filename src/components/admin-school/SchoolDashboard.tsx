@@ -14,6 +14,7 @@ import {
   ChevronRight,
   TrendingUp,
   User,
+  UserCheck,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -35,12 +36,16 @@ import {
   AddressData,
   DocumentItem,
   VerificationStatus,
+  User as UserType,
 } from '../../types/sipma';
 import { ApplicantList } from './ApplicantList';
 import { SelectionManagement } from './SelectionManagement';
 import { SchoolSettings } from './SchoolSettings';
+import { SchoolOperatorManagement } from './SchoolOperatorManagement';
 import { ApplicantDistributionMap } from '../map/ApplicantDistributionMap';
 import { formatDistanceIndonesian } from '../../utils/geo';
+import { storageService } from '../../services/storageService';
+import { SchoolTab } from '../../utils/router';
 
 interface Props {
   school: School;
@@ -50,6 +55,7 @@ interface Props {
   schoolOrigins: Record<string, SchoolOrigin>;
   addresses: Record<string, AddressData>;
   documents: DocumentItem[];
+  currentUser?: UserType | null;
   onVerify: (regNumber: string, status: VerificationStatus, notes: string) => void;
   onUpdateSelection: (regNumber: string, status: 'lulus' | 'tidak_lulus' | 'menunggu') => void;
   onBulkSelection: (updates: { regNumber: string; status: 'lulus' | 'tidak_lulus' }[]) => void;
@@ -59,8 +65,9 @@ interface Props {
   onExportExcel?: () => void;
   onOpenProfile?: () => void;
   onDeleteApplicant?: (regNumber: string) => void;
-  activeTab?: 'overview' | 'applicants' | 'selection' | 'map' | 'settings';
-  onTabChange?: (tab: 'overview' | 'applicants' | 'selection' | 'map' | 'settings') => void;
+  onRefreshData?: () => void;
+  activeTab?: SchoolTab;
+  onTabChange?: (tab: SchoolTab) => void;
 }
 
 export const SchoolDashboard: React.FC<Props> = ({
@@ -71,6 +78,7 @@ export const SchoolDashboard: React.FC<Props> = ({
   schoolOrigins,
   addresses,
   documents,
+  currentUser,
   onVerify,
   onUpdateSelection,
   onBulkSelection,
@@ -80,13 +88,14 @@ export const SchoolDashboard: React.FC<Props> = ({
   onExportExcel,
   onOpenProfile,
   onDeleteApplicant,
+  onRefreshData,
   activeTab: controlledTab,
   onTabChange,
 }) => {
-  const [internalTab, setInternalTab] = useState<'overview' | 'applicants' | 'selection' | 'map' | 'settings'>('overview');
+  const [internalTab, setInternalTab] = useState<SchoolTab>('overview');
   const activeTab = controlledTab !== undefined ? controlledTab : internalTab;
 
-  const setActiveTab = (tab: 'overview' | 'applicants' | 'selection' | 'map' | 'settings') => {
+  const setActiveTab = (tab: SchoolTab) => {
     setInternalTab(tab);
     if (onTabChange) {
       onTabChange(tab);
@@ -152,23 +161,50 @@ export const SchoolDashboard: React.FC<Props> = ({
     { name: 'Tidak Lulus', value: stats.tidakLulus, color: '#e11d48' },
   ].filter((d) => d.value > 0);
 
+  // Operator team for this school
+  const operators = useMemo(() => {
+    return storageService.getSchoolOperators(activeSchool.school_id);
+  }, [activeSchool.school_id]);
+
+  const isOperator = currentUser?.role === 'operator_sekolah';
+
   return (
     <div className="space-y-6" id="sipma-school-dashboard">
       {/* Top Banner */}
       <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-teal-950 text-white p-6 rounded-2xl shadow-md border border-emerald-800/40 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-[11px] font-extrabold uppercase tracking-wider text-emerald-300">
-            Panel Administrator Madrasah
+            {isOperator ? 'Panel Operator Madrasah' : 'Panel Administrator Madrasah'}
           </div>
           <h1 className="text-xl sm:text-2xl font-black tracking-tight mt-1 text-white">
-            Selamat Datang, Admin {activeSchool.school_name}
+            {isOperator
+              ? `Selamat Datang, Operator ${activeSchool.school_name}`
+              : `Selamat Datang, Admin ${activeSchool.school_name}`}
           </h1>
           <p className="text-xs text-emerald-100/80 mt-1 max-w-xl">
-            Kelola data calon murid baru, verifikasi berkas persyaratan, perhitungan zonasi koordinat, portofolio prestasi, berkas mutasi, dan proses pemeringkatan seleksi.
+            {isOperator
+              ? 'Bantu verifikasi berkas persyaratan pendaftar, keabsahan dokumen, dan proses pemeringkatan seleksi calon peserta didik baru.'
+              : 'Kelola data calon murid baru, akun tim operator madrasah, verifikasi berkas persyaratan, perhitungan zonasi koordinat, dan proses seleksi.'}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {!isOperator && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('operators')}
+              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm ${
+                activeTab === 'operators'
+                  ? 'bg-teal-600 text-white ring-2 ring-teal-400/40'
+                  : 'bg-teal-800/70 hover:bg-teal-700 text-white border border-teal-500/40'
+              }`}
+              title="Kelola Akun Operator Madrasah"
+            >
+              <UserCheck className="w-3.5 h-3.5 text-teal-200" />
+              <span>Tim Operator ({operators.length})</span>
+            </button>
+          )}
+
           {(onExportExcel || onExportCsv) && (
             <button
               type="button"
@@ -186,21 +222,23 @@ export const SchoolDashboard: React.FC<Props> = ({
               type="button"
               onClick={onOpenProfile}
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-bold transition-all cursor-pointer"
-              title="Buka Pengaturan Profil & Ganti Password Admin Madrasah"
+              title={isOperator ? 'Profil Operator Madrasah' : 'Profil Admin Madrasah'}
             >
               <User className="w-3.5 h-3.5 text-emerald-300" />
-              <span>Profil Admin</span>
+              <span>{isOperator ? 'Profil Operator' : 'Profil Admin'}</span>
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('settings')}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm"
-          >
-            <Settings className="w-3.5 h-3.5" />
-            <span>Pengaturan Madrasah</span>
-          </button>
+          {!isOperator && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('settings')}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>Pengaturan Madrasah</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -210,8 +248,11 @@ export const SchoolDashboard: React.FC<Props> = ({
           { id: 'overview', label: 'Ringkasan & Statistik', icon: TrendingUp },
           { id: 'applicants', label: `Data Pendaftar (${schoolApps.length})`, icon: Users },
           { id: 'selection', label: 'Proses Seleksi & Kelulusan', icon: Award },
+          { id: 'operators', label: `Tim Operator (${operators.length})`, icon: UserCheck },
           { id: 'map', label: 'Peta Sebaran Murid', icon: MapPin },
-          { id: 'settings', label: 'Pengaturan Madrasah & Lokasi', icon: Settings },
+          ...(!isOperator
+            ? [{ id: 'settings', label: 'Pengaturan Madrasah & Lokasi', icon: Settings }]
+            : []),
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -381,6 +422,15 @@ export const SchoolDashboard: React.FC<Props> = ({
           schoolOrigins={schoolOrigins}
           onUpdateStatus={onUpdateSelection}
           onBulkUpdate={onBulkSelection}
+        />
+      )}
+
+      {/* ================= TAB: OPERATORS ================= */}
+      {activeTab === 'operators' && (
+        <SchoolOperatorManagement
+          school={activeSchool}
+          currentUser={currentUser}
+          onRefreshData={onRefreshData}
         />
       )}
 
