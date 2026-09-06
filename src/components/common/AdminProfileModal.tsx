@@ -18,10 +18,13 @@ import {
   GraduationCap,
   Eye,
   EyeOff,
+  Camera,
+  Upload,
 } from 'lucide-react';
 import { User as UserType, School } from '../../types/sipma';
 import { storageService } from '../../services/storageService';
 import { useFeedback } from '../../context/FeedbackContext';
+import { normalizeImageUrl, handleImageError, compressAndResizeImage } from '../../utils/imageUrl';
 
 interface Props {
   currentUser: UserType;
@@ -65,7 +68,32 @@ export const AdminProfileModal: React.FC<Props> = ({
   const isAdminPusat = currentUser.role === 'admin_pusat';
   const isCalonMurid = currentUser.role === 'calon_murid';
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleAvatarFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showAlert('Format Berkas Salah', 'Harap pilih berkas foto (JPG, PNG, atau WEBP).', 'warning');
+      return;
+    }
+
+    try {
+      // Auto compress and optimize avatar client-side
+      const compressed = await compressAndResizeImage(file, 600, 600, 0.88);
+      setPhotoUrl(compressed.base64);
+    } catch {
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const b64 = evt.target?.result as string;
+        if (b64) {
+          setPhotoUrl(b64);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       showAlert('Nama Wajib Diisi', 'Harap masukkan nama lengkap Anda.', 'warning');
@@ -73,12 +101,32 @@ export const AdminProfileModal: React.FC<Props> = ({
     }
 
     setIsSubmitting(true);
+    let finalPhotoUrl = photoUrl;
+
+    // If new photo was picked as base64, push to Drive/Server proxy as 'user' avatar
+    if (photoUrl && photoUrl.startsWith('data:image/')) {
+      try {
+        const uploadedUrl = await storageService.uploadLogoToDrive(
+          'user',
+          currentUser.user_id,
+          name.trim() || 'Admin',
+          photoUrl,
+          `profile_${currentUser.user_id}.png`
+        );
+        if (uploadedUrl) {
+          finalPhotoUrl = uploadedUrl;
+        }
+      } catch (err) {
+        console.warn('Gagal upload avatar ke cloud:', err);
+      }
+    }
+
     const res = storageService.updateUserProfile(currentUser.user_id, {
       name: name.trim(),
       phone: phone.trim(),
       nip: nip.trim(),
       position: position.trim(),
-      photo_url: photoUrl.trim() || undefined,
+      photo_url: finalPhotoUrl.trim() || undefined,
     });
     setIsSubmitting(false);
 
@@ -193,36 +241,88 @@ export const AdminProfileModal: React.FC<Props> = ({
         {/* ================= TAB 1: PROFILE INFO ================= */}
         {activeTab === 'profile' && (
           <form onSubmit={handleSaveProfile} className="space-y-4 text-xs">
-            {/* Role & School Badge banner */}
-            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center gap-1.5 font-bold text-slate-900">
-                  <BadgeCheck className="w-4 h-4 text-emerald-600" />
-                  <span>
-                    {isAdminPusat
-                      ? 'Administrator Wilayah / Kanwil Kemenag'
-                      : isCalonMurid
-                      ? `Akun Pendaftar: ${currentUser.registration_number || '-'}`
-                      : `Panitia ${currentSchool?.school_name || 'Satuan Madrasah'}`}
-                  </span>
+            {/* Avatar & Basic Info Header */}
+            <div className="flex items-center gap-4 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+              <div className="relative group shrink-0">
+                <div className="w-16 h-16 rounded-full overflow-hidden bg-slate-200 border-2 border-white shadow-md flex items-center justify-center">
+                  {photoUrl ? (
+                    <img
+                      src={normalizeImageUrl(photoUrl)}
+                      alt={name || 'Avatar'}
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => handleImageError(e)}
+                    />
+                  ) : (
+                    <div
+                      className={`w-full h-full flex items-center justify-center font-bold text-lg text-white ${
+                        isAdminPusat ? 'bg-rose-600' : isCalonMurid ? 'bg-emerald-600' : 'bg-blue-600'
+                      }`}
+                    >
+                      {(name || currentUser.name || 'U').charAt(0).toUpperCase()}
+                    </div>
+                  )}
                 </div>
-                <div className="text-[11px] text-slate-500 font-mono">ID Akun: {currentUser.user_id}</div>
+                <label className="absolute inset-0 bg-black/40 text-white rounded-full flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                  <Camera className="w-4 h-4 mb-0.5" />
+                  <span className="text-[9px] font-bold">Ganti</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={handleAvatarFileSelect}
+                  />
+                </label>
               </div>
-              <span
-                className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${
-                  isAdminPusat
-                    ? 'bg-rose-100 text-rose-800 border border-rose-200'
+
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      isAdminPusat
+                        ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                        : isCalonMurid
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                        : 'bg-blue-100 text-blue-800 border border-blue-200'
+                    }`}
+                  >
+                    {isAdminPusat
+                      ? 'Admin Pusat PPDB'
+                      : isCalonMurid
+                      ? 'Calon Murid'
+                      : 'Admin Madrasah'}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono">ID: {currentUser.user_id}</span>
+                </div>
+                <p className="text-xs font-semibold text-slate-800 truncate">
+                  {isAdminPusat
+                    ? 'Administrator Wilayah / Kanwil Kemenag'
                     : isCalonMurid
-                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                    : 'bg-blue-100 text-blue-800 border border-blue-200'
-                }`}
-              >
-                {isAdminPusat
-                  ? 'Admin Pusat'
-                  : isCalonMurid
-                  ? 'Calon Murid'
-                  : 'Admin Madrasah'}
-              </span>
+                    ? `Pendaftar: ${currentUser.registration_number || '-'}`
+                    : `Panitia ${currentSchool?.school_name || 'Madrasah'}`}
+                </p>
+                <div className="mt-1 flex items-center gap-2">
+                  <label className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-md cursor-pointer border border-emerald-200">
+                    <Upload className="w-3 h-3" />
+                    <span>Pilih Foto Profil</span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={handleAvatarFileSelect}
+                    />
+                  </label>
+                  {photoUrl && photoUrl !== currentUser.photo_url && (
+                    <button
+                      type="button"
+                      onClick={() => setPhotoUrl(currentUser.photo_url || '')}
+                      className="text-[10px] text-slate-400 hover:text-rose-600 font-medium cursor-pointer"
+                    >
+                      Batal Ganti
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">

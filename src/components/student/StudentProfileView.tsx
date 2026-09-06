@@ -27,7 +27,7 @@ import {
   User,
   DocumentItem,
 } from '../../types/sipma';
-import { normalizeImageUrl } from '../../utils/imageUrl';
+import { normalizeImageUrl, handleImageError } from '../../utils/imageUrl';
 import { storageService } from '../../services/storageService';
 import { useFeedback } from '../../context/FeedbackContext';
 import { formatStandardDocumentFileName } from '../../utils/fileDownload';
@@ -282,6 +282,7 @@ export const StudentProfileView: React.FC<Props> = ({
                       alt={student.name}
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
+                      onError={(e) => handleImageError(e)}
                     />
                   ) : (
                     <div className="text-center p-4 text-slate-400">

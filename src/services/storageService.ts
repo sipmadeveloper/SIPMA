@@ -12,6 +12,7 @@ import {
   AuditLog,
   ApiResponse,
   PathwayType,
+  UserRole,
 } from '../types/sipma';
 import {
   calculateHaversineDistance,
@@ -666,28 +667,67 @@ class StorageService {
   updateUserProfile(userId: string, updates: Partial<User>): { success: boolean; user?: User; message: string } {
     try {
       const users = this.getUsers();
-      const index = users.findIndex((u) => u.user_id === userId);
-      if (index < 0) {
-        return { success: false, message: 'Pengguna tidak ditemukan.' };
+      const currentUser = this.getCurrentUser();
+      
+      // Robust multi-criteria matching to prevent "Pengguna tidak ditemukan" for Admin Pusat or any session
+      let index = users.findIndex((u) => u.user_id === userId);
+      if (index < 0 && currentUser) {
+        if (currentUser.user_id === userId) {
+          index = users.findIndex((u) => u.user_id === currentUser.user_id);
+        }
+        if (index < 0 && currentUser.email) {
+          index = users.findIndex((u) => u.email && u.email.toLowerCase() === currentUser.email.toLowerCase());
+        }
+        if (index < 0 && currentUser.role === 'admin_pusat') {
+          index = users.findIndex((u) => u.role === 'admin_pusat');
+        }
       }
 
-      const updatedUser: User = {
-        ...users[index],
-        ...updates,
-        updated_at: new Date().toISOString(),
-      };
+      let updatedUser: User;
+      const now = new Date().toISOString();
 
-      users[index] = updatedUser;
+      if (index >= 0) {
+        updatedUser = {
+          ...users[index],
+          ...updates,
+          updated_at: now,
+        };
+        users[index] = updatedUser;
+      } else {
+        // Auto-upsert if session user was not present in the array (e.g. fresh admin pusat session)
+        const baseUser: User = {
+          user_id: currentUser?.user_id || userId || `USR-ADMIN-${Date.now()}`,
+          name: currentUser?.name || 'Administrator Pusat PPDB',
+          email: currentUser?.email || 'adminpusatsipma@gmail.com',
+          phone: currentUser?.phone || updates.phone || '085747520003',
+          role: (currentUser?.role || 'admin_pusat') as UserRole,
+          status: 'active' as const,
+          created_at: currentUser?.created_at || now,
+          updated_at: now,
+        };
+        updatedUser = {
+          ...baseUser,
+          ...updates,
+          phone: updates.phone !== undefined ? updates.phone : baseUser.phone,
+          user_id: baseUser.user_id || userId,
+          updated_at: now,
+        };
+        users.push(updatedUser);
+      }
+
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
 
-      // Update active session if it matches current user
-      const currentUser = this.getCurrentUser();
-      if (currentUser && currentUser.user_id === userId) {
-        this.setCurrentUser(updatedUser);
-      }
+      // Always update active session
+      this.setCurrentUser(updatedUser);
 
-      this.addAuditLog('USER_PROFILE_UPDATE', updatedUser.name, `Profil pengguna ${updatedUser.name} (${updatedUser.role}) berhasil diperbarui.`);
+      this.addAuditLog(
+        'USER_PROFILE_UPDATE',
+        updatedUser.name,
+        `Profil ${updatedUser.name} (${updatedUser.role} - Jabatan: ${updatedUser.position || '-'}) berhasil diperbarui.`
+      );
+      this.notifySubscribers('data_mutated');
       this.triggerAutoSync();
+
       return { success: true, user: updatedUser, message: 'Profil pengguna berhasil disimpan.' };
     } catch (err: any) {
       return { success: false, message: `Gagal memperbarui profil: ${err.message || 'Error tidak diketahui'}` };
@@ -701,8 +741,36 @@ class StorageService {
       }
 
       const users = this.getUsers();
-      const index = users.findIndex((u) => u.user_id === userId);
+      const currentUser = this.getCurrentUser();
+
+      let index = users.findIndex((u) => u.user_id === userId);
+      if (index < 0 && currentUser) {
+        if (currentUser.user_id === userId) {
+          index = users.findIndex((u) => u.user_id === currentUser.user_id);
+        }
+        if (index < 0 && currentUser.email) {
+          index = users.findIndex((u) => u.email && u.email.toLowerCase() === currentUser.email.toLowerCase());
+        }
+        if (index < 0 && currentUser.role === 'admin_pusat') {
+          index = users.findIndex((u) => u.role === 'admin_pusat');
+        }
+      }
+
       if (index < 0) {
+        if (currentUser) {
+          // If in current session, upsert user with new password
+          const now = new Date().toISOString();
+          const newUser: User = {
+            ...currentUser,
+            password_hash: newPassword.trim(),
+            updated_at: now,
+          };
+          users.push(newUser);
+          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+          this.setCurrentUser(newUser);
+          this.triggerAutoSync();
+          return { success: true, message: 'Password berhasil diubah. Gunakan password baru untuk login berikutnya.' };
+        }
         return { success: false, message: 'Pengguna tidak ditemukan.' };
       }
 
@@ -717,8 +785,7 @@ class StorageService {
       users[index] = user;
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
 
-      const currentUser = this.getCurrentUser();
-      if (currentUser && currentUser.user_id === userId) {
+      if (currentUser && (currentUser.user_id === userId || currentUser.email === user.email)) {
         currentUser.password_hash = user.password_hash;
         this.setCurrentUser(currentUser);
       }
@@ -1583,7 +1650,7 @@ class StorageService {
     }
   }
 
-  async uploadLogoToDrive(logoType: 'school' | 'app', id: string, name: string, base64Data: string, fileName?: string): Promise<string> {
+  async uploadLogoToDrive(logoType: 'school' | 'app' | 'user', id: string, name: string, base64Data: string, fileName?: string): Promise<string> {
     if (!base64Data || !base64Data.startsWith('data:image/')) return base64Data;
     const settings = this.getSettings();
     try {
@@ -1611,6 +1678,125 @@ class StorageService {
       console.warn('Gagal upload logo ke Drive:', e);
     }
     return base64Data;
+  }
+
+  /**
+   * Dedicated instant upload for App Logo (Admin Pusat).
+   * Directly uploads to Google Drive, persists in Server & Google Sheets, and updates UI immediately.
+   */
+  async uploadAppLogo(base64Data: string, fileName?: string): Promise<{ success: boolean; logo_url: string; message: string }> {
+    const settings = this.getSettings();
+    try {
+      const res = await fetch('/api/gas/upload-logo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          logo_type: 'app',
+          id: 'app_logo',
+          name: settings.app_name || 'SIPMA',
+          base64_data: base64Data,
+          file_name: fileName || 'logo_sipma.png',
+          gas_web_app_url: settings.gas_web_app_url,
+          spreadsheet_id: settings.spreadsheet_id,
+          drive_root_folder_id: settings.drive_root_folder_id,
+        }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.logo_url) {
+          const updatedSettings = { ...this.getSettings(), app_logo: json.logo_url };
+          localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updatedSettings));
+          updateAppFavicon(json.logo_url);
+          this.notifySubscribers('settings_updated', updatedSettings);
+          this.triggerAutoSync(true);
+          return {
+            success: true,
+            logo_url: json.logo_url,
+            message: json.message || 'Logo aplikasi berhasil disimpan ke Google Drive dan Google Sheets!',
+          };
+        }
+      }
+    } catch (err: any) {
+      console.error('Error uploadAppLogo:', err);
+    }
+    // Fallback: still save base64 locally and trigger background sync
+    const fallbackSettings = { ...this.getSettings(), app_logo: base64Data };
+    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(fallbackSettings));
+    updateAppFavicon(base64Data);
+    this.notifySubscribers('settings_updated', fallbackSettings);
+    return { success: true, logo_url: base64Data, message: 'Logo disimpan lokal & siap disinkronkan.' };
+  }
+
+  /**
+   * Dedicated instant upload for School Logo (Admin Madrasah / Admin Pusat).
+   */
+  async uploadSchoolLogo(schoolId: string, schoolName: string, base64Data: string, fileName?: string): Promise<{ success: boolean; logo_url: string; message: string }> {
+    const settings = this.getSettings();
+    try {
+      const res = await fetch('/api/gas/upload-logo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          logo_type: 'school',
+          id: schoolId,
+          name: schoolName,
+          base64_data: base64Data,
+          file_name: fileName || `school_${schoolId}.png`,
+          gas_web_app_url: settings.gas_web_app_url,
+          spreadsheet_id: settings.spreadsheet_id,
+          drive_root_folder_id: settings.drive_root_folder_id,
+        }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.logo_url) {
+          const schools = this.getSchools();
+          const idx = schools.findIndex((s) => s.school_id === schoolId);
+          if (idx >= 0) {
+            schools[idx].logo_url = json.logo_url;
+            localStorage.setItem(STORAGE_KEYS.SCHOOLS, JSON.stringify(schools));
+            this.notifySubscribers('data_mutated');
+            this.triggerAutoSync(true);
+          }
+          return { success: true, logo_url: json.logo_url, message: json.message || 'Logo madrasah berhasil disimpan!' };
+        }
+      }
+    } catch (err: any) {
+      console.error('Error uploadSchoolLogo:', err);
+    }
+    return { success: false, logo_url: base64Data, message: 'Gagal mengunggah logo madrasah.' };
+  }
+
+  /**
+   * Dedicated instant upload for User Avatar (Admin Pusat / Madrasah / Siswa).
+   */
+  async uploadUserAvatar(userId: string, userName: string, base64Data: string): Promise<{ success: boolean; photo_url: string; message: string }> {
+    const settings = this.getSettings();
+    try {
+      const res = await fetch('/api/gas/upload-logo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          logo_type: 'user',
+          id: userId,
+          name: userName,
+          base64_data: base64Data,
+          file_name: `avatar_${userId}.png`,
+          gas_web_app_url: settings.gas_web_app_url,
+          spreadsheet_id: settings.spreadsheet_id,
+          drive_root_folder_id: settings.drive_root_folder_id,
+        }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.logo_url) {
+          return { success: true, photo_url: json.logo_url, message: 'Foto profil berhasil disimpan ke cloud!' };
+        }
+      }
+    } catch (err) {
+      console.warn('Error uploadUserAvatar:', err);
+    }
+    return { success: false, photo_url: base64Data, message: 'Foto disimpan lokal.' };
   }
 
   saveSchool(school: School): void {
@@ -2091,9 +2277,12 @@ class StorageService {
     this.triggerAutoSync();
   }
 
-  async uploadDocumentToDrive(doc: DocumentItem, studentName?: string, schoolName?: string): Promise<ApiResponse> {
+  async uploadDocumentToDrive(doc: DocumentItem, studentName?: string, schoolName?: string, options?: { isAccount?: boolean; accountName?: string; accountId?: string; schoolId?: string }): Promise<ApiResponse> {
     const settings = this.getSettings();
     let resultJson: any = null;
+
+    const isAccount = options?.isAccount || doc.document_type === 'foto_profil' || doc.document_type === 'avatar' || doc.document_type === 'dokumen_akun';
+    const appYear = settings.academic_year_label || settings.application_year || '2026/2027';
 
     // 1. Try upload via server proxy (which handles local backup + GAS Drive dispatch)
     try {
@@ -2104,6 +2293,11 @@ class StorageService {
           doc,
           student_name: studentName,
           school_name: schoolName,
+          school_id: options?.schoolId,
+          application_year: appYear,
+          is_account: isAccount,
+          account_name: options?.accountName || studentName,
+          account_id: options?.accountId || doc.registration_number,
           gas_web_app_url: settings.gas_web_app_url,
           spreadsheet_id: settings.spreadsheet_id,
           drive_root_folder_id: settings.drive_root_folder_id,
@@ -2131,6 +2325,8 @@ class StorageService {
               registration_number: doc.registration_number,
               student_name: studentName || 'Calon Murid',
               school_name: schoolName || 'Madrasah',
+              school_id: options?.schoolId,
+              application_year: appYear,
               document_type: doc.document_type,
               document_title: doc.document_title,
               file_name: doc.file_name,
@@ -2138,6 +2334,10 @@ class StorageService {
               file_size_bytes: doc.file_size_bytes,
               mime_type: doc.mime_type,
               base64_data: doc.file_data_base64,
+              old_drive_file_id: doc.drive_file_id || '',
+              is_account: isAccount,
+              account_name: options?.accountName || studentName || 'Pengguna',
+              account_id: options?.accountId || doc.registration_number || '',
             },
           }),
         });
@@ -2189,7 +2389,7 @@ class StorageService {
       const student = this.getStudentProfile(doc.registration_number);
       const app = this.getApplication(doc.registration_number);
       const school = app ? schools.find((s) => s.school_id === app.school_id) : null;
-      const res = await this.uploadDocumentToDrive(doc, student?.name, school?.school_name);
+      const res = await this.uploadDocumentToDrive(doc, student?.name, school?.school_name, { schoolId: app?.school_id });
       if (res && res.success) {
         count++;
       }

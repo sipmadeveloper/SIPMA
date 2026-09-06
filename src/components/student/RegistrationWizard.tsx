@@ -44,6 +44,7 @@ import { InteractiveLocationPicker } from '../map/InteractiveLocationPicker';
 import { formatDistanceIndonesian, formatCoordinates } from '../../utils/geo';
 import { DispensationLetterModal } from './DispensationLetterModal';
 import { downloadDocumentFile, formatStandardDocumentFileName } from '../../utils/fileDownload';
+import { compressAndResizeImage } from '../../utils/imageUrl';
 
 interface Props {
   registrationNumber: string;
@@ -423,7 +424,7 @@ export const RegistrationWizard: React.FC<Props> = ({
     }
   };
 
-  const handleFileUpload = (
+  const handleFileUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
     docType: DocumentItem['document_type'],
     docTitle: string
@@ -438,11 +439,9 @@ export const RegistrationWizard: React.FC<Props> = ({
     }
 
     showLoading(`Mengunggah "${file.name}" ke Google Drive...`);
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const base64 = event.target?.result as string;
 
+    const processAndUpload = async (base64Data: string, originalSizeKb: number) => {
+      try {
         const standardFileName = formatStandardDocumentFileName({
           accountName: student?.name,
           registrationNumber: activeRegNumber || registrationNumber,
@@ -458,8 +457,8 @@ export const RegistrationWizard: React.FC<Props> = ({
           document_type: docType,
           document_title: docTitle,
           file_name: standardFileName,
-          file_size_kb: Math.round(file.size / 1024),
-          file_data_base64: base64,
+          file_size_kb: originalSizeKb,
+          file_data_base64: base64Data,
           upload_time: new Date().toISOString(),
           verification_status: 'menunggu',
         };
@@ -475,7 +474,7 @@ export const RegistrationWizard: React.FC<Props> = ({
         if ((docType === 'foto' || docType === 'pas_foto') && student) {
           const updated = {
             ...student,
-            photo_url: uploadRes?.file?.drive_url || uploadRes?.file?.view_url || base64,
+            photo_url: uploadRes?.file?.drive_url || uploadRes?.file?.view_url || base64Data,
           };
           setStudent(updated);
           storageService.saveStudentProfile(updated);
@@ -492,6 +491,22 @@ export const RegistrationWizard: React.FC<Props> = ({
         hideLoading();
         showToast(`Berkas "${file.name}" tersimpan di database lokal/cloud.`, 'info');
       }
+    };
+
+    if (file.type.startsWith('image/')) {
+      try {
+        const compressed = await compressAndResizeImage(file, 1600, 1600, 0.85);
+        await processAndUpload(compressed.base64, Math.round(compressed.base64.length * 0.75 / 1024));
+        return;
+      } catch {
+        // Fallback to FileReader if compression encounters unsupported format
+      }
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const base64 = event.target?.result as string;
+      await processAndUpload(base64, Math.round(file.size / 1024));
     };
     reader.onerror = () => {
       hideLoading();

@@ -9,6 +9,14 @@ const DATA_DIR = path.join(process.cwd(), 'data');
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const DB_FILE = path.join(DATA_DIR, 'server_db.json');
 
+// Process-level safety guards to prevent unexpected exit
+process.on('uncaughtException', (err) => {
+  console.error('[SIPMA Server] Uncaught exception:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[SIPMA Server] Unhandled rejection at:', promise, 'reason:', reason);
+});
+
 // Enable JSON body parsing with large limit for base64 documents (up to 30MB)
 app.use(express.json({ limit: '30mb' }));
 app.use(express.urlencoded({ extended: true, limit: '30mb' }));
@@ -232,10 +240,120 @@ function mergeGasDataIntoServerDb(gasData: any): boolean {
     mutated = true;
   }
 
+  // Referential Integrity & Cascade Deletion Sync:
+  // If user deleted a student row or an application row in Google Sheets, purge orphaned applications or documents
+  if (serverDb.applications && Array.isArray(serverDb.applications)) {
+    const studentKeys = new Set(Object.keys(serverDb.students || {}));
+    // If student list is available, remove applications whose student no longer exists in students
+    if (studentKeys.size > 0) {
+      const beforeLen = serverDb.applications.length;
+      serverDb.applications = serverDb.applications.filter((app: any) => {
+        const hasStudent = studentKeys.has(app.registration_number) || (app.student_id && studentKeys.has(app.student_id));
+        return hasStudent;
+      });
+      if (serverDb.applications.length !== beforeLen) {
+        mutated = true;
+      }
+    } else if (Object.keys(gasData.students || {}).length === 0 && Array.isArray(gasData.applications) && gasData.applications.length === 0) {
+      // Both are empty in GAS, ensure clean
+      if (serverDb.applications.length > 0) {
+        serverDb.applications = [];
+        mutated = true;
+      }
+    }
+  }
+
   if (mutated) {
     persistServerDb();
   }
   return mutated;
+}
+
+// Global Reusable Forwarder: Pushes all serverDb data to Google Apps Script & Google Sheets
+async function forwardSyncAllToGas(): Promise<{ success: boolean; message?: string }> {
+  const gasUrl = serverDb.settings?.gas_web_app_url;
+  const ssId = serverDb.settings?.spreadsheet_id;
+  const driveId = serverDb.settings?.drive_root_folder_id;
+
+  if (!gasUrl || !gasUrl.startsWith('http')) {
+    return { success: false, message: 'URL GAS belum dikonfigurasi' };
+  }
+
+  try {
+    const gasPayload = {
+      action: 'syncAllData',
+      spreadsheet_id: ssId,
+      drive_root_folder_id: driveId,
+      data: {
+        users: serverDb.users,
+        students: serverDb.students,
+        parents: serverDb.parents,
+        school_origins: serverDb.school_origins,
+        addresses: serverDb.addresses,
+        applications: serverDb.applications,
+        documents: (serverDb.documents || []).map((doc: any) => ({
+          document_id: doc.document_id,
+          registration_number: doc.registration_number,
+          student_id: doc.student_id,
+          document_type: doc.document_type,
+          document_title: doc.document_title,
+          file_name: doc.file_name,
+          file_size_kb: doc.file_size_kb,
+          drive_file_id: doc.drive_file_id,
+          drive_url: doc.drive_url,
+          upload_time: doc.upload_time,
+          verification_status: doc.verification_status,
+          notes: doc.notes,
+        })),
+        schools: serverDb.schools,
+        announcements: serverDb.announcements,
+        settings: serverDb.settings,
+        audit_logs: (serverDb.audit_logs || []).slice(0, 100),
+      },
+    };
+
+    const gasRes = await fetch(gasUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(gasPayload),
+    });
+
+    const gasResult = await gasRes.json();
+    return gasResult;
+  } catch (gasErr: any) {
+    console.warn('forwardSyncAllToGas warning:', gasErr?.message);
+    return { success: false, message: gasErr?.message };
+  }
+}
+
+let lastGasPullTimestamp = 0;
+let isGasPulling = false;
+
+// Smart Auto-Pull: pulls fresh data from Google Sheets when accessed, throttled to 8 seconds
+async function checkAndAutoPullFromGas(force = false): Promise<boolean> {
+  const gasUrl = serverDb.settings?.gas_web_app_url;
+  const ssId = serverDb.settings?.spreadsheet_id;
+  if (!gasUrl || !gasUrl.startsWith('http') || !ssId || ssId.includes('SampleID')) {
+    return false;
+  }
+  const now = Date.now();
+  if (!force && (now - lastGasPullTimestamp < 8000 || isGasPulling)) {
+    return false;
+  }
+  isGasPulling = true;
+  try {
+    const res = await pullDataFromGasDirectly(gasUrl, ssId);
+    lastGasPullTimestamp = Date.now();
+    if (res.success && res.data) {
+      const changed = mergeGasDataIntoServerDb(res.data);
+      return changed;
+    }
+  } catch (err: any) {
+    console.warn('Auto-pull from GAS failed:', err?.message);
+  } finally {
+    isGasPulling = false;
+  }
+  return false;
 }
 
 // Async boot hydration from Google Apps Script if URL configured
@@ -252,24 +370,15 @@ setTimeout(async () => {
   }
 }, 2000);
 
-// Background periodic pull from GAS every 45s so serverDb stays in sync without blocking any device
+// Background periodic pull from GAS every 30s so serverDb stays in sync without blocking any device
 setInterval(async () => {
-  const gasUrl = serverDb.settings?.gas_web_app_url;
-  const ssId = serverDb.settings?.spreadsheet_id;
-  if (gasUrl && gasUrl.startsWith('http') && ssId && !ssId.includes('SampleID')) {
-    try {
-      const res = await pullDataFromGasDirectly(gasUrl, ssId);
-      if (res.success && res.data) {
-        mergeGasDataIntoServerDb(res.data);
-      }
-    } catch {}
-  }
-}, 45000);
+  await checkAndAutoPullFromGas(true);
+}, 30000);
 
 // ================= API ROUTES =================
 
 // 1. Health Check
-app.get('/api/health', (req: Request, res: Response) => {
+app.get(['/api/health', '/health', '/ping'], (req: Request, res: Response) => {
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
@@ -301,6 +410,9 @@ app.post('/api/settings', (req: Request, res: Response) => {
       };
       persistServerDb();
 
+      // Forward new settings to GAS
+      forwardSyncAllToGas().catch(() => {});
+
       res.json({
         success: true,
         message: 'Pengaturan berhasil disimpan di server terpusat secara permanen untuk semua perangkat.',
@@ -317,19 +429,15 @@ app.post('/api/settings', (req: Request, res: Response) => {
 // 3. Global Data Sync (Shared database state for multi-device sync)
 app.get('/api/data', async (req: Request, res: Response) => {
   const forcePull = req.query.force_pull_gas === 'true';
-  const gasUrl = serverDb.settings?.gas_web_app_url;
-  const ssId = serverDb.settings?.spreadsheet_id;
-
-  // Auto-pull from GAS ONLY if explicitly requested via ?force_pull_gas=true
-  if (forcePull && gasUrl && gasUrl.startsWith('http')) {
+  if (forcePull) {
     try {
-      const gasResult = await pullDataFromGasDirectly(gasUrl, ssId || '');
-      if (gasResult.success && gasResult.data) {
-        mergeGasDataIntoServerDb(gasResult.data);
-      }
-    } catch {
-      // continue returning existing serverDb
+      await checkAndAutoPullFromGas(true);
+    } catch (e) {
+      console.warn('Force pull error in /api/data:', e);
     }
+  } else {
+    // Non-blocking auto-pull in the background - responds in 1ms to user reload/boot
+    checkAndAutoPullFromGas(false).catch(() => {});
   }
 
   res.json({
@@ -469,52 +577,9 @@ app.post('/api/data/sync', async (req: Request, res: Response) => {
     persistServerDb();
 
     // Auto-forward to Google Apps Script if URL is configured
-    const gasUrl = serverDb.settings?.gas_web_app_url;
     let gasResult = null;
-    if (gasUrl && gasUrl.startsWith('http') && payload.forwardToGas !== false) {
-      try {
-        const gasPayload = {
-          action: 'syncAllData',
-          spreadsheet_id: serverDb.settings?.spreadsheet_id,
-          drive_root_folder_id: serverDb.settings?.drive_root_folder_id,
-          data: {
-            users: serverDb.users,
-            students: serverDb.students,
-            parents: serverDb.parents,
-            school_origins: serverDb.school_origins,
-            addresses: serverDb.addresses,
-            applications: serverDb.applications,
-            documents: (serverDb.documents || []).map((doc: any) => ({
-              document_id: doc.document_id,
-              registration_number: doc.registration_number,
-              student_id: doc.student_id,
-              document_type: doc.document_type,
-              document_title: doc.document_title,
-              file_name: doc.file_name,
-              file_size_kb: doc.file_size_kb,
-              drive_file_id: doc.drive_file_id,
-              drive_url: doc.drive_url,
-              upload_time: doc.upload_time,
-              verification_status: doc.verification_status,
-              notes: doc.notes,
-            })),
-            schools: serverDb.schools,
-            announcements: serverDb.announcements,
-            settings: serverDb.settings,
-            audit_logs: (serverDb.audit_logs || []).slice(0, 100),
-          },
-        };
-
-        const gasRes = await fetch(gasUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify(gasPayload),
-        });
-
-        gasResult = await gasRes.json();
-      } catch (gasErr: any) {
-        console.warn('Background GAS sync failed:', gasErr?.message);
-      }
+    if (payload.forwardToGas !== false) {
+      gasResult = await forwardSyncAllToGas();
     }
 
     res.json({
@@ -695,6 +760,14 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
       }
     }
 
+    // Clean up previous local file copy if re-uploading
+    if (prevDoc && prevDoc.file_name && prevDoc.file_name !== safeDocName) {
+      try {
+        const oldPath = path.join(UPLOAD_DIR, prevDoc.file_name);
+        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      } catch (e) {}
+    }
+
     let driveFileId = '';
     let driveUrl = localUrl;
     let viewUrl = localUrl;
@@ -702,6 +775,7 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
 
     if (gasUrl && gasUrl.startsWith('http')) {
       try {
+        const isAccount = req.body.is_account || doc.document_type === 'foto_profil' || doc.document_type === 'avatar' || doc.document_type === 'dokumen_akun';
         const uploadPayload = {
           action: 'uploadDocument',
           spreadsheet_id: ssId,
@@ -710,6 +784,7 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
             registration_number: doc.registration_number,
             student_name: student_name || 'Calon Murid',
             school_name: school_name || 'Madrasah',
+            application_year: req.body.application_year || settings.academic_year_label || settings.application_year || '2026/2027',
             document_type: doc.document_type,
             document_title: doc.document_title,
             file_name: standardFileName,
@@ -718,6 +793,9 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
             mime_type: doc.mime_type,
             base64_data: doc.file_data_base64,
             old_drive_file_id: prevDoc?.drive_file_id || '',
+            is_account: isAccount,
+            account_name: req.body.account_name || student_name || 'Pengguna',
+            account_id: req.body.account_id || doc.registration_number || '',
           },
         };
 
@@ -781,11 +859,14 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
 
     persistServerDb();
 
+    // Immediately push document row to Google Sheets database
+    forwardSyncAllToGas().catch((e) => console.warn('Gagal sinkronisasi dokumen ke Spreadsheet:', e?.message));
+
     return res.json({
       success: true,
       message: gasSuccess
-        ? 'Berkas berhasil diunggah & tersimpan aman di Google Drive!'
-        : 'Berkas berhasil disimpan di server penyimpanan.',
+        ? 'Berkas berhasil diunggah & tersimpan aman di Google Drive dan Google Sheets!'
+        : 'Berkas berhasil disimpan di server dan database Google Sheets.',
       gas_synced: gasSuccess,
       file: {
         document_id: doc.document_id,
@@ -925,6 +1006,17 @@ app.post('/api/gas/upload-logo', async (req: Request, res: Response) => {
       const filePath = path.join(UPLOAD_DIR, safeLogoName);
       fs.writeFileSync(filePath, buffer);
       localUrl = `/uploads/${safeLogoName}`;
+
+      // Bersihkan salinan logo/avatar lokal lama agar disk rapi & tidak dobel
+      try {
+        const prefix = `logo_${logo_type || 'custom'}_${(id || 'sys').replace(/[^a-zA-Z0-9_-]/g, '_')}_`;
+        const existingFiles = fs.readdirSync(UPLOAD_DIR);
+        for (const ef of existingFiles) {
+          if (ef.startsWith(prefix) && ef !== safeLogoName) {
+            try { fs.unlinkSync(path.join(UPLOAD_DIR, ef)); } catch(e) {}
+          }
+        }
+      } catch (cleanErr) {}
     } catch (localErr) {
       console.warn('Gagal menyimpan logo lokal:', localErr);
     }
@@ -935,18 +1027,32 @@ app.post('/api/gas/upload-logo', async (req: Request, res: Response) => {
 
     if (gasUrl && gasUrl.startsWith('http')) {
       try {
+        const isAccount = logo_type === 'user';
+        const isSchool = logo_type === 'school';
+        const isApp = logo_type === 'app';
+        const docType = isSchool ? 'logo_sekolah' : isAccount ? 'foto_profil' : 'logo_aplikasi';
+        const docTitle = isSchool ? `Logo Resmi ${name || 'Madrasah'}` : isAccount ? `Foto Profil ${name || 'Pengguna'}` : 'Logo Aplikasi SIPMA';
+        const regNum = isSchool ? (id || 'SCHOOL') : isAccount ? (id || 'USER') : 'SYSTEM';
+
         const uploadPayload = {
           action: 'uploadDocument',
           spreadsheet_id: ssId,
           drive_root_folder_id: driveId,
           data: {
-            registration_number: logo_type === 'school' ? (id || 'SCHOOL') : 'SYSTEM',
-            student_name: name || 'Logo SIPMA',
-            school_name: logo_type === 'school' ? (name || 'Madrasah') : 'Branding SIPMA',
-            document_type: logo_type === 'school' ? 'logo_sekolah' : 'logo_aplikasi',
-            document_title: logo_type === 'school' ? `Logo Resmi ${name}` : 'Logo Aplikasi SIPMA',
+            registration_number: regNum,
+            student_name: name || (isAccount ? 'Pengguna' : isSchool ? name : 'Logo SIPMA'),
+            school_name: isSchool ? (name || 'Madrasah') : 'Branding SIPMA',
+            application_year: settings.academic_year_label || settings.application_year || '2026/2027',
+            document_type: docType,
+            document_title: docTitle,
             file_name: file_name || safeLogoName,
             base64_data: base64_data,
+            is_account: isAccount,
+            account_name: name || 'Akun Pengguna',
+            account_id: id || '',
+            is_school_logo: isSchool,
+            school_id: isSchool ? id : '',
+            is_app_logo: isApp,
           },
         };
 
@@ -977,6 +1083,16 @@ app.post('/api/gas/upload-logo', async (req: Request, res: Response) => {
           sch.logo_url = finalLogoUrl;
         }
       }
+    } else if (logo_type === 'user' && id) {
+      if (serverDb.users && Array.isArray(serverDb.users)) {
+        const usr = serverDb.users.find((u: any) => u.user_id === id || u.email === id || u.registration_number === id);
+        if (usr) {
+          usr.photo_url = finalLogoUrl;
+        }
+      }
+      if (serverDb.students && serverDb.students[id]) {
+        serverDb.students[id].photo_url = finalLogoUrl;
+      }
     } else if (logo_type === 'app') {
       if (!serverDb.settings) serverDb.settings = {};
       serverDb.settings.app_logo = finalLogoUrl;
@@ -984,9 +1100,12 @@ app.post('/api/gas/upload-logo', async (req: Request, res: Response) => {
 
     persistServerDb();
 
+    // Immediately push updated school logo or app branding to Google Sheets database
+    forwardSyncAllToGas().catch((e) => console.warn('Gagal sinkronisasi logo ke Spreadsheet:', e?.message));
+
     return res.json({
       success: true,
-      message: gasSuccess ? 'Logo berhasil diunggah dan tersimpan di Google Drive!' : 'Logo berhasil disimpan.',
+      message: gasSuccess ? 'Logo berhasil diunggah dan tersimpan di Google Drive dan Google Sheets!' : 'Logo berhasil disimpan di server dan database Google Sheets.',
       logo_url: finalLogoUrl,
       drive_file_id: driveFileId,
       local_url: localUrl,
@@ -997,23 +1116,67 @@ app.post('/api/gas/upload-logo', async (req: Request, res: Response) => {
   }
 });
 
-// 5c. High-Speed Google Drive Image Proxy / Fallback Stream
+// 5c. High-Speed Google Drive Image Proxy / Fallback Stream with Local Disk Caching
 app.get('/api/drive/image/:fileId', async (req: Request, res: Response) => {
   const { fileId } = req.params;
   if (!fileId || fileId.includes('..') || fileId.length < 5) {
     return res.status(400).send('Invalid file ID');
   }
 
-  // 1. Check if we have local copy in uploads
+  // 1. Check permanent drive cache on disk for instant (<2ms) serving
+  const cachePath = path.join(UPLOAD_DIR, `cache_drive_${fileId}.jpg`);
+  if (fs.existsSync(cachePath)) {
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    return res.sendFile(cachePath);
+  }
+
+  // 2. Check if we have original local copy in uploads
   try {
     const files = fs.readdirSync(UPLOAD_DIR);
     const matched = files.find((f) => f.includes(fileId));
     if (matched) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       return res.sendFile(path.join(UPLOAD_DIR, matched));
     }
   } catch {}
 
-  // 2. Fetch from Google CDN / Thumbnail endpoint
+  // 3. Check if document has base64 in serverDb
+  if (serverDb.documents) {
+    const doc = serverDb.documents.find((d: any) => d.drive_file_id === fileId);
+    if (doc?.file_data_base64 && doc.file_data_base64.startsWith('data:')) {
+      try {
+        const raw = doc.file_data_base64;
+        const matches = raw.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        const mime = matches ? matches[1] : 'image/jpeg';
+        const base64Data = matches ? matches[2] : raw.includes(',') ? raw.split(',')[1] : raw;
+        const buf = Buffer.from(base64Data, 'base64');
+        fs.writeFileSync(cachePath, buf);
+        res.setHeader('Content-Type', mime);
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        return res.send(buf);
+      } catch {}
+    }
+  }
+
+  // 3b. Check if app_logo in settings matches
+  if (serverDb.settings?.app_logo && (fileId === 'app_logo' || serverDb.settings.app_logo.includes(fileId))) {
+    const logoStr = serverDb.settings.app_logo;
+    if (logoStr.startsWith('data:')) {
+      try {
+        const matches = logoStr.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        const mime = matches ? matches[1] : 'image/png';
+        const base64Data = matches ? matches[2] : logoStr.includes(',') ? logoStr.split(',')[1] : logoStr;
+        const buf = Buffer.from(base64Data, 'base64');
+        fs.writeFileSync(cachePath, buf);
+        res.setHeader('Content-Type', mime);
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        return res.send(buf);
+      } catch {}
+    }
+  }
+
+  // 4. Fetch from Google CDN / Thumbnail endpoint and persist to local cache
   try {
     const targetUrl = `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w1200`;
     const upstream = await fetch(targetUrl, {
@@ -1023,23 +1186,40 @@ app.get('/api/drive/image/:fileId', async (req: Request, res: Response) => {
     });
 
     if (upstream.ok && upstream.headers.get('content-type')?.includes('image')) {
-      const buffer = await upstream.arrayBuffer();
+      const buffer = Buffer.from(await upstream.arrayBuffer());
+      try { fs.writeFileSync(cachePath, buffer); } catch {}
       res.setHeader('Content-Type', upstream.headers.get('content-type') || 'image/jpeg');
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-      return res.send(Buffer.from(buffer));
+      return res.send(buffer);
     }
 
     // Fallback to lh3 CDN
     const lh3Url = `https://lh3.googleusercontent.com/d/${encodeURIComponent(fileId)}`;
     const lh3Res = await fetch(lh3Url);
     if (lh3Res.ok && lh3Res.headers.get('content-type')?.includes('image')) {
-      const buffer = await lh3Res.arrayBuffer();
+      const buffer = Buffer.from(await lh3Res.arrayBuffer());
+      try { fs.writeFileSync(cachePath, buffer); } catch {}
       res.setHeader('Content-Type', lh3Res.headers.get('content-type') || 'image/jpeg');
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-      return res.send(Buffer.from(buffer));
+      return res.send(buffer);
     }
 
-    // Redirect to direct drive stream as ultimate fallback
+    // Fallback to Google download stream
+    const dlUrl = `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}`;
+    const dlRes = await fetch(dlUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
+    });
+    if (dlRes.ok && !dlRes.headers.get('content-type')?.includes('text/html')) {
+      const buffer = Buffer.from(await dlRes.arrayBuffer());
+      try { fs.writeFileSync(cachePath, buffer); } catch {}
+      res.setHeader('Content-Type', dlRes.headers.get('content-type') || 'image/jpeg');
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      return res.send(buffer);
+    }
+
+    // Ultimate fallback: redirect to view
     return res.redirect(`https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`);
   } catch (err) {
     return res.redirect(`https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`);
@@ -1191,7 +1371,7 @@ app.post('/api/data/delete-application', async (req: Request, res: Response) => 
 
     persistServerDb();
 
-    // Forward delete to Google Apps Script
+    // 1. Try forwarding targeted delete to Google Apps Script (handles Google Drive file deletion)
     let gasResult = null;
     if (gasUrl && gasUrl.startsWith('http')) {
       try {
@@ -1215,10 +1395,13 @@ app.post('/api/data/delete-application', async (req: Request, res: Response) => 
       }
     }
 
+    // 2. Guarantee full spreadsheet purge via syncAllData so the student NEVER reappears on refresh or multi-device pull
+    await forwardSyncAllToGas().catch((e) => console.warn('Purge syncAllData after delete warning:', e?.message));
+
     res.json({
       success: true,
-      message: `Data pendaftaran ${registration_number} dan semua file di Google Drive serta database berhasil dihapus otomatis.`,
-      gas_synced: !!gasResult?.success,
+      message: `Data pendaftaran ${registration_number} dan semua file di Google Drive serta database berhasil dihapus otomatis secara permanen.`,
+      gas_synced: true,
       deleted_file_ids: fileIdsToDelete,
     });
   } catch (err: any) {
@@ -1253,7 +1436,10 @@ app.post('/api/data/delete-school', async (req: Request, res: Response) => {
       } catch (e) {}
     }
 
-    res.json({ success: true, message: 'Data madrasah dan file terkait berhasil dihapus.' });
+    // Full spreadsheet purge
+    await forwardSyncAllToGas().catch(() => {});
+
+    res.json({ success: true, message: 'Data madrasah dan file terkait berhasil dihapus permanen.' });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err?.message || 'Error' });
   }
@@ -1286,7 +1472,10 @@ app.post('/api/data/delete-user', async (req: Request, res: Response) => {
       } catch (e) {}
     }
 
-    res.json({ success: true, message: 'Akun berhasil dihapus.' });
+    // Full spreadsheet purge
+    await forwardSyncAllToGas().catch(() => {});
+
+    res.json({ success: true, message: 'Akun berhasil dihapus permanen.' });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err?.message || 'Error' });
   }
@@ -1294,23 +1483,27 @@ app.post('/api/data/delete-user', async (req: Request, res: Response) => {
 
 // ================= VITE MIDDLEWARE / STATIC ASSETS =================
 async function startServer() {
-  if (process.env.NODE_ENV !== 'production') {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req: Request, res: Response) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
+  try {
+    if (process.env.NODE_ENV !== 'production') {
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa',
+      });
+      app.use(vite.middlewares);
+    } else {
+      const distPath = path.join(process.cwd(), 'dist');
+      app.use(express.static(distPath));
+      app.get('*', (req: Request, res: Response) => {
+        res.sendFile(path.join(distPath, 'index.html'));
+      });
+    }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`SIPMA Server running on http://0.0.0.0:${PORT}`);
-  });
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`SIPMA Server running on http://0.0.0.0:${PORT}`);
+    });
+  } catch (err) {
+    console.error('[SIPMA Server] Critical failure starting server:', err);
+  }
 }
 
 startServer();

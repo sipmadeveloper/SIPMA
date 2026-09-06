@@ -11,7 +11,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { UserRole, SystemSettings } from '../../types/sipma';
-import { normalizeImageUrl } from '../../utils/imageUrl';
+import { normalizeImageUrl, handleImageError } from '../../utils/imageUrl';
 import { storageService } from '../../services/storageService';
 import { useFeedback } from '../../context/FeedbackContext';
 
@@ -151,6 +151,7 @@ export const LoginPage: React.FC<Props> = ({
               alt={appName}
               className="w-16 h-16 sm:w-20 sm:h-20 object-contain rounded-2xl border-2 border-emerald-300/80 shadow-lg bg-white p-1.5"
               referrerPolicy="no-referrer"
+              onError={(e) => handleImageError(e)}
             />
           ) : (
             <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-tr from-emerald-800 to-teal-600 text-white flex items-center justify-center font-black text-2xl sm:text-3xl shadow-lg border-2 border-emerald-400/40">

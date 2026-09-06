@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { SystemSettings, ApiResponse } from '../../types/sipma';
 import { GAS_BACKEND_CODE, GAS_SETUP_STEPS } from '../../services/gasBackendCode';
-import { normalizeImageUrl } from '../../utils/imageUrl';
+import { normalizeImageUrl, handleImageError, compressAndResizeImage } from '../../utils/imageUrl';
 import { storageService } from '../../services/storageService';
 import { useFeedback } from '../../context/FeedbackContext';
 
@@ -61,6 +61,52 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
   const [copiedSsId, setCopiedSsId] = useState<boolean>(false);
   const [copiedDriveId, setCopiedDriveId] = useState<boolean>(false);
   const [isSaved, setIsSaved] = useState<boolean>(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState<boolean>(false);
+
+  const handleUploadAppLogo = async (file: File) => {
+    if (!file) return;
+    setIsUploadingLogo(true);
+    showLoading('Mengoptimalkan gambar & mengunggah logo ke Google Drive...');
+    try {
+      // 1. Auto-optimize & compress client-side (no 2MB block, works on any device/camera)
+      const compressed = await compressAndResizeImage(file, 800, 800, 0.88);
+      // 2. Direct upload to server & Google Drive
+      const res = await storageService.uploadAppLogo(compressed.base64, compressed.fileName);
+      hideLoading();
+      setIsUploadingLogo(false);
+      if (res.success && res.logo_url) {
+        setFormData((prev) => ({ ...prev, app_logo: res.logo_url }));
+        onSaveSettings({ ...formData, app_logo: res.logo_url });
+        showToast('Logo aplikasi berhasil diunggah & tersimpan langsung di cloud database!', 'success');
+      } else {
+        showAlert('Gagal Unggah Logo', res.message || 'Terjadi kesalahan saat mengunggah logo.', 'error');
+      }
+    } catch (err: any) {
+      hideLoading();
+      setIsUploadingLogo(false);
+      showAlert('Gagal Memproses Gambar', err?.message || 'Format gambar tidak dapat diproses.', 'error');
+    }
+  };
+
+  const handleApplyLogoUrl = (url: string) => {
+    if (!url.trim()) return;
+    const cleanUrl = url.trim();
+    setFormData((prev) => ({ ...prev, app_logo: cleanUrl }));
+    const current = storageService.getSettings();
+    const updated = { ...current, ...formData, app_logo: cleanUrl };
+    storageService.saveSettings(updated);
+    onSaveSettings(updated);
+    showToast('URL logo aplikasi berhasil disimpan!', 'success');
+  };
+
+  const handleRemoveLogo = () => {
+    setFormData((prev) => ({ ...prev, app_logo: '' }));
+    const current = storageService.getSettings();
+    const updated = { ...current, ...formData, app_logo: '' };
+    storageService.saveSettings(updated);
+    onSaveSettings(updated);
+    showToast('Logo aplikasi telah dihapus.', 'info');
+  };
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(GAS_BACKEND_CODE);
@@ -563,76 +609,112 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
 
               {/* Logo Settings */}
               <div className="md:col-span-2">
-                <label className="block font-semibold text-slate-700 mb-1.5">
-                  Logo Aplikasi SIPMA (Upload Gambar / URL)
-                </label>
-                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
+                  <label className="font-semibold text-slate-800 flex items-center gap-1.5">
+                    <ImageIcon className="w-4 h-4 text-emerald-600" />
+                    <span>Logo Aplikasi SIPMA (Google Drive & Database Cloud)</span>
+                  </label>
+                  {formData.app_logo ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                      Tersimpan di Cloud Database
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                      Menggunakan Favicon Default
+                    </span>
+                  )}
+                </div>
+                <div className="p-4 bg-slate-50/80 rounded-xl border border-slate-200 space-y-3">
                   <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                     {formData.app_logo ? (
-                      <div className="relative group">
+                      <div className="relative group shrink-0">
                         <img
                           src={normalizeImageUrl(formData.app_logo)}
-                          alt="Logo Aplikasi"
-                          className="w-16 h-16 object-contain rounded-xl border border-slate-200 bg-white p-1 shadow-xs"
+                          alt="Logo Aplikasi SIPMA"
+                          className="w-20 h-20 object-contain rounded-xl border-2 border-emerald-200 bg-white p-1.5 shadow-sm"
                           referrerPolicy="no-referrer"
-                          onError={(e) => {
-                            (e.target as HTMLElement).style.display = 'none';
-                          }}
+                          onError={(e) => handleImageError(e, '/logo.png')}
                         />
                         <button
                           type="button"
-                          onClick={() => setFormData({ ...formData, app_logo: '' })}
+                          onClick={handleRemoveLogo}
                           title="Hapus Logo"
-                          className="absolute -top-2 -right-2 w-6 h-6 bg-rose-500 hover:bg-rose-600 text-white rounded-full flex items-center justify-center text-xs shadow-md cursor-pointer transition-colors"
+                          className="absolute -top-2 -right-2 w-6 h-6 bg-rose-500 hover:bg-rose-600 text-white rounded-full flex items-center justify-center text-xs shadow-md cursor-pointer transition-transform hover:scale-110"
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
                       </div>
                     ) : (
-                      <div className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-slate-400 text-[10px] text-center p-1">
-                        <ImageIcon className="w-5 h-5 mb-0.5 text-slate-300" />
-                        <span>Tanpa Logo</span>
+                      <div className="w-20 h-20 rounded-xl border-2 border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-slate-400 text-[10px] text-center p-2 shrink-0">
+                        <ImageIcon className="w-6 h-6 mb-1 text-slate-300" />
+                        <span className="font-medium">Belum Ada Logo</span>
                       </div>
                     )}
 
-                    <div className="flex-1 w-full space-y-2">
-                      <div className="flex items-center gap-2">
-                        <label className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs">
-                          <Upload className="w-3.5 h-3.5" />
-                          <span>Pilih File Gambar Logo</span>
+                    <div className="flex-1 w-full space-y-2.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold text-white shadow-sm transition-all cursor-pointer ${
+                          isUploadingLogo ? 'bg-emerald-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 active:scale-98'
+                        }`}>
+                          {isUploadingLogo ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 animate-spin" />
+                              <span>Menyimpan ke Cloud...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="w-4 h-4" />
+                              <span>Pilih & Unggah Logo Sekarang</span>
+                            </>
+                          )}
                           <input
                             type="file"
-                            accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                            accept="image/*"
+                            disabled={isUploadingLogo}
                             className="hidden"
                             onChange={(e) => {
                               const file = e.target.files?.[0];
                               if (file) {
-                                if (file.size > 2 * 1024 * 1024) {
-                                  showAlert('Ukuran Logo Terlalu Besar', 'Batas maksimal ukuran file logo sistem adalah 2 MB.', 'warning');
-                                  return;
-                                }
-                                const reader = new FileReader();
-                                reader.onloadend = () => {
-                                  if (typeof reader.result === 'string') {
-                                    setFormData({ ...formData, app_logo: reader.result });
-                                  }
-                                };
-                                reader.readAsDataURL(file);
+                                handleUploadAppLogo(file);
+                                e.target.value = '';
                               }
                             }}
                           />
                         </label>
-                        <span className="text-[11px] text-slate-500">Mendukung PNG, JPG, SVG, WebP (Maks. 2MB)</span>
+
+                        {formData.app_logo && (
+                          <button
+                            type="button"
+                            onClick={handleRemoveLogo}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 hover:bg-rose-50 border border-rose-200 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Hapus Logo</span>
+                          </button>
+                        )}
                       </div>
+
+                      <p className="text-[11px] text-slate-500 flex items-center gap-1">
+                        <Info className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>Otomatis dioptimalkan & disimpan langsung ke Google Drive dan Google Sheets agar muncul di seluruh perangkat.</span>
+                      </p>
 
                       <div className="flex items-center gap-2">
                         <input
                           type="url"
                           value={formData.app_logo || ''}
                           onChange={(e) => setFormData({ ...formData, app_logo: e.target.value })}
-                          placeholder="Atau masukkan URL gambar: https://example.com/logo.png"
-                          className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-mono text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                          placeholder="Atau tempel URL gambar logo: https://example.com/logo.png"
+                          className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-lg font-mono text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
                         />
+                        <button
+                          type="button"
+                          onClick={() => handleApplyLogoUrl(formData.app_logo || '')}
+                          className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold shrink-0 transition-colors"
+                        >
+                          Terapkan URL
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -1124,6 +1206,65 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
             <p className="text-xs text-slate-500 mt-0.5">
               Ikuti langkah-langkah berikut untuk menghubungkan SIPMA ke ekosistem Google Cloud dan mendeploy ke Vercel.
             </p>
+          </div>
+
+          {/* Visual Architecture Card: Google Drive Automated Structure */}
+          <div className="p-5 bg-gradient-to-br from-emerald-50 via-teal-50/40 to-slate-50 rounded-2xl border border-emerald-200/80 space-y-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-xs">
+                <HardDrive className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="font-bold text-xs text-emerald-950">
+                  Struktur Otomatis Folder Google Drive (Anti-Data Dobel & Rapi)
+                </h4>
+                <p className="text-[11px] text-emerald-800">
+                  Backend Google Apps Script mengatur berkas secara bertingkat dan otomatis mencegah folder ganda.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              <div className="p-3.5 bg-white/90 rounded-xl border border-emerald-200 space-y-2 shadow-2xs">
+                <div className="font-bold text-emerald-900 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>1. Berkas Calon Murid (PPDB)</span>
+                </div>
+                <div className="p-2.5 bg-slate-900 rounded-lg text-emerald-300 font-mono text-[11px] space-y-1 select-all">
+                  <div>📁 SIPMA_Storage_2026/</div>
+                  <div className="pl-3 text-sky-300">└── 📁 Tahun Penerimaan 2026-2027/</div>
+                  <div className="pl-6 text-amber-300">└── 📁 [Nama Madrasah Pilihan]/</div>
+                  <div className="pl-9 text-emerald-300 font-bold">└── 📁 [Nama Murid] - [No Pendaftaran]/</div>
+                  <div className="pl-12 text-slate-300">├── 📄 [Nama Murid]_[NoReg]_foto.jpg</div>
+                  <div className="pl-12 text-slate-300">├── 📄 [Nama Murid]_[NoReg]_ijazah.pdf</div>
+                  <div className="pl-12 text-slate-300">└── 📄 [Nama Murid]_[NoReg]_kk.pdf</div>
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  Folder murid menggunakan nama lengkap pendaftar. Jika berkas diunggah ulang, berkas lama otomatis digantikan (anti-duplikasi).
+                </p>
+              </div>
+
+              <div className="p-3.5 bg-white/90 rounded-xl border border-blue-200 space-y-2 shadow-2xs">
+                <div className="font-bold text-blue-900 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-blue-600" />
+                  <span>2. Berkas Akun Pengguna & Branding</span>
+                </div>
+                <div className="p-2.5 bg-slate-900 rounded-lg text-sky-300 font-mono text-[11px] space-y-1 select-all">
+                  <div>📁 SIPMA_Storage_2026/</div>
+                  <div className="pl-3 text-purple-300">├── 📁 DATA AKUN PENGGUNA/</div>
+                  <div className="pl-6 text-pink-300 font-bold">│   └── 📁 [Nama Akun] ([ID/Username])/</div>
+                  <div className="pl-9 text-slate-300">│       └── 📄 Foto_Profil_[Nama Akun].png</div>
+                  <div className="pl-3 text-indigo-300">├── 📁 SISTEM &amp; BRANDING SIPMA/</div>
+                  <div className="pl-6 text-slate-300">│   └── 📄 Logo_Resmi_SIPMA.png</div>
+                  <div className="pl-3 text-sky-300">└── 📁 Tahun Penerimaan 2026-2027/</div>
+                  <div className="pl-6 text-amber-300">    └── 📁 [Nama Madrasah]/</div>
+                  <div className="pl-9 text-slate-300">        └── 📄 Logo_Resmi_[Madrasah].png</div>
+                </div>
+                <p className="text-[10px] text-slate-500">
+                  Akun pengguna memiliki folder khusus terpisah. Logo madrasah dan logo pusat tersimpan rapi tanpa data dobel.
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="space-y-4">

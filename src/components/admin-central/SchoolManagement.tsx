@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, Edit, Check, X, MapPin, Search, School as SchoolIcon, Trash2, AlertTriangle, Users, FileText, ShieldAlert, Upload, Image as ImageIcon } from 'lucide-react';
 import { School } from '../../types/sipma';
-import { normalizeImageUrl } from '../../utils/imageUrl';
+import { normalizeImageUrl, handleImageError, compressAndResizeImage } from '../../utils/imageUrl';
 import { storageService } from '../../services/storageService';
 
 interface Props {
@@ -387,6 +387,7 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
                           alt="Logo"
                           className="w-12 h-12 object-contain rounded-lg border bg-white p-0.5"
                           referrerPolicy="no-referrer"
+                          onError={(e) => handleImageError(e, '/logo.png')}
                         />
                         <button
                           type="button"
@@ -408,18 +409,23 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
                         <span>Pilih Gambar Logo</span>
                         <input
                           type="file"
-                          accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                          accept="image/*"
                           className="hidden"
-                          onChange={(e) => {
+                          onChange={async (e) => {
                             const file = e.target.files?.[0];
                             if (file) {
-                              const reader = new FileReader();
-                              reader.onloadend = () => {
-                                if (typeof reader.result === 'string') {
-                                  setEditingSchool({ ...editingSchool, logo_url: reader.result });
-                                }
-                              };
-                              reader.readAsDataURL(file);
+                              try {
+                                const compressed = await compressAndResizeImage(file, 800, 800, 0.88);
+                                setEditingSchool({ ...editingSchool, logo_url: compressed.base64 });
+                              } catch {
+                                const reader = new FileReader();
+                                reader.onloadend = () => {
+                                  if (typeof reader.result === 'string') {
+                                    setEditingSchool({ ...editingSchool, logo_url: reader.result });
+                                  }
+                                };
+                                reader.readAsDataURL(file);
+                              }
                             }
                           }}
                         />

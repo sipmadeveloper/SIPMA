@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { School, Announcement, SystemSettings } from '../../types/sipma';
 import { formatDistanceIndonesian } from '../../utils/geo';
-import { normalizeImageUrl } from '../../utils/imageUrl';
+import { normalizeImageUrl, handleImageError } from '../../utils/imageUrl';
 import { storageService } from '../../services/storageService';
 
 interface Props {
@@ -97,6 +97,7 @@ export const LandingPage: React.FC<Props> = ({
                 alt={appName}
                 className="w-9 h-9 sm:w-10 sm:h-10 object-contain rounded-xl border border-emerald-200/80 shadow-md bg-white p-0.5 shrink-0"
                 referrerPolicy="no-referrer"
+                onError={(e) => handleImageError(e)}
               />
             ) : (
               <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-emerald-800 to-teal-600 text-white flex items-center justify-center font-black text-lg sm:text-xl shadow-md shrink-0">
@@ -558,6 +559,7 @@ export const LandingPage: React.FC<Props> = ({
                 alt={appName}
                 className="w-8 h-8 object-contain rounded-lg border border-emerald-500/50 bg-white p-0.5"
                 referrerPolicy="no-referrer"
+                onError={(e) => handleImageError(e)}
               />
             ) : (
               <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center font-black">

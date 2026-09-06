@@ -10,7 +10,7 @@ import {
   UserCheck,
 } from 'lucide-react';
 import { User as UserType, School, SystemSettings } from '../../types/sipma';
-import { normalizeImageUrl } from '../../utils/imageUrl';
+import { normalizeImageUrl, handleImageError } from '../../utils/imageUrl';
 
 interface Props {
   currentUser: UserType | null;
@@ -80,6 +80,7 @@ export const Navbar: React.FC<Props> = ({
                 alt={appName}
                 className="w-9 h-9 object-contain rounded-xl border border-emerald-200/80 shadow-xs group-hover:scale-105 transition-transform bg-white p-0.5"
                 referrerPolicy="no-referrer"
+                onError={(e) => handleImageError(e)}
               />
             ) : (
               <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-800 to-teal-600 text-white flex items-center justify-center font-black text-lg shadow-xs group-hover:scale-105 transition-transform">
@@ -123,6 +124,7 @@ export const Navbar: React.FC<Props> = ({
                     alt={currentUser.name}
                     className="w-8 h-8 rounded-xl object-cover border border-emerald-300 shadow-xs group-hover:border-emerald-500"
                     referrerPolicy="no-referrer"
+                    onError={(e) => handleImageError(e)}
                   />
                 ) : (
                   <div className="w-8 h-8 rounded-xl bg-slate-100 group-hover:bg-emerald-50 border border-slate-200 group-hover:border-emerald-200 flex items-center justify-center text-slate-600 group-hover:text-emerald-700 transition-colors">

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Check, Save, School as SchoolIcon, Upload, Image as ImageIcon, Trash2, Calendar, Clock, MapPin, FileCheck, Info } from 'lucide-react';
+import { Check, Save, School as SchoolIcon, Upload, Image as ImageIcon, Trash2, Calendar, Clock, MapPin, FileCheck, Info, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { School } from '../../types/sipma';
-import { normalizeImageUrl } from '../../utils/imageUrl';
+import { normalizeImageUrl, handleImageError, compressAndResizeImage } from '../../utils/imageUrl';
+import { storageService } from '../../services/storageService';
 import { SchoolLocationSettingMap } from '../map/SchoolLocationSettingMap';
 import { useFeedback } from '../../context/FeedbackContext';
 
@@ -40,6 +41,33 @@ export const SchoolSettings: React.FC<Props> = ({ school, onSave }) => {
 
   const [formData, setFormData] = useState<School>({ ...safeSchool });
   const [isSaved, setIsSaved] = useState<boolean>(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState<boolean>(false);
+
+  const handleUploadSchoolLogo = async (file: File) => {
+    if (!file) return;
+    setIsUploadingLogo(true);
+    try {
+      const compressed = await compressAndResizeImage(file, 800, 800, 0.88);
+      const res = await storageService.uploadSchoolLogo(
+        formData.school_id,
+        formData.school_name,
+        compressed.base64,
+        compressed.fileName
+      );
+      setIsUploadingLogo(false);
+      if (res.success && res.logo_url) {
+        const updated = { ...formData, logo_url: res.logo_url };
+        setFormData(updated);
+        onSave(updated);
+        showToast('Logo madrasah berhasil diunggah & tersimpan langsung ke database!', 'success');
+      } else {
+        showAlert('Gagal Unggah Logo', res.message || 'Terjadi kesalahan saat mengunggah.', 'error');
+      }
+    } catch (err: any) {
+      setIsUploadingLogo(false);
+      showAlert('Gagal Memproses Gambar', err?.message || 'Format gambar tidak dapat diproses.', 'error');
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -153,67 +181,102 @@ export const SchoolSettings: React.FC<Props> = ({ school, onSave }) => {
           </div>
 
           <div className="sm:col-span-2 md:col-span-3">
-            <label className="block font-semibold text-slate-700 mb-1.5">
-              Logo Resmi Madrasah (Upload Gambar / URL)
-            </label>
-            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+            <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
+              <label className="font-semibold text-slate-800 flex items-center gap-1.5">
+                <ImageIcon className="w-4 h-4 text-emerald-600" />
+                <span>Logo Resmi Madrasah (Google Drive & Database Cloud)</span>
+              </label>
+              {formData.logo_url && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                  Tersimpan di Cloud Database
+                </span>
+              )}
+            </div>
+            <div className="p-4 bg-slate-50/80 rounded-xl border border-slate-200 space-y-3">
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                 {formData.logo_url ? (
-                  <div className="relative group">
+                  <div className="relative group shrink-0">
                     <img
                       src={normalizeImageUrl(formData.logo_url)}
                       alt="Logo Madrasah"
-                      className="w-16 h-16 object-contain rounded-xl border border-slate-200 bg-white p-1 shadow-xs"
+                      className="w-20 h-20 object-contain rounded-xl border-2 border-emerald-200 bg-white p-1.5 shadow-sm"
                       referrerPolicy="no-referrer"
-                      onError={(e) => {
-                        (e.target as HTMLElement).style.display = 'none';
-                      }}
+                      onError={(e) => handleImageError(e, '/logo.png')}
                     />
                     <button
                       type="button"
-                      onClick={() => setFormData({ ...formData, logo_url: '' })}
+                      onClick={() => {
+                        const updated = { ...formData, logo_url: '' };
+                        setFormData(updated);
+                        onSave(updated);
+                        showToast('Logo madrasah dihapus.', 'info');
+                      }}
                       title="Hapus Logo Madrasah"
-                      className="absolute -top-2 -right-2 w-6 h-6 bg-rose-500 hover:bg-rose-600 text-white rounded-full flex items-center justify-center text-xs shadow-md cursor-pointer transition-colors"
+                      className="absolute -top-2 -right-2 w-6 h-6 bg-rose-500 hover:bg-rose-600 text-white rounded-full flex items-center justify-center text-xs shadow-md cursor-pointer transition-transform hover:scale-110"
                     >
                       <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
                 ) : (
-                  <div className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-slate-400 text-[10px] text-center p-1">
-                    <ImageIcon className="w-5 h-5 mb-0.5 text-slate-300" />
-                    <span>Tanpa Logo</span>
+                  <div className="w-20 h-20 rounded-xl border-2 border-dashed border-slate-300 bg-white flex flex-col items-center justify-center text-slate-400 text-[10px] text-center p-2 shrink-0">
+                    <ImageIcon className="w-6 h-6 mb-1 text-slate-300" />
+                    <span className="font-medium">Belum Ada Logo</span>
                   </div>
                 )}
 
-                <div className="flex-1 w-full space-y-2">
-                  <div className="flex items-center gap-2">
-                    <label className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors shadow-xs">
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Unggah File Logo Madrasah</span>
+                <div className="flex-1 w-full space-y-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold text-white shadow-sm transition-all cursor-pointer ${
+                      isUploadingLogo ? 'bg-emerald-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 active:scale-98'
+                    }`}>
+                      {isUploadingLogo ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Menyimpan ke Cloud...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-4 h-4" />
+                          <span>Pilih & Unggah Logo Sekarang</span>
+                        </>
+                      )}
                       <input
                         type="file"
-                        accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                        accept="image/*"
+                        disabled={isUploadingLogo}
                         className="hidden"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
-                            if (file.size > 2 * 1024 * 1024) {
-                              showAlert('Ukuran Logo Terlalu Besar', 'Batas maksimal ukuran file logo madrasah adalah 2 MB.', 'warning');
-                              return;
-                            }
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                              if (typeof reader.result === 'string') {
-                                setFormData({ ...formData, logo_url: reader.result });
-                              }
-                            };
-                            reader.readAsDataURL(file);
+                            handleUploadSchoolLogo(file);
+                            e.target.value = '';
                           }
                         }}
                       />
                     </label>
-                    <span className="text-[11px] text-slate-500">Format PNG / JPG / SVG (Maks. 2MB)</span>
+
+                    {formData.logo_url && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = { ...formData, logo_url: '' };
+                          setFormData(updated);
+                          onSave(updated);
+                          showToast('Logo madrasah dihapus.', 'info');
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 hover:bg-rose-50 border border-rose-200 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Hapus Logo</span>
+                      </button>
+                    )}
                   </div>
+
+                  <p className="text-[11px] text-slate-500 flex items-center gap-1">
+                    <Info className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>Otomatis dioptimalkan & disimpan langsung ke Google Drive dan Google Sheets agar muncul di seluruh perangkat.</span>
+                  </p>
 
                   <div className="flex items-center gap-2">
                     <input
@@ -221,8 +284,18 @@ export const SchoolSettings: React.FC<Props> = ({ school, onSave }) => {
                       value={formData.logo_url || ''}
                       onChange={(e) => setFormData({ ...formData, logo_url: e.target.value })}
                       placeholder="Atau tempel URL logo: https://example.com/logo-madrasah.png"
-                      className="flex-1 px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-mono text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                      className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-lg font-mono text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
                     />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onSave(formData);
+                        showToast('URL logo madrasah disimpan.', 'success');
+                      }}
+                      className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold shrink-0 transition-colors"
+                    >
+                      Terapkan URL
+                    </button>
                   </div>
                 </div>
               </div>

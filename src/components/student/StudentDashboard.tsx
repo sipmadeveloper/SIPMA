@@ -26,7 +26,7 @@ import {
   Announcement,
 } from '../../types/sipma';
 import { formatDistanceIndonesian } from '../../utils/geo';
-import { normalizeImageUrl } from '../../utils/imageUrl';
+import { normalizeImageUrl, handleImageError } from '../../utils/imageUrl';
 import { RegistrationWizard } from './RegistrationWizard';
 import { PrintBuktiPendaftaran } from './PrintBuktiPendaftaran';
 import { DispensationLetterModal } from './DispensationLetterModal';
@@ -270,6 +270,7 @@ export const StudentDashboard: React.FC<Props> = ({
                     alt={student.name}
                     className="w-full h-full object-cover rounded-xl"
                     referrerPolicy="no-referrer"
+                    onError={(e) => handleImageError(e)}
                   />
                 ) : (
                   <User className="w-7 h-7 sm:w-8 sm:h-8 text-emerald-200" />

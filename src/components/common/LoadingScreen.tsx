@@ -1,6 +1,7 @@
 import React from 'react';
 import { Loader2, RefreshCw, Database, Cloud, CheckCircle2, ShieldCheck } from 'lucide-react';
 import { SystemSettings } from '../../types/sipma';
+import { normalizeImageUrl, handleImageError } from '../../utils/imageUrl';
 
 interface GlobalLoadingProps {
   isOpen: boolean;
@@ -76,9 +77,11 @@ export const AppSplashScreen: React.FC<AppSplashScreenProps> = ({
           <div className="w-20 h-20 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 p-2 shadow-2xl flex items-center justify-center relative">
             {appLogo ? (
               <img
-                src={appLogo}
+                src={normalizeImageUrl(appLogo)}
                 alt={appName}
                 className="w-full h-full object-contain rounded-xl bg-white p-1"
+                referrerPolicy="no-referrer"
+                onError={(e) => handleImageError(e)}
               />
             ) : (
               <div className="w-full h-full rounded-xl bg-emerald-600 flex items-center justify-center font-black text-2xl text-white shadow-inner">
