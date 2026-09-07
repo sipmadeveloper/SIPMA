@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Plus, Edit, Check, X, MapPin, Search, School as SchoolIcon, Trash2, AlertTriangle, Users, FileText, ShieldAlert, Upload, Image as ImageIcon } from 'lucide-react';
+import { Plus, Edit, Check, X, MapPin, Search, School as SchoolIcon, Trash2, AlertTriangle, Users, FileText, ShieldAlert, Upload, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { School } from '../../types/sipma';
 import { normalizeImageUrl, handleImageError, compressAndResizeImage } from '../../utils/imageUrl';
 import { storageService } from '../../services/storageService';
+import { useFeedback } from '../../context/FeedbackContext';
 
 interface Props {
   schools: School[];
@@ -11,11 +12,40 @@ interface Props {
 }
 
 export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDeleteSchool }) => {
+  const { showToast } = useFeedback();
   const [editingSchool, setEditingSchool] = useState<School | null>(null);
   const [isNew, setIsNew] = useState<boolean>(false);
   const [search, setSearch] = useState<string>('');
   const [schoolToDelete, setSchoolToDelete] = useState<School | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState<string>('');
+  const [isUploadingLogo, setIsUploadingLogo] = useState<boolean>(false);
+
+  const handleUploadLogo = async (file: File) => {
+    if (!file || !editingSchool) return;
+    setIsUploadingLogo(true);
+    showToast('Mengompres & mengunggah logo ke Google Drive...', 'info');
+    try {
+      const compressed = await compressAndResizeImage(file, 800, 800, 0.88);
+      const res = await storageService.uploadSchoolLogo(
+        editingSchool.school_id,
+        editingSchool.school_name || 'Madrasah',
+        compressed.base64,
+        compressed.fileName
+      );
+      setIsUploadingLogo(false);
+      if (res.success && res.logo_url) {
+        setEditingSchool((prev) => (prev ? { ...prev, logo_url: res.logo_url } : null));
+        showToast('Logo madrasah berhasil diunggah ke Google Drive & Cloud Database!', 'success');
+      } else {
+        // Fallback to compressed base64 if offline/unconfigured
+        setEditingSchool((prev) => (prev ? { ...prev, logo_url: compressed.base64 } : null));
+        showToast('Logo disimpan sementara & akan disinkronkan ke Drive.', 'info');
+      }
+    } catch (err: any) {
+      setIsUploadingLogo(false);
+      showToast('Gagal memproses gambar logo: ' + (err?.message || 'Format tidak didukung'), 'error');
+    }
+  };
 
   const filteredSchools = schools.filter((s) => {
     const q = search ? search.toLowerCase().trim() : '';
@@ -404,32 +434,29 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
                       </div>
                     )}
                     <div className="flex-1 space-y-1.5">
-                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors shadow-xs">
-                        <Upload className="w-3.5 h-3.5" />
-                        <span>Pilih Gambar Logo</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={async (e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              try {
-                                const compressed = await compressAndResizeImage(file, 800, 800, 0.88);
-                                setEditingSchool({ ...editingSchool, logo_url: compressed.base64 });
-                              } catch {
-                                const reader = new FileReader();
-                                reader.onloadend = () => {
-                                  if (typeof reader.result === 'string') {
-                                    setEditingSchool({ ...editingSchool, logo_url: reader.result });
-                                  }
-                                };
-                                reader.readAsDataURL(file);
+                      <div className="flex items-center gap-2">
+                        <label className={`inline-flex items-center gap-1.5 px-3 py-1.5 ${isUploadingLogo ? 'bg-emerald-400 cursor-not-allowed' : 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer'} text-white rounded-lg text-xs font-bold transition-colors shadow-xs`}>
+                          {isUploadingLogo ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Upload className="w-3.5 h-3.5" />
+                          )}
+                          <span>{isUploadingLogo ? 'Mengunggah ke Drive...' : 'Pilih Gambar Logo'}</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            disabled={isUploadingLogo}
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                handleUploadLogo(file);
+                                e.target.value = '';
                               }
-                            }
-                          }}
-                        />
-                      </label>
+                            }}
+                          />
+                        </label>
+                      </div>
                       <input
                         type="url"
                         placeholder="Atau tempel URL gambar logo..."

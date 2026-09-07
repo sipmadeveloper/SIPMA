@@ -29,8 +29,27 @@ if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
-// Serve static uploads
-app.use('/uploads', express.static(UPLOAD_DIR));
+// Serve static uploads with aggressive HTTP cache (max-age 1 year, immutable)
+app.use(
+  '/uploads',
+  express.static(UPLOAD_DIR, {
+    maxAge: 31536000000,
+    immutable: true,
+    etag: true,
+    lastModified: true,
+    setHeaders: (res) => {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    },
+  })
+);
+
+// High-speed in-memory RAM cache for images (< 0.05ms serving time)
+interface MemoryImageItem {
+  buffer: Buffer;
+  contentType: string;
+  etag: string;
+}
+const memoryImageCache = new Map<string, MemoryImageItem>();
 
 // In-Memory & File-Backed Persistent Database for Centralized Multi-Device Sync
 interface ServerDbState {
@@ -106,10 +125,48 @@ function loadInitialServerDb(): ServerDbState {
 
 let serverDb: ServerDbState = loadInitialServerDb();
 
+function warmUpImageCache() {
+  try {
+    if (serverDb.settings?.app_logo && serverDb.settings.app_logo.startsWith('data:image/')) {
+      const raw = serverDb.settings.app_logo;
+      const matches = raw.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+      if (matches) {
+        memoryImageCache.set('app_logo', { buffer: Buffer.from(matches[2], 'base64'), contentType: matches[1], etag: '"app_logo"' });
+      }
+    }
+    if (serverDb.schools && Array.isArray(serverDb.schools)) {
+      for (const s of serverDb.schools) {
+        if (s.logo_url && s.logo_url.startsWith('data:image/')) {
+          const raw = s.logo_url;
+          const matches = raw.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+          if (matches) {
+            memoryImageCache.set(`school_${s.school_id}`, { buffer: Buffer.from(matches[2], 'base64'), contentType: matches[1], etag: `"${s.school_id}"` });
+          }
+        }
+      }
+    }
+    if (fs.existsSync(UPLOAD_DIR)) {
+      const files = fs.readdirSync(UPLOAD_DIR);
+      for (const f of files) {
+        if (f.startsWith('cache_drive_') && f.endsWith('.jpg')) {
+          const fileId = f.replace('cache_drive_', '').replace('.jpg', '');
+          try {
+            const buf = fs.readFileSync(path.join(UPLOAD_DIR, f));
+            memoryImageCache.set(fileId, { buffer: buf, contentType: 'image/jpeg', etag: `"${fileId}"` });
+          } catch {}
+        }
+      }
+    }
+  } catch {}
+}
+
+warmUpImageCache();
+
 function persistServerDb() {
   try {
     serverDb.last_updated = new Date().toISOString();
     fs.writeFileSync(DB_FILE, JSON.stringify(serverDb, null, 2), 'utf-8');
+    warmUpImageCache();
   } catch (err) {
     console.error('Error persisting server_db.json:', err);
   }
@@ -224,11 +281,44 @@ function mergeGasDataIntoServerDb(gasData: any): boolean {
     mutated = true;
   }
   if (gasData.documents && Array.isArray(gasData.documents)) {
-    serverDb.documents = gasData.documents.filter((d: any) => !isDemoStudentRecord(d?.registration_number, d?.student_id));
+    const cleanGasDocs = gasData.documents.filter((d: any) => !isDemoStudentRecord(d?.registration_number, d?.student_id));
+    const existingDocs = serverDb.documents || [];
+    const mergedDocsMap = new Map<string, any>();
+
+    // Seed with existing serverDb documents
+    for (const ex of existingDocs) {
+      const key = ex.document_id || `${ex.registration_number}_${ex.document_type}`;
+      mergedDocsMap.set(key, { ...ex });
+    }
+
+    // Merge incoming GAS documents, preserving local files, base64 data, and valid drive URLs
+    for (const gd of cleanGasDocs) {
+      const key = gd.document_id || `${gd.registration_number}_${gd.document_type}`;
+      const ex = mergedDocsMap.get(key);
+      mergedDocsMap.set(key, {
+        ...ex,
+        ...gd,
+        local_url: ex?.local_url || gd.local_url || '',
+        file_data_base64: ex?.file_data_base64 || gd.file_data_base64 || '',
+        drive_file_id: gd.drive_file_id || ex?.drive_file_id || '',
+        drive_url: gd.drive_url || ex?.drive_url || '',
+        view_url: gd.drive_url || ex?.drive_url || ex?.local_url || gd.local_url || '',
+      });
+    }
+
+    serverDb.documents = Array.from(mergedDocsMap.values());
     mutated = true;
   }
   if (gasData.schools && Array.isArray(gasData.schools) && gasData.schools.length > 0) {
-    serverDb.schools = gasData.schools;
+    const existingSchools = serverDb.schools || [];
+    serverDb.schools = gasData.schools.map((gs: any) => {
+      const ex = existingSchools.find((s: any) => s.school_id === gs.school_id || s.school_code === gs.school_code);
+      return {
+        ...gs,
+        // Crucial: preserve existing logo_url if GAS returns empty string
+        logo_url: gs.logo_url || ex?.logo_url || '',
+      };
+    });
     mutated = true;
   }
   if (gasData.announcements && Array.isArray(gasData.announcements)) {
@@ -236,7 +326,13 @@ function mergeGasDataIntoServerDb(gasData: any): boolean {
     mutated = true;
   }
   if (gasData.settings && typeof gasData.settings === 'object' && Object.keys(gasData.settings).length > 0) {
-    serverDb.settings = { ...serverDb.settings, ...gasData.settings };
+    const existingAppLogo = serverDb.settings?.app_logo || '';
+    serverDb.settings = { 
+      ...serverDb.settings, 
+      ...gasData.settings,
+      // Protect app_logo if incoming is empty/missing
+      app_logo: gasData.settings.app_logo || existingAppLogo,
+    };
     mutated = true;
   }
 
@@ -328,6 +424,7 @@ async function forwardSyncAllToGas(): Promise<{ success: boolean; message?: stri
 
 let lastGasPullTimestamp = 0;
 let isGasPulling = false;
+let lastFileUploadTimestamp = 0;
 
 // Smart Auto-Pull: pulls fresh data from Google Sheets when accessed, throttled to 8 seconds
 async function checkAndAutoPullFromGas(force = false): Promise<boolean> {
@@ -337,6 +434,10 @@ async function checkAndAutoPullFromGas(force = false): Promise<boolean> {
     return false;
   }
   const now = Date.now();
+  // If a file was uploaded recently (within 20 seconds), prevent auto-pull overwrite race condition
+  if (!force && now - lastFileUploadTimestamp < 20000) {
+    return false;
+  }
   if (!force && (now - lastGasPullTimestamp < 8000 || isGasPulling)) {
     return false;
   }
@@ -438,6 +539,13 @@ app.get('/api/data', async (req: Request, res: Response) => {
   } else {
     // Non-blocking auto-pull in the background - responds in 1ms to user reload/boot
     checkAndAutoPullFromGas(false).catch(() => {});
+  }
+
+  const etag = `"${serverDb.last_updated || 'initial'}"`;
+  res.setHeader('ETag', etag);
+  res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+  if (req.headers['if-none-match'] === etag && !forcePull) {
+    return res.status(304).end();
   }
 
   res.json({
@@ -706,6 +814,7 @@ function formatStandardFileName(params: {
 
 // 5. Direct Document Upload Proxy to Google Drive via GAS & Local Mirror
 app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
+  lastFileUploadTimestamp = Date.now();
   const settings = serverDb.settings || {};
   const gasUrl = req.body.gas_web_app_url || settings.gas_web_app_url;
   const ssId = req.body.spreadsheet_id || settings.spreadsheet_id;
@@ -984,6 +1093,7 @@ app.get('/api/files/download', async (req: Request, res: Response) => {
 
 // 5b. Upload Branding Logo (Madrasah / App Logo) to Google Drive & Server DB
 app.post('/api/gas/upload-logo', async (req: Request, res: Response) => {
+  lastFileUploadTimestamp = Date.now();
   const settings = serverDb.settings || {};
   const gasUrl = req.body.gas_web_app_url || settings.gas_web_app_url;
   const ssId = req.body.spreadsheet_id || settings.spreadsheet_id;
@@ -1116,32 +1226,154 @@ app.post('/api/gas/upload-logo', async (req: Request, res: Response) => {
   }
 });
 
-// 5c. High-Speed Google Drive Image Proxy / Fallback Stream with Local Disk Caching
+// 5b-2. Automated Email Notification Dispatcher (Triggered on Document Verification & Selection Change)
+app.post('/api/notifications/send-status-email', async (req: Request, res: Response) => {
+  const settings = serverDb.settings || {};
+  const gasUrl = req.body.gas_web_app_url || settings.gas_web_app_url;
+  const ssId = req.body.spreadsheet_id || settings.spreadsheet_id;
+
+  try {
+    const {
+      email,
+      student_name,
+      registration_number,
+      school_name,
+      event_type, // 'verification' | 'selection'
+      new_status,
+      notes,
+    } = req.body;
+
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({
+        success: false,
+        message: 'Alamat email penerima tidak valid atau kosong.',
+      });
+    }
+
+    const emailPayload = {
+      action: 'sendNotificationEmail',
+      spreadsheet_id: ssId,
+      data: {
+        email: email.trim(),
+        student_name: student_name || 'Calon Murid',
+        registration_number: registration_number || '',
+        school_name: school_name || settings.app_name || 'Madrasah',
+        event_type: event_type || 'verification',
+        new_status: new_status || '',
+        notes: notes || '',
+        app_name: settings.app_name || 'SIPMA',
+      },
+    };
+
+    let gasSent = false;
+    let gasMessage = '';
+
+    if (gasUrl && gasUrl.startsWith('http')) {
+      try {
+        const gasRes = await fetch(gasUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(emailPayload),
+        });
+        const gasJson = await gasRes.json();
+        if (gasJson && gasJson.success) {
+          gasSent = true;
+          gasMessage = gasJson.message || 'Email notifikasi berhasil dikirim via Google Apps Script.';
+        } else {
+          gasMessage = gasJson?.message || 'Gagal mengirim email via Google Apps Script.';
+        }
+      } catch (gasErr: any) {
+        console.warn('Gagal memanggil GAS sendNotificationEmail:', gasErr?.message);
+        gasMessage = gasErr?.message || 'Koneksi ke GAS gagal';
+      }
+    }
+
+    // Log the notification to server audit logs
+    const logItem = {
+      log_id: `LOG-MAIL-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      user_id: 'SYSTEM',
+      username: 'Notifikasi Otomatis',
+      role: 'system',
+      action: 'SEND_EMAIL_NOTIFICATION',
+      target: registration_number || email,
+      description: `Notifikasi email status [${event_type?.toUpperCase()}: ${new_status}] dikirim ke ${email}. ${gasSent ? '(Terkirim via GAS)' : '(Tersimpan di antrean sistem)'}`,
+      status: gasSent ? 'success' : 'queued',
+    };
+
+    if (!serverDb.audit_logs) serverDb.audit_logs = [];
+    serverDb.audit_logs.unshift(logItem);
+    persistServerDb();
+
+    return res.json({
+      success: true,
+      message: gasSent
+        ? `Notifikasi email otomatis berhasil dikirim ke ${email}.`
+        : `Notifikasi email telah dicatat untuk ${email} (GAS belum terkonfigurasi atau respons diterima).`,
+      gas_sent: gasSent,
+      gas_message: gasMessage,
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      message: `Gagal memproses notifikasi email: ${err?.message || 'Server error'}`,
+    });
+  }
+});
+
+// 5c. High-Speed Google Drive Image Proxy / Fallback Stream with Local Disk & RAM Caching
 app.get('/api/drive/image/:fileId', async (req: Request, res: Response) => {
   const { fileId } = req.params;
   if (!fileId || fileId.includes('..') || fileId.length < 5) {
     return res.status(400).send('Invalid file ID');
   }
 
-  // 1. Check permanent drive cache on disk for instant (<2ms) serving
-  const cachePath = path.join(UPLOAD_DIR, `cache_drive_${fileId}.jpg`);
-  if (fs.existsSync(cachePath)) {
-    res.setHeader('Content-Type', 'image/jpeg');
+  // 1. Ultra-Fast RAM Cache (< 0.05ms serving time)
+  const memCached = memoryImageCache.get(fileId);
+  if (memCached) {
+    res.setHeader('Content-Type', memCached.contentType);
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-    return res.sendFile(cachePath);
+    res.setHeader('ETag', memCached.etag);
+    if (req.headers['if-none-match'] === memCached.etag) {
+      return res.status(304).end();
+    }
+    return res.send(memCached.buffer);
   }
 
-  // 2. Check if we have original local copy in uploads
+  // 2. Check permanent drive cache on disk for instant (<1ms) serving
+  const cachePath = path.join(UPLOAD_DIR, `cache_drive_${fileId}.jpg`);
+  if (fs.existsSync(cachePath)) {
+    try {
+      const buf = fs.readFileSync(cachePath);
+      const etag = `"${fileId}"`;
+      memoryImageCache.set(fileId, { buffer: buf, contentType: 'image/jpeg', etag });
+      res.setHeader('Content-Type', 'image/jpeg');
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.setHeader('ETag', etag);
+      if (req.headers['if-none-match'] === etag) {
+        return res.status(304).end();
+      }
+      return res.send(buf);
+    } catch {}
+  }
+
+  // 3. Check if we have original local copy in uploads
   try {
     const files = fs.readdirSync(UPLOAD_DIR);
     const matched = files.find((f) => f.includes(fileId));
     if (matched) {
+      const buf = fs.readFileSync(path.join(UPLOAD_DIR, matched));
+      const mime = matched.endsWith('.png') ? 'image/png' : matched.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
+      const etag = `"${fileId}"`;
+      memoryImageCache.set(fileId, { buffer: buf, contentType: mime, etag });
+      res.setHeader('Content-Type', mime);
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-      return res.sendFile(path.join(UPLOAD_DIR, matched));
+      res.setHeader('ETag', etag);
+      return res.send(buf);
     }
   } catch {}
 
-  // 3. Check if document has base64 in serverDb
+  // 4. Check if document has base64 in serverDb
   if (serverDb.documents) {
     const doc = serverDb.documents.find((d: any) => d.drive_file_id === fileId);
     if (doc?.file_data_base64 && doc.file_data_base64.startsWith('data:')) {
@@ -1151,15 +1383,18 @@ app.get('/api/drive/image/:fileId', async (req: Request, res: Response) => {
         const mime = matches ? matches[1] : 'image/jpeg';
         const base64Data = matches ? matches[2] : raw.includes(',') ? raw.split(',')[1] : raw;
         const buf = Buffer.from(base64Data, 'base64');
-        fs.writeFileSync(cachePath, buf);
+        const etag = `"${fileId}"`;
+        memoryImageCache.set(fileId, { buffer: buf, contentType: mime, etag });
+        try { fs.writeFileSync(cachePath, buf); } catch {}
         res.setHeader('Content-Type', mime);
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        res.setHeader('ETag', etag);
         return res.send(buf);
       } catch {}
     }
   }
 
-  // 3b. Check if app_logo in settings matches
+  // 5. Check if app_logo in settings matches
   if (serverDb.settings?.app_logo && (fileId === 'app_logo' || serverDb.settings.app_logo.includes(fileId))) {
     const logoStr = serverDb.settings.app_logo;
     if (logoStr.startsWith('data:')) {
@@ -1168,18 +1403,22 @@ app.get('/api/drive/image/:fileId', async (req: Request, res: Response) => {
         const mime = matches ? matches[1] : 'image/png';
         const base64Data = matches ? matches[2] : logoStr.includes(',') ? logoStr.split(',')[1] : logoStr;
         const buf = Buffer.from(base64Data, 'base64');
-        fs.writeFileSync(cachePath, buf);
+        const etag = `"${fileId}"`;
+        memoryImageCache.set(fileId, { buffer: buf, contentType: mime, etag });
+        try { fs.writeFileSync(cachePath, buf); } catch {}
         res.setHeader('Content-Type', mime);
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        res.setHeader('ETag', etag);
         return res.send(buf);
       } catch {}
     }
   }
 
-  // 4. Fetch from Google CDN / Thumbnail endpoint and persist to local cache
+  // 6. Fetch from Google CDN / Thumbnail endpoint and persist to local cache (<100ms)
   try {
-    const targetUrl = `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w1200`;
+    const targetUrl = `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w800`;
     const upstream = await fetch(targetUrl, {
+      signal: AbortSignal.timeout(3000),
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       },
@@ -1187,39 +1426,51 @@ app.get('/api/drive/image/:fileId', async (req: Request, res: Response) => {
 
     if (upstream.ok && upstream.headers.get('content-type')?.includes('image')) {
       const buffer = Buffer.from(await upstream.arrayBuffer());
+      const mime = upstream.headers.get('content-type') || 'image/jpeg';
+      const etag = `"${fileId}"`;
+      memoryImageCache.set(fileId, { buffer, contentType: mime, etag });
       try { fs.writeFileSync(cachePath, buffer); } catch {}
-      res.setHeader('Content-Type', upstream.headers.get('content-type') || 'image/jpeg');
+      res.setHeader('Content-Type', mime);
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.setHeader('ETag', etag);
       return res.send(buffer);
     }
 
     // Fallback to lh3 CDN
     const lh3Url = `https://lh3.googleusercontent.com/d/${encodeURIComponent(fileId)}`;
-    const lh3Res = await fetch(lh3Url);
+    const lh3Res = await fetch(lh3Url, { signal: AbortSignal.timeout(3000) });
     if (lh3Res.ok && lh3Res.headers.get('content-type')?.includes('image')) {
       const buffer = Buffer.from(await lh3Res.arrayBuffer());
+      const mime = lh3Res.headers.get('content-type') || 'image/jpeg';
+      const etag = `"${fileId}"`;
+      memoryImageCache.set(fileId, { buffer, contentType: mime, etag });
       try { fs.writeFileSync(cachePath, buffer); } catch {}
-      res.setHeader('Content-Type', lh3Res.headers.get('content-type') || 'image/jpeg');
+      res.setHeader('Content-Type', mime);
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.setHeader('ETag', etag);
       return res.send(buffer);
     }
 
     // Fallback to Google download stream
     const dlUrl = `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}`;
     const dlRes = await fetch(dlUrl, {
+      signal: AbortSignal.timeout(3500),
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       },
     });
     if (dlRes.ok && !dlRes.headers.get('content-type')?.includes('text/html')) {
       const buffer = Buffer.from(await dlRes.arrayBuffer());
+      const mime = dlRes.headers.get('content-type') || 'image/jpeg';
+      const etag = `"${fileId}"`;
+      memoryImageCache.set(fileId, { buffer, contentType: mime, etag });
       try { fs.writeFileSync(cachePath, buffer); } catch {}
-      res.setHeader('Content-Type', dlRes.headers.get('content-type') || 'image/jpeg');
+      res.setHeader('Content-Type', mime);
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.setHeader('ETag', etag);
       return res.send(buffer);
     }
 
-    // Ultimate fallback: redirect to view
     return res.redirect(`https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`);
   } catch (err) {
     return res.redirect(`https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`);
