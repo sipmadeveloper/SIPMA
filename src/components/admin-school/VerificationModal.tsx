@@ -119,6 +119,18 @@ export const VerificationModal: React.FC<Props> = ({
           </div>
         </div>
 
+        {application.transferred_by_student && (
+          <div className="bg-indigo-50 border-b border-indigo-100 px-6 py-2.5 text-xs text-indigo-900 flex items-center gap-2">
+            <span className="font-bold bg-indigo-200 text-indigo-900 px-2 py-0.5 rounded text-[10px] shrink-0">
+              PEMINDAHAN MANDIRI MURID
+            </span>
+            <span>
+              Pendaftar ini memindahkan berkas secara mandiri ke madrasah ini setelah tidak diterima di madrasah sebelumnya.
+              {application.reroute_reason && ` (Catatan: "${application.reroute_reason}")`}
+            </span>
+          </div>
+        )}
+
         {/* Tab Navigation */}
         <div className="flex border-b border-slate-200 px-6 bg-slate-50 text-xs font-semibold">
           <button

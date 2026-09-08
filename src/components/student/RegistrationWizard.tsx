@@ -27,6 +27,7 @@ import {
   Info,
   AlertCircle,
   Lock,
+  XCircle,
 } from 'lucide-react';
 import {
   StudentProfile,
@@ -776,15 +777,31 @@ export const RegistrationWizard: React.FC<Props> = ({
                   .map((s) => {
                     const isSelected = application?.school_id === s.school_id;
                     const code = s.school_code || (s.school_id ? s.school_id.replace(/^SCH-/, '') : 'MAN01');
+                    const quotaInfo = storageService.getSchoolApplicantCount(s.school_id, activeRegNumber);
+                    const isFull = quotaInfo.is_full;
+
+                    const handleCardClick = () => {
+                      if (isFull && !isSelected) {
+                        showAlert(
+                          'Kuota Madrasah Penuh',
+                          `Mohon maaf, jumlah murid yang mendaftar di ${s.school_name} sudah memenuhi kuota keseluruhan yang dibutuhkan (${quotaInfo.applicant_count}/${quotaInfo.total_quota} murid). Pendaftaran ditutup untuk madrasah ini. Silakan pilih madrasah lain yang masih membuka slot pendaftaran.`,
+                          'warning'
+                        );
+                        return;
+                      }
+                      handleSelectSchool(s.school_id);
+                    };
 
                     return (
                       <div
                         key={s.school_id}
-                        onClick={() => handleSelectSchool(s.school_id)}
-                        className={`p-4 rounded-xl border-2 transition-all cursor-pointer relative flex flex-col justify-between gap-3 ${
+                        onClick={handleCardClick}
+                        className={`p-4 rounded-xl border-2 transition-all relative flex flex-col justify-between gap-3 ${
                           isSelected
-                            ? 'bg-white border-emerald-600 shadow-md ring-2 ring-emerald-500/20'
-                            : 'bg-white/80 hover:bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs'
+                            ? 'bg-white border-emerald-600 shadow-md ring-2 ring-emerald-500/20 cursor-pointer'
+                            : isFull
+                            ? 'bg-slate-50/90 border-rose-200/80 opacity-70 hover:opacity-90 cursor-not-allowed'
+                            : 'bg-white/80 hover:bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs cursor-pointer'
                         }`}
                       >
                         <div className="flex items-start justify-between gap-2">
@@ -809,6 +826,17 @@ export const RegistrationWizard: React.FC<Props> = ({
                                   NPSN: {s.npsn}
                                 </span>
                               )}
+                              {isFull ? (
+                                <span className="text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                  <XCircle className="w-3 h-3 text-rose-600" />
+                                  Kuota Penuh ({quotaInfo.applicant_count}/{quotaInfo.total_quota})
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                  Sisa {quotaInfo.remaining_slots} Kursi
+                                </span>
+                              )}
                             </div>
                             <h5 className="font-bold text-sm text-slate-900 leading-snug">
                               {s.school_name}
@@ -822,17 +850,35 @@ export const RegistrationWizard: React.FC<Props> = ({
                             className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${
                               isSelected
                                 ? 'bg-emerald-600 text-white'
+                                : isFull
+                                ? 'bg-rose-100 border border-rose-300 text-rose-600'
                                 : 'border-2 border-slate-300 text-transparent'
                             }`}
                           >
-                            <Check className="w-3.5 h-3.5" />
+                            {isSelected ? (
+                              <Check className="w-3.5 h-3.5" />
+                            ) : isFull ? (
+                              <Lock className="w-3 h-3 text-rose-600" />
+                            ) : (
+                              <Check className="w-3.5 h-3.5" />
+                            )}
                           </div>
                         </div>
 
-                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-600">
-                          <span>Radius Zonasi: <strong>{s.zoning_radius_km} km</strong></span>
-                          <span>Kuota: <strong>{s.quota_total} Murid</strong></span>
-                        </div>
+                        {isFull && !isSelected ? (
+                          <div className="pt-2 border-t border-rose-100 flex items-center justify-between text-[11px] text-rose-700 bg-rose-50/60 -mx-4 -mb-4 p-2.5 rounded-b-xl">
+                            <span className="font-bold flex items-center gap-1">
+                              <Lock className="w-3 h-3" />
+                              Pendaftaran Ditutup
+                            </span>
+                            <span className="font-medium">Kuota Terpenuhi ({quotaInfo.applicant_count}/{quotaInfo.total_quota})</span>
+                          </div>
+                        ) : (
+                          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-600">
+                            <span>Radius Zonasi: <strong>{s.zoning_radius_km} km</strong></span>
+                            <span>Total Kuota: <strong>{quotaInfo.total_quota} Murid</strong></span>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -2044,11 +2090,16 @@ export const RegistrationWizard: React.FC<Props> = ({
                   className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-emerald-500 outline-none"
                 >
                   <option value="" disabled>-- Pilih Madrasah Tujuan --</option>
-                  {schools.map((s) => (
-                    <option key={s.school_id} value={s.school_id}>
-                      {s.school_name} ({s.level}) - Kode: {s.school_code || s.school_id} - Radius {s.zoning_radius_km} km
-                    </option>
-                  ))}
+                  {schools.map((s) => {
+                    const qInfo = storageService.getSchoolApplicantCount(s.school_id, activeRegNumber);
+                    const isFull = qInfo.is_full && application?.school_id !== s.school_id;
+                    return (
+                      <option key={s.school_id} value={s.school_id} disabled={isFull}>
+                        {isFull ? '[KUOTA PENUH] ' : ''}
+                        {s.school_name} ({s.level}) - {isFull ? `Penuh (${qInfo.applicant_count}/${qInfo.total_quota} Murid)` : `Sisa ${qInfo.remaining_slots} Kursi`}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             )}

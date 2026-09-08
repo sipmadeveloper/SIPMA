@@ -634,6 +634,24 @@ function arrayToMap(arr, keyField) {
 }
 
 /**
+ * Ekstraksi Drive File ID dari berbagai bentuk URL Google Drive
+ */
+function extractDriveIdFromAnyUrl(url) {
+  if (!url || typeof url !== "string") return "";
+  var trimmed = String(url).trim();
+  var m1 = trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (m1 && m1[1]) return m1[1];
+  var m2 = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m2 && m2[1]) return m2[1];
+  var m3 = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (m3 && m3[1]) return m3[1];
+  if (trimmed.length >= 20 && trimmed.indexOf("/") === -1 && trimmed.indexOf(".") === -1 && trimmed.indexOf(" ") === -1 && trimmed.indexOf("DOC-") !== 0) {
+    return trimmed;
+  }
+  return "";
+}
+
+/**
  * 3. UPLOAD DOKUMEN KE GOOGLE DRIVE & SINKRONISASI DATABASE GOOGLE SHEETS
  * Sesuai Urutan Hirarki Otomatis:
  * - Berkas Calon Murid:
@@ -803,11 +821,41 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
     } catch(e) {}
   }
 
-  var rawBase64 = data.base64_data || "";
+  var rawBase64 = String(data.base64_data || "");
   var base64Content = rawBase64.indexOf(",") > -1 ? rawBase64.split(",")[1] : rawBase64;
+  // Clean base64 string: convert spaces to +, strip whitespace, ensure 4-byte padding
+  base64Content = base64Content.replace(/\s/g, "").replace(/ /g, "+");
+  var pad = base64Content.length % 4;
+  if (pad === 2) base64Content += "==";
+  else if (pad === 3) base64Content += "=";
+
   var decoded = Utilities.base64Decode(base64Content);
   
-  var mimeType = data.mime_type || "application/octet-stream";
+  // Inspect magic bytes to guarantee 100% genuine MIME type & prevent file corruption in Drive
+  var mimeType = String(data.mime_type || "").toLowerCase().trim();
+  var ext = "";
+
+  if (decoded && decoded.length >= 4) {
+    var b0 = decoded[0] & 0xFF;
+    var b1 = decoded[1] & 0xFF;
+    var b2 = decoded[2] & 0xFF;
+    var b3 = decoded[3] & 0xFF;
+
+    if (b0 === 0x89 && b1 === 0x50 && b2 === 0x4E && b3 === 0x47) {
+      mimeType = "image/png";
+      ext = "png";
+    } else if (b0 === 0xFF && b1 === 0xD8) {
+      mimeType = "image/jpeg";
+      ext = "jpg";
+    } else if (b0 === 0x25 && b1 === 0x50 && b2 === 0x44 && b3 === 0x46) {
+      mimeType = "application/pdf";
+      ext = "pdf";
+    } else if (b0 === 0x52 && b1 === 0x49 && b2 === 0x46 && b3 === 0x46) {
+      mimeType = "image/webp";
+      ext = "webp";
+    }
+  }
+
   if (!mimeType || mimeType === "application/octet-stream") {
     if (rawBase64.indexOf("data:image/jpeg") === 0 || rawBase64.indexOf("data:image/jpg") === 0) mimeType = "image/jpeg";
     else if (rawBase64.indexOf("data:image/png") === 0) mimeType = "image/png";
@@ -815,16 +863,28 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
     else if (rawBase64.indexOf("data:application/pdf") === 0) mimeType = "application/pdf";
   }
 
-  var ext = "pdf";
-  if (data.file_name && data.file_name.indexOf(".") > -1) {
-    var parts = data.file_name.split(".");
-    ext = parts[parts.length - 1].toLowerCase();
-  } else if (mimeType.indexOf("image/jpeg") > -1 || mimeType.indexOf("image/jpg") > -1) {
-    ext = "jpg";
-  } else if (mimeType.indexOf("image/png") > -1) {
-    ext = "png";
-  } else if (mimeType.indexOf("image/webp") > -1) {
-    ext = "webp";
+  if (!ext) {
+    if (data.file_name && data.file_name.indexOf(".") > -1) {
+      var parts = data.file_name.split(".");
+      ext = parts[parts.length - 1].toLowerCase();
+    } else if (mimeType.indexOf("jpeg") > -1 || mimeType.indexOf("jpg") > -1) {
+      ext = "jpg";
+    } else if (mimeType.indexOf("png") > -1) {
+      ext = "png";
+    } else if (mimeType.indexOf("webp") > -1) {
+      ext = "webp";
+    } else if (mimeType.indexOf("pdf") > -1) {
+      ext = "pdf";
+    } else if (docType === "foto" || docType === "pas_foto" || docType === "foto_profil") {
+      ext = "jpg";
+      mimeType = "image/jpeg";
+    } else if (isSchoolLogo || isAppLogo) {
+      ext = "png";
+      mimeType = "image/png";
+    } else {
+      ext = "pdf";
+      mimeType = "application/pdf";
+    }
   }
 
   var fileId = "";
@@ -861,6 +921,17 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
       fileId = file.getId();
       fileUrl = file.getUrl();
       directThumbnailUrl = "https://lh3.googleusercontent.com/d/" + fileId;
+
+      // Hapus berkas lama bernama sama di folder tujuan agar tidak menumpuk
+      try {
+        var sameFiles = destFolder.getFilesByName(cleanFileName);
+        while (sameFiles.hasNext()) {
+          var sf = sameFiles.next();
+          if (sf.getId() !== fileId) {
+            try { sf.setTrashed(true); } catch(e) {}
+          }
+        }
+      } catch(e) {}
     } else {
       fileId = "LOCAL_STORAGE";
       fileUrl = "";
@@ -877,13 +948,31 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
   var docId = "DOC-" + Utilities.getUuid().substring(0, 8);
   var existingRows = docSheet.getDataRange().getValues();
   var foundRowIndex = -1;
+  var oldSheetDriveFileId = "";
+
   for (var r = 1; r < existingRows.length; r++) {
     if (String(existingRows[r][1]).trim() === String(data.registration_number).trim() &&
         String(existingRows[r][2]).trim() === docType) {
       foundRowIndex = r + 1;
       docId = String(existingRows[r][0]); // Pertahankan docId asli
+      oldSheetDriveFileId = String(existingRows[r][5] || "").trim();
       break;
     }
+  }
+
+  // Bersihkan berkas lama di Google Drive jika ada berkas sebelumnya yang tergantikan
+  if (oldSheetDriveFileId && oldSheetDriveFileId.length > 5 && oldSheetDriveFileId !== fileId && oldSheetDriveFileId !== "LOCAL_STORAGE") {
+    try {
+      var oldFDoc = DriveApp.getFileById(oldSheetDriveFileId);
+      if (oldFDoc && !oldFDoc.isTrashed()) oldFDoc.setTrashed(true);
+    } catch(e) {}
+  }
+  var clientOldDriveId = String(data.old_drive_file_id || "").trim();
+  if (clientOldDriveId && clientOldDriveId.length > 5 && clientOldDriveId !== fileId && clientOldDriveId !== "LOCAL_STORAGE") {
+    try {
+      var oldFClient = DriveApp.getFileById(clientOldDriveId);
+      if (oldFClient && !oldFClient.isTrashed()) oldFClient.setTrashed(true);
+    } catch(e) {}
   }
 
   var docRowData = [
@@ -905,20 +994,38 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
     docSheet.appendRow(docRowData);
   }
 
-  // 6. Pembaruan Foto Profil di Sheet Users untuk Akun Pengguna / Admin
-  if (isAccountFile && directThumbnailUrl) {
+  // 6. Pembaruan Foto Profil di Sheet Users untuk Akun Pengguna / Siswa / Admin
+  var isAnyPhoto = isAccountFile || docType === "foto" || docType === "pas_foto" || docType === "foto_profil";
+  if (isAnyPhoto && directThumbnailUrl) {
     var userSheet = ss.getSheetByName(SHEETS.USERS);
     if (userSheet && userSheet.getLastRow() > 1) {
       var userRows = userSheet.getDataRange().getValues();
       var targetAccId = String(data.account_id || data.user_id || data.registration_number || "").trim();
       var targetAccName = String(data.account_name || data.student_name || "").trim();
+      var targetReg = String(data.registration_number || "").trim();
+
       for (var u = 1; u < userRows.length; u++) {
         var rowUserId = String(userRows[u][0]).trim();
         var rowReg = String(userRows[u][1]).trim();
         var rowName = String(userRows[u][2]).trim();
         var rowEmail = String(userRows[u][3]).trim();
-        if ((targetAccId && (rowUserId === targetAccId || rowReg === targetAccId || rowEmail === targetAccId)) ||
-            (targetAccName && rowName.toLowerCase() === targetAccName.toLowerCase())) {
+
+        var matchesUser = false;
+        if (targetAccId && (rowUserId === targetAccId || rowReg === targetAccId || rowEmail === targetAccId)) {
+          matchesUser = true;
+        } else if (targetReg && (rowReg === targetReg || rowUserId === targetReg)) {
+          matchesUser = true;
+        } else if (targetAccName && rowName.toLowerCase() === targetAccName.toLowerCase()) {
+          matchesUser = true;
+        }
+
+        if (matchesUser) {
+          // Bersihkan file foto lama dari Drive jika ada
+          var prevUserPhoto = String(userRows[u][11] || "").trim();
+          var prevUserPhotoId = extractDriveIdFromAnyUrl(prevUserPhoto);
+          if (prevUserPhotoId && prevUserPhotoId.length > 5 && prevUserPhotoId !== fileId && prevUserPhotoId !== "LOCAL_STORAGE") {
+            try { DriveApp.getFileById(prevUserPhotoId).setTrashed(true); } catch(e) {}
+          }
           // Kolom ke-12 adalah photo_url di Sheet Users
           userSheet.getRange(u + 1, 12).setValue(directThumbnailUrl);
           break;
@@ -928,12 +1035,22 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
   }
 
   // 7. Pembaruan Pas Foto Calon Murid di Sheet Students (Kolom ke-19)
-  if ((docType === "foto" || docType === "pas_foto" || docType === "foto_profil") && directThumbnailUrl) {
+  if (isAnyPhoto && directThumbnailUrl) {
     var studentSheet = ss.getSheetByName(SHEETS.STUDENTS);
     if (studentSheet && studentSheet.getLastRow() > 1) {
       var studentRows = studentSheet.getDataRange().getValues();
+      var regTarget = String(data.registration_number || data.account_id || "").trim();
       for (var s = 1; s < studentRows.length; s++) {
-        if (String(studentRows[s][2]).trim() === String(data.registration_number).trim() || String(studentRows[s][0]).trim() === String(data.registration_number).trim()) {
+        var sReg = String(studentRows[s][2]).trim();
+        var sId = String(studentRows[s][0]).trim();
+        if ((regTarget && (sReg === regTarget || sId === regTarget)) ||
+            (cleanStudentName && String(studentRows[s][5]).trim().toLowerCase() === cleanStudentName.toLowerCase())) {
+          // Bersihkan file foto murid lama dari Drive jika ada
+          var prevStdPhoto = String(studentRows[s][18] || "").trim();
+          var prevStdPhotoId = extractDriveIdFromAnyUrl(prevStdPhoto);
+          if (prevStdPhotoId && prevStdPhotoId.length > 5 && prevStdPhotoId !== fileId && prevStdPhotoId !== "LOCAL_STORAGE") {
+            try { DriveApp.getFileById(prevStdPhotoId).setTrashed(true); } catch(e) {}
+          }
           studentSheet.getRange(s + 1, 19).setValue(directThumbnailUrl);
           break;
         }
@@ -949,6 +1066,12 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
       for (var sc = 1; sc < schRows.length; sc++) {
         if (String(schRows[sc][0]).trim() === String(data.school_id || data.registration_number).trim() || 
             String(schRows[sc][1]).trim().toLowerCase() === String(data.school_name).trim().toLowerCase()) {
+          // Bersihkan logo lama madrasah dari Drive jika ada
+          var prevSchLogo = String(schRows[sc][23] || "").trim();
+          var prevSchLogoId = extractDriveIdFromAnyUrl(prevSchLogo);
+          if (prevSchLogoId && prevSchLogoId.length > 5 && prevSchLogoId !== fileId && prevSchLogoId !== "LOCAL_STORAGE") {
+            try { DriveApp.getFileById(prevSchLogoId).setTrashed(true); } catch(e) {}
+          }
           schSheet.getRange(sc + 1, 24).setValue(directThumbnailUrl);
           break;
         }
@@ -964,6 +1087,12 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
       var foundLogoSett = false;
       for (var st = 1; st < settRows.length; st++) {
         if (settRows[st][0] === "app_logo") {
+          // Bersihkan logo aplikasi lama dari Drive jika ada
+          var prevAppLogo = String(settRows[st][1] || "").trim();
+          var prevAppLogoId = extractDriveIdFromAnyUrl(prevAppLogo);
+          if (prevAppLogoId && prevAppLogoId.length > 5 && prevAppLogoId !== fileId && prevAppLogoId !== "LOCAL_STORAGE") {
+            try { DriveApp.getFileById(prevAppLogoId).setTrashed(true); } catch(e) {}
+          }
           settSheet.getRange(st + 1, 2).setValue(directThumbnailUrl);
           foundLogoSett = true;
           break;
@@ -1097,44 +1226,119 @@ function handleDeleteApplication(data, spreadsheetId, rootFolderId) {
 }
 
 /**
- * 5. HAPUS SATU DOKUMEN / FILE SPESIFIK DARI DRIVE & SHEETS
+ * 5. HAPUS SATU DOKUMEN / FILE SPESIFIK DARI DRIVE & SHEETS SECARA CASCADE
  */
 function handleDeleteFile(data, spreadsheetId) {
-  var driveFileId = data ? data.drive_file_id : "";
+  var driveFileId = data ? (data.drive_file_id || extractDriveIdFromAnyUrl(data.file_url)) : "";
   var documentId = data ? data.document_id : "";
   var regNumber = data ? data.registration_number : "";
+  var docType = data ? String(data.document_type || "").trim() : "";
+  var isAccount = data ? (data.is_account === true || data.logo_type === "user") : false;
+  var isSchool = data ? (data.is_school_logo === true || data.logo_type === "school") : false;
+  var isApp = data ? (data.is_app_logo === true || data.logo_type === "app") : false;
   var deleted = false;
-
-  if (driveFileId && driveFileId.length > 5) {
-    try {
-      var f = DriveApp.getFileById(driveFileId);
-      if (f) {
-        f.setTrashed(true);
-        deleted = true;
-      }
-    } catch(e) {}
-  }
 
   var targetId = spreadsheetId || SPREADSHEET_ID;
   var ss = SpreadsheetApp.openById(targetId);
   var docSheet = ss.getSheetByName(SHEETS.DOCUMENTS);
 
+  // Jika driveFileId belum ada, cari barisnya di Sheet Documents
   if (docSheet && docSheet.getLastRow() > 1) {
     var docRows = docSheet.getDataRange().getValues();
     for (var r = docRows.length - 1; r >= 1; r--) {
       var match = false;
       if (documentId && String(docRows[r][0]).trim() === String(documentId).trim()) match = true;
       if (driveFileId && String(docRows[r][5]).trim() === String(driveFileId).trim()) match = true;
+      if (regNumber && docType && String(docRows[r][1]).trim() === String(regNumber).trim() && String(docRows[r][2]).trim() === docType) match = true;
       if (match) {
+        if (!driveFileId) {
+          driveFileId = String(docRows[r][5]).trim();
+        }
+        if (!docType) {
+          docType = String(docRows[r][2]).trim();
+        }
+        if (!regNumber) {
+          regNumber = String(docRows[r][1]).trim();
+        }
         docSheet.deleteRow(r + 1);
         break;
       }
     }
   }
 
+  // Hapus berkas dari Google Drive secara permanen / trash
+  if (driveFileId && driveFileId.length > 5 && driveFileId !== "LOCAL_STORAGE") {
+    try {
+      var f = DriveApp.getFileById(driveFileId);
+      if (f && !f.isTrashed()) {
+        f.setTrashed(true);
+        deleted = true;
+      }
+    } catch(e) {}
+  }
+
+  // Jika foto profil akun / foto siswa yang dihapus, bersihkan di Sheet Users & Students
+  var isPhoto = isAccount || docType === "foto" || docType === "pas_foto" || docType === "foto_profil";
+  if (isPhoto) {
+    var studentSheet = ss.getSheetByName(SHEETS.STUDENTS);
+    if (studentSheet && studentSheet.getLastRow() > 1) {
+      var sRows = studentSheet.getDataRange().getValues();
+      for (var s = 1; s < sRows.length; s++) {
+        var sReg = String(sRows[s][2]).trim();
+        var sPhoto = String(sRows[s][18]).trim();
+        if ((regNumber && sReg === String(regNumber).trim()) || (driveFileId && sPhoto.indexOf(driveFileId) !== -1)) {
+          studentSheet.getRange(s + 1, 19).setValue("");
+        }
+      }
+    }
+    var userSheet = ss.getSheetByName(SHEETS.USERS);
+    if (userSheet && userSheet.getLastRow() > 1) {
+      var uRows = userSheet.getDataRange().getValues();
+      var accId = data ? String(data.account_id || regNumber || "").trim() : "";
+      for (var u = 1; u < uRows.length; u++) {
+        var uId = String(uRows[u][0]).trim();
+        var uReg = String(uRows[u][1]).trim();
+        var uPhoto = String(uRows[u][11]).trim();
+        if ((accId && (uId === accId || uReg === accId)) || (driveFileId && uPhoto.indexOf(driveFileId) !== -1)) {
+          userSheet.getRange(u + 1, 12).setValue("");
+        }
+      }
+    }
+  }
+
+  // Jika logo madrasah dihapus, bersihkan di Sheet Schools
+  if (isSchool || docType === "logo_sekolah") {
+    var schSheet = ss.getSheetByName(SHEETS.SCHOOLS);
+    if (schSheet && schSheet.getLastRow() > 1) {
+      var scRows = schSheet.getDataRange().getValues();
+      var schId = data ? String(data.school_id || "").trim() : "";
+      for (var sc = 1; sc < scRows.length; sc++) {
+        var rowSchId = String(scRows[sc][0]).trim();
+        var rowSchLogo = String(scRows[sc][23]).trim();
+        if ((schId && rowSchId === schId) || (driveFileId && rowSchLogo.indexOf(driveFileId) !== -1)) {
+          schSheet.getRange(sc + 1, 24).setValue("");
+        }
+      }
+    }
+  }
+
+  // Jika logo aplikasi dihapus, bersihkan di Sheet Settings
+  if (isApp || docType === "logo_aplikasi") {
+    var settSheet = ss.getSheetByName(SHEETS.SETTINGS);
+    if (settSheet && settSheet.getLastRow() > 1) {
+      var settRows = settSheet.getDataRange().getValues();
+      for (var st = 1; st < settRows.length; st++) {
+        if (settRows[st][0] === "app_logo") {
+          settSheet.getRange(st + 1, 2).setValue("");
+          break;
+        }
+      }
+    }
+  }
+
   return {
     success: true,
-    message: "File berhasil dihapus dari Google Drive dan database Documents.",
+    message: "File berhasil dihapus dari Google Drive dan database Google Sheets.",
     drive_file_id: driveFileId,
     deleted_from_drive: deleted
   };

@@ -6,7 +6,7 @@ export type VerificationStatus = 'menunggu' | 'perlu_perbaikan' | 'terverifikasi
 
 export type SelectionStatus = 'menunggu' | 'lulus' | 'tidak_lulus';
 
-export type ApplicationStatus = 'draft' | 'submitted' | 'perlu_perbaikan' | 'terverifikasi' | 'lulus' | 'tidak_lulus';
+export type ApplicationStatus = 'draft' | 'submitted' | 'perlu_perbaikan' | 'terverifikasi' | 'lulus' | 'tidak_lulus' | 'ditolak';
 
 export interface User {
   user_id: string;
@@ -139,6 +139,7 @@ export interface DocumentItem {
   file_size_bytes?: number;
   mime_type?: string;
   drive_file_id?: string;
+  old_drive_file_id?: string;
   drive_url?: string;
   local_url?: string;
   file_data_base64?: string; // for preview / upload transfer
@@ -181,6 +182,7 @@ export interface Application {
   // Auto-Reroute / Pelimpahan Kuota Otomatis
   original_school_id?: string;
   is_auto_rerouted?: boolean;
+  transferred_by_student?: boolean;
   reroute_reason?: string;
   rerouted_at?: string;
   transfer_history?: {

@@ -32,6 +32,7 @@ import { PrintBuktiPendaftaran } from './PrintBuktiPendaftaran';
 import { DispensationLetterModal } from './DispensationLetterModal';
 import { AcceptanceLetterModal } from './AcceptanceLetterModal';
 import { StudentProfileView } from './StudentProfileView';
+import { RejectedSchoolSelectionCard } from './RejectedSchoolSelectionCard';
 import { useFeedback } from '../../context/FeedbackContext';
 import { storageService } from '../../services/storageService';
 
@@ -135,6 +136,13 @@ export const StudentDashboard: React.FC<Props> = ({
           icon: CheckCircle2,
           desc: 'Selamat! Anda dinyatakan LULUS seleksi penerimaan murid baru di madrasah pilihan.',
         };
+      case 'ditolak':
+        return {
+          label: 'BERKAS DITOLAK',
+          bg: 'bg-rose-100 text-rose-800 border-rose-300',
+          icon: XCircle,
+          desc: application.verification_notes || 'Mohon maaf, berkas pendaftaran Anda tidak memenuhi kriteria penerimaan madrasah asal.',
+        };
       case 'tidak_lulus':
         return {
           label: 'TIDAK LULUS SELEKSI',
@@ -176,6 +184,11 @@ export const StudentDashboard: React.FC<Props> = ({
   const statusInfo = getStatusBadge();
   const StatusIcon = statusInfo.icon;
 
+  const isRejected =
+    application.verification_status === 'ditolak' ||
+    application.final_status === 'ditolak' ||
+    (application.final_status === 'tidak_lulus' && application.selection_status === 'tidak_lulus');
+
   // Timeline steps
   const timelineSteps = [
     { title: 'Pembuatan Akun', status: 'completed' },
@@ -184,7 +197,7 @@ export const StudentDashboard: React.FC<Props> = ({
     {
       title: 'Verifikasi Berkas',
       status:
-        application.final_status === 'perlu_perbaikan'
+        application.final_status === 'perlu_perbaikan' || isRejected
           ? 'warning'
           : application.final_status === 'terverifikasi' || application.final_status === 'lulus' || application.final_status === 'tidak_lulus'
           ? 'completed'
@@ -428,6 +441,18 @@ export const StudentDashboard: React.FC<Props> = ({
             </button>
           </div>
         </div>
+      )}
+
+      {/* Rejected School Manual Selection Card */}
+      {isRejected && application.final_status !== 'lulus' && (
+        <RejectedSchoolSelectionCard
+          application={application}
+          currentSchool={safeSchool}
+          schools={storageService.getSchools()}
+          onTransferred={(_newRegNum, _targetSchool) => {
+            onRefresh();
+          }}
+        />
       )}
 
       {/* Main Status Notification Card */}

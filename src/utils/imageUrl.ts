@@ -1,22 +1,54 @@
 /**
- * Automatically optimizes, resizes, and compresses uploaded images client-side
- * before sending to server or Google Drive. Ensures lightning-fast upload (<1s)
- * and eliminates payload size limit errors across all devices.
+ * Reads uploaded files preserving 100% of original fidelity, dimensions, color profiles,
+ * and metadata without any lossy canvas downsampling or compression artifacts.
+ * Fulfills the requirement: "langsung masuk database google drive tanpa merusak kualitas file aslinya".
+ */
+export async function readFileAsOriginalBase64(
+  file: File
+): Promise<{ base64: string; fileName: string; mimeType: string; sizeKb: number }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result as string;
+      const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      resolve({
+        base64,
+        fileName: cleanName,
+        mimeType: file.type || 'application/octet-stream',
+        sizeKb: Math.round(file.size / 1024),
+      });
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Prepares uploaded images client-side for Google Drive and database persistence.
+ * By default preserves 100% original uncompressed image quality without downscaling
+ * or canvas recompression artifacts.
  */
 export async function compressAndResizeImage(
   file: File,
-  maxWidth = 1000,
-  maxHeight = 1000,
-  quality = 0.85
+  _maxWidth = 1600,
+  _maxHeight = 1600,
+  _quality = 1.0,
+  forceCompress = false
 ): Promise<{ base64: string; fileName: string; mimeType: string }> {
-  // If SVG, preserve raw vector data
-  if (file.type === 'image/svg+xml') {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve({ base64: reader.result as string, fileName: file.name, mimeType: 'image/svg+xml' });
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+  // Preserve 100% original quality without destructive compression
+  if (!forceCompress) {
+    const orig = await readFileAsOriginalBase64(file);
+    return {
+      base64: orig.base64,
+      fileName: orig.fileName,
+      mimeType: orig.mimeType,
+    };
+  }
+
+  // If SVG or non-image, return raw
+  if (file.type === 'image/svg+xml' || !file.type.startsWith('image/')) {
+    const orig = await readFileAsOriginalBase64(file);
+    return orig;
   }
 
   return new Promise((resolve, reject) => {
@@ -25,8 +57,8 @@ export async function compressAndResizeImage(
       const img = new Image();
       img.onload = () => {
         let { width, height } = img;
-        if (width > maxWidth || height > maxHeight) {
-          const ratio = Math.min(maxWidth / width, maxHeight / height);
+        if (width > _maxWidth || height > _maxHeight) {
+          const ratio = Math.min(_maxWidth / width, _maxHeight / height);
           width = Math.round(width * ratio);
           height = Math.round(height * ratio);
         }
@@ -44,10 +76,9 @@ export async function compressAndResizeImage(
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Retain PNG transparency if original is PNG, otherwise use WebP or JPEG
         const isPng = file.type === 'image/png';
         const mimeType = isPng ? 'image/png' : 'image/jpeg';
-        const base64 = canvas.toDataURL(mimeType, quality);
+        const base64 = canvas.toDataURL(mimeType, _quality);
         const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
         resolve({ base64, fileName: cleanName, mimeType });
       };

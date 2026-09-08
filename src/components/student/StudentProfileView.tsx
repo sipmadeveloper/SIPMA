@@ -118,8 +118,15 @@ export const StudentProfileView: React.FC<Props> = ({
       storageService.saveStudentProfile(updatedProfile);
       setStudent(updatedProfile);
 
-      // If photoUrl exists, also save/sync to documents table so it appears everywhere
-      if (photoUrl) {
+      // If photoUrl is empty, delete previous photo doc and clean Drive
+      if (!photoUrl) {
+        const existingDocs = storageService.getDocumentsByRegistration(student.registration_number);
+        const fotoDoc = existingDocs.find((d) => d.document_type === 'foto' || d.document_type === 'pas_foto');
+        if (fotoDoc) {
+          storageService.deleteDocument(fotoDoc.document_id);
+        }
+      } else if (photoUrl.startsWith('data:image')) {
+        // Only trigger upload if a newly selected photo base64 exists
         const standardFileName = formatStandardDocumentFileName({
           accountName: student.name,
           registrationNumber: student.registration_number,
@@ -135,10 +142,15 @@ export const StudentProfileView: React.FC<Props> = ({
             ...fotoDoc,
             file_name: standardFileName,
             file_data_base64: photoUrl,
+            old_drive_file_id: fotoDoc.drive_file_id || '',
             upload_time: new Date().toISOString(),
           };
           storageService.saveDocument(updatedDoc, student.name);
-          storageService.uploadDocumentToDrive(updatedDoc, student.name);
+          storageService.uploadDocumentToDrive(updatedDoc, student.name, undefined, {
+            isAccount: true,
+            accountName: student.name,
+            accountId: currentUser?.user_id,
+          });
         } else {
           const newFotoDoc: DocumentItem = {
             document_id: `DOC-FOTO-${Date.now()}`,
@@ -153,7 +165,11 @@ export const StudentProfileView: React.FC<Props> = ({
             verification_status: 'menunggu',
           };
           storageService.saveDocument(newFotoDoc, student.name);
-          storageService.uploadDocumentToDrive(newFotoDoc, student.name);
+          storageService.uploadDocumentToDrive(newFotoDoc, student.name, undefined, {
+            isAccount: true,
+            accountName: student.name,
+            accountId: currentUser?.user_id,
+          });
         }
       }
 

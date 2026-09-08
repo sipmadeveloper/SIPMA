@@ -403,6 +403,14 @@ export const ApplicantList: React.FC<Props> = ({
                             🔄 Pelimpahan Otomatis
                           </span>
                         )}
+                        {app.transferred_by_student && (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] bg-indigo-100 text-indigo-800 font-bold px-1.5 py-0.5 rounded mt-0.5"
+                            title={app.reroute_reason || 'Pilihan mandiri murid setelah tertolak dari madrasah sebelumnya'}
+                          >
+                            ✨ Pilihan Mandiri Murid
+                          </span>
+                        )}
                       </td>
                       <td className="py-3.5 px-4">
                         <div className="font-bold text-slate-900">{student?.name || '-'}</div>

@@ -11,15 +11,25 @@ export function formatStandardDocumentFileName(params: {
   documentTitle?: string;
   originalFileName?: string;
   extension?: string;
+  mimeType?: string;
 }): string {
   // Extract extension
-  let ext = params.extension || '';
+  let ext = (params.extension || '').replace(/^\./, '').toLowerCase();
   if (!ext && params.originalFileName) {
     const extMatch = params.originalFileName.match(/\.([a-zA-Z0-9]+)$/);
     if (extMatch) {
       ext = extMatch[1].toLowerCase();
     }
   }
+
+  // Derive from mimeType if available
+  if (!ext && params.mimeType) {
+    if (params.mimeType.includes('jpeg') || params.mimeType.includes('jpg')) ext = 'jpg';
+    else if (params.mimeType.includes('png')) ext = 'png';
+    else if (params.mimeType.includes('webp')) ext = 'webp';
+    else if (params.mimeType.includes('pdf')) ext = 'pdf';
+  }
+
   if (!ext) {
     if (
       params.documentType === 'foto' ||

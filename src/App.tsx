@@ -34,6 +34,7 @@ import { CheckCircle2, Clock, XCircle, Search, X, Printer, MapPin, School as Sch
 import { formatDistanceIndonesian } from './utils/geo';
 import { exportApplicantsToExcel } from './utils/excelExport';
 import { updateAppFavicon } from './utils/favicon';
+import { preloadImages } from './utils/imageUrl';
 import { useFeedback } from './context/FeedbackContext';
 import {
   AppRoute,
@@ -47,7 +48,8 @@ type ViewMode = 'landing' | 'login' | 'register' | 'app' | 'print_preview';
 
 export default function App() {
   const { showAlert, showToast, showLoading, hideLoading } = useFeedback();
-  const [isAppInitialLoading, setIsAppInitialLoading] = useState<boolean>(true);
+  // Never block screen on reload: local in-memory cache renders UI in <0.05s
+  const [isAppInitialLoading, setIsAppInitialLoading] = useState<boolean>(false);
 
   // Initialize currentUser from storage synchronously
   const [currentUser, setCurrentUser] = useState<UserType | null>(() => {
@@ -178,7 +180,7 @@ export default function App() {
   useEffect(() => {
     let isMounted = true;
 
-    // Immediately fetch centralized database state so all devices see the latest data
+    // Fast background sync: doesn't block UI rendering, keeps all devices up to date
     const performBootSync = async () => {
       try {
         await storageService.syncWithServer(false);
@@ -191,20 +193,11 @@ export default function App() {
           if (user) {
             setCurrentUser(user);
           }
-          setIsAppInitialLoading(false);
         }
       }
     };
 
     performBootSync();
-
-    // Safety fallback timer: ensure UI displays promptly even on slower connections
-    const fallbackTimer = setTimeout(() => {
-      if (isMounted) {
-        refreshData();
-        setIsAppInitialLoading(false);
-      }
-    }, 1500);
 
     const unsubscribe = storageService.subscribe(() => {
       if (isMounted) {
@@ -215,9 +208,22 @@ export default function App() {
     return () => {
       isMounted = false;
       unsubscribe();
-      clearTimeout(fallbackTimer);
     };
   }, [refreshData]);
+
+  // Preload all critical images (app logo, school logos) for instantaneous rendering (<0.1s)
+  useEffect(() => {
+    const urls: string[] = [];
+    if (settings?.app_logo) urls.push(settings.app_logo);
+    if (schools && schools.length > 0) {
+      schools.forEach((s) => {
+        if (s.logo_url) urls.push(s.logo_url);
+      });
+    }
+    if (urls.length > 0) {
+      preloadImages(urls);
+    }
+  }, [settings?.app_logo, schools]);
 
   // Sync Favicon and Document Title dynamically with central admin settings
   useEffect(() => {

@@ -509,22 +509,70 @@ class StorageService {
         }
       }
 
-      // 2. Users
+      // 2. Users - protect existing photo_url from being wiped by empty strings
       if (d.users && Array.isArray(d.users)) {
+        const localUsers = this.getUsers();
+        const mergedUsers = d.users.map((serverUser: User) => {
+          const localMatch = localUsers.find(
+            (lu) => lu.user_id === serverUser.user_id || 
+                    (lu.email && serverUser.email && lu.email.toLowerCase() === serverUser.email.toLowerCase()) ||
+                    (lu.registration_number && serverUser.registration_number && lu.registration_number === serverUser.registration_number)
+          );
+          return {
+            ...serverUser,
+            photo_url: serverUser.photo_url || localMatch?.photo_url || '',
+          };
+        });
+
+        // Also ensure any locally created user not yet in server is preserved
+        for (const lu of localUsers) {
+          if (!mergedUsers.some((mu) => mu.user_id === lu.user_id || (lu.email && mu.email && lu.email.toLowerCase() === mu.email.toLowerCase()))) {
+            mergedUsers.push(lu);
+          }
+        }
+
         const prevStr = localStorage.getItem(STORAGE_KEYS.USERS);
-        const newStr = JSON.stringify(d.users);
-        this.memCache.users = d.users;
+        const newStr = JSON.stringify(mergedUsers);
+        this.memCache.users = mergedUsers;
         if (prevStr !== newStr) {
           localStorage.setItem(STORAGE_KEYS.USERS, newStr);
           changed = true;
         }
+
+        // Keep current session user synchronized with photo_url
+        const currentSession = this.getCurrentUser();
+        if (currentSession) {
+          const matched = mergedUsers.find((u) => u.user_id === currentSession.user_id || u.email === currentSession.email);
+          if (matched && (matched.photo_url || currentSession.photo_url)) {
+            const effectivePhoto = matched.photo_url || currentSession.photo_url;
+            if (currentSession.photo_url !== effectivePhoto || currentSession.name !== matched.name) {
+              currentSession.photo_url = effectivePhoto;
+              currentSession.name = matched.name;
+              this.setCurrentUser(currentSession);
+            }
+          }
+        }
       }
 
-      // 3. Students
+      // 3. Students - protect existing photo_url
       if (d.students && typeof d.students === 'object') {
+        const localStudents = this.getStudentsMap();
+        const mergedStudents: Record<string, StudentProfile> = { ...d.students };
+        for (const [reg, sProfile] of Object.entries(mergedStudents)) {
+          const localS = localStudents[reg];
+          if (localS?.photo_url && !sProfile.photo_url) {
+            sProfile.photo_url = localS.photo_url;
+          }
+        }
+        for (const [reg, localS] of Object.entries(localStudents)) {
+          if (!mergedStudents[reg]) {
+            mergedStudents[reg] = localS;
+          }
+        }
+
         const prevStr = localStorage.getItem(STORAGE_KEYS.STUDENTS);
-        const newStr = JSON.stringify(d.students);
-        this.memCache.students = d.students;
+        const newStr = JSON.stringify(mergedStudents);
+        this.memCache.students = mergedStudents;
         if (prevStr !== newStr) {
           localStorage.setItem(STORAGE_KEYS.STUDENTS, newStr);
           changed = true;
@@ -836,10 +884,18 @@ class StorageService {
         users.push(updatedUser);
       }
 
+      this.memCache.users = users;
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
 
       // Always update active session
       this.setCurrentUser(updatedUser);
+
+      // Immediately synchronize profile updates to server database
+      fetch('/api/user/update-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: updatedUser.user_id, updates }),
+      }).catch(() => {});
 
       this.addAuditLog(
         'USER_PROFILE_UPDATE',
@@ -887,6 +943,7 @@ class StorageService {
             updated_at: now,
           };
           users.push(newUser);
+          this.memCache.users = users;
           localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
           this.setCurrentUser(newUser);
           this.triggerAutoSync();
@@ -904,6 +961,7 @@ class StorageService {
       user.password_hash = newPassword.trim();
       user.updated_at = new Date().toISOString();
       users[index] = user;
+      this.memCache.users = users;
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
 
       if (currentUser && (currentUser.user_id === userId || currentUser.email === user.email)) {
@@ -1515,6 +1573,55 @@ class StorageService {
     return { user: newUser, registration_number: regNum };
   }
 
+  /**
+   * Mengembalikan status kuota dan jumlah murid yang mendaftar aktif di madrasah.
+   * Bila jumlah murid yang mendaftar sudah pas/mencapai kuota keseluruhan yang dibutuhkan,
+   * maka madrasah secara otomatis tidak dapat dipilih untuk mendaftar.
+   */
+  getSchoolApplicantCount(
+    schoolId: string,
+    currentRegNum?: string
+  ): {
+    total_quota: number;
+    applicant_count: number;
+    remaining_slots: number;
+    is_full: boolean;
+  } {
+    const school = this.getSchoolById(schoolId);
+    if (!school) {
+      return { total_quota: 0, applicant_count: 0, remaining_slots: 0, is_full: true };
+    }
+
+    const totalQuota =
+      school.quota_total && school.quota_total > 0
+        ? school.quota_total
+        : ((school.quota_zonasi || 0) +
+            (school.quota_afirmasi || 0) +
+            (school.quota_prestasi || 0) +
+            (school.quota_mutasi || 0)) || 100;
+
+    // Ambil pendaftar aktif (pendaftar yang ditolak tidak memakan slot kuota aktif)
+    const apps = this.getApplications().filter((a) => {
+      if (a.school_id !== schoolId) return false;
+      // Kecualikan diri sendiri jika calon murid memang sedang melihat madrasah yang sudah dipilihnya
+      if (currentRegNum && a.registration_number === currentRegNum) return false;
+      // Murid yang status verifikasinya ditolak tidak dihitung
+      if (a.verification_status === 'ditolak') return false;
+      return true;
+    });
+
+    const applicantCount = apps.length;
+    const remainingSlots = Math.max(0, totalQuota - applicantCount);
+    const isFull = applicantCount >= totalQuota;
+
+    return {
+      total_quota: totalQuota,
+      applicant_count: applicantCount,
+      remaining_slots: remainingSlots,
+      is_full: isFull,
+    };
+  }
+
   assignStudentTargetSchool(
     currentRegNum: string,
     newSchoolId: string
@@ -1522,6 +1629,14 @@ class StorageService {
     const school = this.getSchoolById(newSchoolId);
     if (!school) {
       throw new Error('Madrasah tujuan tidak ditemukan.');
+    }
+
+    // Validasi kuota pendaftaran madrasah: Jika sudah penuh, tidak dapat dipilih
+    const quotaInfo = this.getSchoolApplicantCount(newSchoolId, currentRegNum);
+    if (quotaInfo.is_full) {
+      throw new Error(
+        `Madrasah ${school.school_name} tidak dapat dipilih karena jumlah murid yang mendaftar sudah memenuhi kuota total yang dibutuhkan (${quotaInfo.applicant_count}/${quotaInfo.total_quota} murid). Silakan pilih madrasah lain yang masih membuka slot pendaftaran.`
+      );
     }
 
     const apps = this.getApplications();
@@ -1786,6 +1901,18 @@ class StorageService {
   async uploadLogoToDrive(logoType: 'school' | 'app' | 'user', id: string, name: string, base64Data: string, fileName?: string): Promise<string> {
     if (!base64Data || !base64Data.startsWith('data:image/')) return base64Data;
     const settings = this.getSettings();
+
+    let oldDriveFileId = '';
+    if (logoType === 'app') {
+      oldDriveFileId = settings.app_logo ? (settings.app_logo.match(/[\/=]([a-zA-Z0-9_-]{25,})/) || [])[1] || '' : '';
+    } else if (logoType === 'school') {
+      const sch = this.getSchools().find((s) => s.school_id === id || s.school_name === name);
+      oldDriveFileId = sch?.logo_url ? (sch.logo_url.match(/[\/=]([a-zA-Z0-9_-]{25,})/) || [])[1] || '' : '';
+    } else if (logoType === 'user') {
+      const usr = this.getUsers().find((u) => u.user_id === id || u.email === id);
+      oldDriveFileId = usr?.photo_url ? (usr.photo_url.match(/[\/=]([a-zA-Z0-9_-]{25,})/) || [])[1] || '' : '';
+    }
+
     try {
       const res = await fetch('/api/gas/upload-logo', {
         method: 'POST',
@@ -1796,6 +1923,7 @@ class StorageService {
           name,
           base64_data: base64Data,
           file_name: fileName || `${logoType}_logo_${id}.png`,
+          old_drive_file_id: oldDriveFileId,
           gas_web_app_url: settings.gas_web_app_url,
           spreadsheet_id: settings.spreadsheet_id,
           drive_root_folder_id: settings.drive_root_folder_id,
@@ -1804,6 +1932,21 @@ class StorageService {
       if (res.ok) {
         const json = await res.json();
         if (json.success && json.logo_url) {
+          if (logoType === 'user') {
+            const currentUser = this.getCurrentUser();
+            if (currentUser && (currentUser.user_id === id || currentUser.email === id)) {
+              currentUser.photo_url = json.logo_url;
+              this.setCurrentUser(currentUser);
+            }
+            const users = this.getUsers();
+            const uIdx = users.findIndex((u) => u.user_id === id || u.email === id);
+            if (uIdx >= 0) {
+              users[uIdx].photo_url = json.logo_url;
+              this.memCache.users = users;
+              localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+            }
+            this.notifySubscribers('user_updated');
+          }
           return json.logo_url;
         }
       }
@@ -1819,6 +1962,7 @@ class StorageService {
    */
   async uploadAppLogo(base64Data: string, fileName?: string): Promise<{ success: boolean; logo_url: string; message: string }> {
     const settings = this.getSettings();
+    const oldDriveFileId = settings.app_logo ? (settings.app_logo.match(/[\/=]([a-zA-Z0-9_-]{25,})/) || [])[1] || '' : '';
     try {
       const res = await fetch('/api/gas/upload-logo', {
         method: 'POST',
@@ -1829,6 +1973,7 @@ class StorageService {
           name: settings.app_name || 'SIPMA',
           base64_data: base64Data,
           file_name: fileName || 'logo_sipma.png',
+          old_drive_file_id: oldDriveFileId,
           gas_web_app_url: settings.gas_web_app_url,
           spreadsheet_id: settings.spreadsheet_id,
           drive_root_folder_id: settings.drive_root_folder_id,
@@ -1865,6 +2010,8 @@ class StorageService {
    */
   async uploadSchoolLogo(schoolId: string, schoolName: string, base64Data: string, fileName?: string): Promise<{ success: boolean; logo_url: string; message: string }> {
     const settings = this.getSettings();
+    const sch = this.getSchools().find((s) => s.school_id === schoolId || s.school_name === schoolName);
+    const oldDriveFileId = sch?.logo_url ? (sch.logo_url.match(/[\/=]([a-zA-Z0-9_-]{25,})/) || [])[1] || '' : '';
     try {
       const res = await fetch('/api/gas/upload-logo', {
         method: 'POST',
@@ -1875,6 +2022,7 @@ class StorageService {
           name: schoolName,
           base64_data: base64Data,
           file_name: fileName || `school_${schoolId}.png`,
+          old_drive_file_id: oldDriveFileId,
           gas_web_app_url: settings.gas_web_app_url,
           spreadsheet_id: settings.spreadsheet_id,
           drive_root_folder_id: settings.drive_root_folder_id,
@@ -1905,6 +2053,8 @@ class StorageService {
    */
   async uploadUserAvatar(userId: string, userName: string, base64Data: string): Promise<{ success: boolean; photo_url: string; message: string }> {
     const settings = this.getSettings();
+    const usr = this.getUsers().find((u) => u.user_id === userId || u.email === userId);
+    const oldDriveFileId = usr?.photo_url ? (usr.photo_url.match(/[\/=]([a-zA-Z0-9_-]{25,})/) || [])[1] || '' : '';
     try {
       const res = await fetch('/api/gas/upload-logo', {
         method: 'POST',
@@ -1915,6 +2065,7 @@ class StorageService {
           name: userName,
           base64_data: base64Data,
           file_name: `avatar_${userId}.png`,
+          old_drive_file_id: oldDriveFileId,
           gas_web_app_url: settings.gas_web_app_url,
           spreadsheet_id: settings.spreadsheet_id,
           drive_root_folder_id: settings.drive_root_folder_id,
@@ -2094,9 +2245,14 @@ class StorageService {
 
   // ================= STUDENTS & REGISTRATION DETAILS =================
   getStudentsMap(): Record<string, StudentProfile> {
+    if (this.memCache.students) {
+      return this.memCache.students;
+    }
     try {
       const data = localStorage.getItem(STORAGE_KEYS.STUDENTS);
-      return data ? JSON.parse(data) : { ...INITIAL_STUDENTS };
+      const parsed = data ? JSON.parse(data) : { ...INITIAL_STUDENTS };
+      this.memCache.students = parsed;
+      return parsed;
     } catch {
       return { ...INITIAL_STUDENTS };
     }
@@ -2118,6 +2274,7 @@ class StorageService {
     try {
       const map = this.getStudentsMap();
       map[profile.registration_number] = profile;
+      this.memCache.students = map;
       localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(map));
 
       // Sync with user record and current user session
@@ -2130,6 +2287,7 @@ class StorageService {
         if (profile.photo_url) users[uIndex].photo_url = profile.photo_url;
         if (profile.phone) users[uIndex].phone = profile.phone;
         users[uIndex].updated_at = new Date().toISOString();
+        this.memCache.users = users;
         localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
       }
 
@@ -2144,6 +2302,23 @@ class StorageService {
         if (profile.phone) currentUser.phone = profile.phone;
         this.setCurrentUser(currentUser);
       }
+
+      // Sync directly to server
+      if (profile.photo_url) {
+        fetch('/api/user/update-profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: profile.registration_number || profile.user_id,
+            updates: {
+              photo_url: profile.photo_url,
+              name: profile.name,
+              phone: profile.phone,
+              registration_number: profile.registration_number,
+            },
+          }),
+        }).catch(() => {});
+      }
     } catch {
       // ignore
     }
@@ -2152,9 +2327,14 @@ class StorageService {
   }
 
   getParentsMap(): Record<string, ParentData> {
+    if (this.memCache.parents) {
+      return this.memCache.parents;
+    }
     try {
       const data = localStorage.getItem(STORAGE_KEYS.PARENTS);
-      return data ? JSON.parse(data) : { ...INITIAL_PARENTS };
+      const parsed = data ? JSON.parse(data) : { ...INITIAL_PARENTS };
+      this.memCache.parents = parsed;
+      return parsed;
     } catch {
       return { ...INITIAL_PARENTS };
     }
@@ -2175,6 +2355,7 @@ class StorageService {
     try {
       const map = this.getParentsMap();
       map[registrationNumber] = data;
+      this.memCache.parents = map;
       localStorage.setItem(STORAGE_KEYS.PARENTS, JSON.stringify(map));
     } catch {
       // ignore
@@ -2184,9 +2365,14 @@ class StorageService {
   }
 
   getSchoolOriginsMap(): Record<string, SchoolOrigin> {
+    if (this.memCache.school_origins) {
+      return this.memCache.school_origins;
+    }
     try {
       const data = localStorage.getItem(STORAGE_KEYS.SCHOOL_ORIGINS);
-      return data ? JSON.parse(data) : { ...INITIAL_SCHOOL_ORIGINS };
+      const parsed = data ? JSON.parse(data) : { ...INITIAL_SCHOOL_ORIGINS };
+      this.memCache.school_origins = parsed;
+      return parsed;
     } catch {
       return { ...INITIAL_SCHOOL_ORIGINS };
     }
@@ -2207,6 +2393,7 @@ class StorageService {
     try {
       const map = this.getSchoolOriginsMap();
       map[registrationNumber] = data;
+      this.memCache.school_origins = map;
       localStorage.setItem(STORAGE_KEYS.SCHOOL_ORIGINS, JSON.stringify(map));
     } catch {
       // ignore
@@ -2216,9 +2403,14 @@ class StorageService {
   }
 
   getAddressesMap(): Record<string, AddressData> {
+    if (this.memCache.addresses) {
+      return this.memCache.addresses;
+    }
     try {
       const data = localStorage.getItem(STORAGE_KEYS.ADDRESSES);
-      return data ? JSON.parse(data) : { ...INITIAL_ADDRESSES };
+      const parsed = data ? JSON.parse(data) : { ...INITIAL_ADDRESSES };
+      this.memCache.addresses = parsed;
+      return parsed;
     } catch {
       return { ...INITIAL_ADDRESSES };
     }
@@ -2239,6 +2431,7 @@ class StorageService {
     try {
       const map = this.getAddressesMap();
       map[registrationNumber] = data;
+      this.memCache.addresses = map;
       localStorage.setItem(STORAGE_KEYS.ADDRESSES, JSON.stringify(map));
     } catch {
       // ignore
@@ -2249,9 +2442,14 @@ class StorageService {
 
   // ================= APPLICATIONS =================
   getApplications(): Application[] {
+    if (this.memCache.applications) {
+      return this.memCache.applications;
+    }
     try {
       const data = localStorage.getItem(STORAGE_KEYS.APPLICATIONS);
-      return data ? JSON.parse(data) : [...INITIAL_APPLICATIONS];
+      const parsed = data ? JSON.parse(data) : [...INITIAL_APPLICATIONS];
+      this.memCache.applications = parsed;
+      return parsed;
     } catch {
       return [...INITIAL_APPLICATIONS];
     }
@@ -2272,6 +2470,7 @@ class StorageService {
       } else {
         apps.push(app);
       }
+      this.memCache.applications = apps;
       localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(apps));
     } catch {
       // ignore
@@ -2386,9 +2585,14 @@ class StorageService {
 
   // ================= DOCUMENTS =================
   getDocuments(): DocumentItem[] {
+    if (this.memCache.documents) {
+      return this.memCache.documents;
+    }
     try {
       const data = localStorage.getItem(STORAGE_KEYS.DOCUMENTS);
-      return data ? JSON.parse(data) : [...INITIAL_DOCUMENTS];
+      const parsed = data ? JSON.parse(data) : [...INITIAL_DOCUMENTS];
+      this.memCache.documents = parsed;
+      return parsed;
     } catch {
       return [...INITIAL_DOCUMENTS];
     }
@@ -2401,12 +2605,22 @@ class StorageService {
   saveDocument(doc: DocumentItem, studentName?: string, schoolName?: string): void {
     try {
       const docs = this.getDocuments();
-      const index = docs.findIndex((d) => d.document_id === doc.document_id);
+      const index = docs.findIndex(
+        (d) =>
+          d.document_id === doc.document_id ||
+          (d.registration_number === doc.registration_number && d.document_type === doc.document_type)
+      );
       if (index >= 0) {
-        docs[index] = doc;
+        const prev = docs[index];
+        if (!doc.document_id) doc.document_id = prev.document_id;
+        if (!doc.old_drive_file_id && prev.drive_file_id) {
+          doc.old_drive_file_id = prev.drive_file_id;
+        }
+        docs[index] = { ...prev, ...doc };
       } else {
         docs.push(doc);
       }
+      this.memCache.documents = docs;
       localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(docs));
     } catch {
       // ignore
@@ -2443,6 +2657,7 @@ class StorageService {
           is_account: isAccount,
           account_name: options?.accountName || studentName,
           account_id: options?.accountId || doc.registration_number,
+          old_drive_file_id: doc.old_drive_file_id || doc.drive_file_id || '',
           gas_web_app_url: settings.gas_web_app_url,
           spreadsheet_id: settings.spreadsheet_id,
           drive_root_folder_id: settings.drive_root_folder_id,
@@ -2479,7 +2694,7 @@ class StorageService {
               file_size_bytes: doc.file_size_bytes,
               mime_type: doc.mime_type,
               base64_data: doc.file_data_base64,
-              old_drive_file_id: doc.drive_file_id || '',
+              old_drive_file_id: doc.old_drive_file_id || doc.drive_file_id || '',
               is_account: isAccount,
               account_name: options?.accountName || studentName || 'Pengguna',
               account_id: options?.accountId || doc.registration_number || '',
@@ -2505,16 +2720,25 @@ class StorageService {
         if (driveFileId) docs[idx].drive_file_id = driveFileId;
         if (cdnUrl) docs[idx].drive_url = cdnUrl;
         if (fileInfo.file_name) docs[idx].file_name = fileInfo.file_name;
+        this.memCache.documents = docs;
         localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(docs));
         this.notifySubscribers('data_mutated');
       }
 
-      // Also update student photo if it was a photo document
-      if (doc.document_type === 'foto' || doc.document_type === 'pas_foto') {
-        const student = this.getStudentProfile(doc.registration_number);
-        if (student && cdnUrl) {
-          student.photo_url = cdnUrl;
-          this.saveStudentProfile(student);
+      // Also update student photo and user profile if it was a photo document
+      const isPhoto = doc.document_type === 'foto' || doc.document_type === 'pas_foto' || doc.document_type === 'foto_profil' || isAccount;
+      if (isPhoto && cdnUrl) {
+        const reg = doc.registration_number || options?.accountId;
+        if (reg) {
+          const student = this.getStudentProfile(reg);
+          if (student) {
+            student.photo_url = cdnUrl;
+            this.saveStudentProfile(student);
+          }
+        }
+        const currentUser = this.getCurrentUser();
+        if (currentUser && (currentUser.registration_number === reg || currentUser.user_id === options?.accountId || isAccount)) {
+          this.updateUserProfile(currentUser.user_id, { photo_url: cdnUrl });
         }
       }
 
@@ -2548,9 +2772,26 @@ class StorageService {
       const allDocs = this.getDocuments();
       const targetDoc = allDocs.find((d) => d.document_id === documentId);
       const remainingDocs = allDocs.filter((d) => d.document_id !== documentId);
+      
+      this.memCache.documents = remainingDocs;
       localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(remainingDocs));
 
       if (targetDoc) {
+        // If deleted file is student/user photo, clear photo_url in profiles
+        const isPhoto = targetDoc.document_type === 'foto' || targetDoc.document_type === 'pas_foto' || targetDoc.document_type === 'foto_profil';
+        if (isPhoto && targetDoc.registration_number) {
+          const student = this.getStudentProfile(targetDoc.registration_number);
+          if (student) {
+            student.photo_url = '';
+            this.saveStudentProfile(student);
+          }
+          const currentUser = this.getCurrentUser();
+          if (currentUser && (currentUser.registration_number === targetDoc.registration_number || currentUser.photo_url === targetDoc.drive_url)) {
+            currentUser.photo_url = '';
+            this.updateUserProfile(currentUser.user_id, { photo_url: '' });
+          }
+        }
+
         // Trigger server & GAS Drive cleanup
         fetch('/api/gas/delete-file', {
           method: 'POST',
@@ -2559,6 +2800,8 @@ class StorageService {
             document_id: documentId,
             drive_file_id: targetDoc.drive_file_id,
             registration_number: targetDoc.registration_number,
+            document_type: targetDoc.document_type,
+            file_url: targetDoc.drive_url || targetDoc.local_url,
             local_url: targetDoc.local_url,
           }),
         }).catch((e) => console.warn('Delete document file sync error:', e));
@@ -2622,13 +2865,11 @@ class StorageService {
     } else if (status === 'terverifikasi') {
       app.final_status = 'terverifikasi';
     } else {
-      app.final_status = 'tidak_lulus';
-      // Auto-reroute rejected applications to nearest school with quota
-      this.autoRerouteApplication(
-        registrationNumber,
-        verifiedBy,
-        `Dialihkan otomatis karena berkas/persyaratan tidak lulus verifikasi di madrasah pilihan awal. Catatan: ${notes || 'Tidak memenuhi kuota/kriteria'}`
-      );
+      // Ditolak: Tetapkan status ditolak dan buka kunci agar calon murid dapat memilih madrasah baru di akunnya.
+      // TIDAK ADA AUTO-REROUTE OTOMATIS: Murid harus mengonfirmasi pilihan madrasah tujuannya sendiri.
+      app.verification_status = 'ditolak';
+      app.final_status = 'ditolak';
+      app.is_locked = false;
     }
     this.saveApplication(app);
     this.addAuditLog(
@@ -2917,7 +3158,7 @@ class StorageService {
     registrationNumber: string,
     status: 'lulus' | 'tidak_lulus' | 'menunggu',
     processedBy: string,
-    autoReroute: boolean = true
+    autoReroute: boolean = false
   ): { rerouteResult?: any } {
     const app = this.getApplication(registrationNumber);
     if (!app) throw new Error('Aplikasi tidak ditemukan.');
@@ -2936,6 +3177,7 @@ class StorageService {
     } else if (status === 'tidak_lulus') {
       app.selection_status = 'tidak_lulus';
       app.final_status = 'tidak_lulus';
+      app.is_locked = false; // Buka kunci agar calon murid dapat memilih madrasah tujuan baru
       this.saveApplication(app);
       this.addAuditLog(
         'SELECTION_STATUS_CHANGE',
@@ -2943,7 +3185,8 @@ class StorageService {
         `Status kelulusan diubah menjadi [TIDAK LULUS] oleh ${processedBy}.`
       );
 
-      // AUTOMATIC REROUTE TO NEAREST SCHOOL WITH AVAILABLE QUOTA
+      // TIDAK ADA AUTO-REROUTE OTOMATIS: Murid harus mengonfirmasi pilihan madrasah tujuannya sendiri.
+      // Opsional autoReroute hanya jika dipanggil eksplisit dengan autoReroute === true (default false).
       if (autoReroute) {
         rerouteResult = this.autoRerouteApplication(
           registrationNumber,
@@ -3040,11 +3283,224 @@ class StorageService {
     };
   }
 
+  /**
+   * Memindahkan berkas calon murid yang berstatus ditolak / tidak lulus ke madrasah tujuan baru
+   * yang dipilih secara sadar dan dikonfirmasi oleh murid itu sendiri.
+   * Seluruh data pendaftaran (Application, Student, Parents, School Origin, Address, Documents, User)
+   * dipindahkan ke madrasah tujuan terbarunya dan otomatis muncul di akun operator madrasah baru.
+   */
+  transferRejectedStudentToNewSchool(
+    currentRegNum: string,
+    newSchoolId: string,
+    studentReason?: string
+  ): {
+    success: boolean;
+    message: string;
+    newRegNum: string;
+    targetSchool: School;
+    distance_km: number;
+    updatedApp: Application;
+  } {
+    const app = this.getApplication(currentRegNum);
+    if (!app) {
+      throw new Error('Data pendaftaran calon murid tidak ditemukan.');
+    }
+
+    const targetSchool = this.getSchoolById(newSchoolId);
+    if (!targetSchool) {
+      throw new Error('Madrasah tujuan baru tidak ditemukan.');
+    }
+
+    if (targetSchool.school_id === app.school_id) {
+      throw new Error('Madrasah tujuan baru tidak boleh sama dengan madrasah sebelumnya.');
+    }
+
+    // Validasi kuota madrasah tujuan baru: jika kuota sudah terpenuhi, tidak dapat dipilih
+    const quotaInfo = this.getSchoolApplicantCount(newSchoolId);
+    if (quotaInfo.is_full) {
+      throw new Error(
+        `Madrasah ${targetSchool.school_name} tidak dapat dipilih karena kuota pendaftar sudah penuh (${quotaInfo.applicant_count}/${quotaInfo.total_quota} murid). Silakan pilih madrasah lain yang masih membuka kuota.`
+      );
+    }
+
+    const oldSchool = this.getSchoolById(app.school_id);
+    const oldSchoolName = oldSchool?.school_name || 'Madrasah Sebelumnya';
+    const oldSchoolId = app.school_id;
+
+    // Hitung jarak baru ke madrasah tujuan
+    const studentLat = app.latitude || targetSchool.latitude - 0.005;
+    const studentLon = app.longitude || targetSchool.longitude - 0.005;
+    const newDistance = calculateHaversineDistance(
+      studentLat,
+      studentLon,
+      targetSchool.latitude,
+      targetSchool.longitude
+    );
+    const isZoningCompliant = checkZoningCompliance(newDistance, targetSchool.zoning_radius_km);
+
+    // Format no registrasi baru sesuai kode madrasah tujuan
+    const rawCode = targetSchool.school_code || (targetSchool.school_id ? targetSchool.school_id.replace(/^SCH-/, '') : 'MAN01');
+    const schoolCode = rawCode.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'MAN01';
+    const codePrefix = `SIPMA-${schoolCode}-`;
+
+    let newRegNum = currentRegNum;
+    if (!currentRegNum.startsWith(codePrefix)) {
+      newRegNum = this.generateRegistrationNumber(newSchoolId);
+    }
+
+    // Catat riwayat perpindahan madrasah
+    if (!app.transfer_history) {
+      app.transfer_history = [];
+    }
+    const reasonText =
+      studentReason ||
+      `Pemindahan berkas atas konfirmasi pilihan calon murid setelah status penolakan di ${oldSchoolName}. Berkas dialihkan ke ${targetSchool.school_name}.`;
+
+    app.transfer_history.push({
+      transferred_at: new Date().toISOString(),
+      from_school_id: oldSchoolId,
+      from_school_name: oldSchoolName,
+      to_school_id: targetSchool.school_id,
+      to_school_name: targetSchool.school_name,
+      reason: reasonText,
+      distance_km: newDistance,
+    });
+
+    // Update properti aplikasi
+    app.registration_number = newRegNum;
+    app.original_school_id = app.original_school_id || oldSchoolId;
+    app.school_id = targetSchool.school_id;
+    app.distance_km = newDistance;
+    app.max_distance_km = targetSchool.zoning_radius_km;
+    app.zoning_status = isZoningCompliant ? 'memenuhi' : 'tidak_memenuhi';
+    app.verification_status = 'menunggu';
+    app.selection_status = 'menunggu';
+    app.final_status = 'submitted';
+    app.verification_notes = `[Pemindahan oleh Murid] Berkas berhasil dipindahkan dari ${oldSchoolName} ke ${targetSchool.school_name}. Menunggu verifikasi berkas oleh panitia baru.`;
+    app.is_auto_rerouted = false;
+    app.transferred_by_student = true;
+    app.reroute_reason = reasonText;
+    app.rerouted_at = new Date().toISOString();
+    app.is_locked = true;
+    app.updated_at = new Date().toISOString();
+
+    // Simpan aplikasi
+    const apps = this.getApplications();
+    const appIdx = apps.findIndex((a) => a.registration_number === currentRegNum || (app.user_id && a.user_id === app.user_id));
+    if (appIdx >= 0) {
+      apps[appIdx] = app;
+    } else {
+      apps.push(app);
+    }
+    localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(apps));
+    this.memCache.applications = apps;
+
+    // Update data akun User
+    const users = this.getUsers();
+    const uIndex = users.findIndex(
+      (u) => u.registration_number === currentRegNum || (app.user_id && u.user_id === app.user_id)
+    );
+    if (uIndex >= 0) {
+      users[uIndex].registration_number = newRegNum;
+      users[uIndex].school_id = targetSchool.school_id;
+      users[uIndex].updated_at = new Date().toISOString();
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+      this.memCache.users = users;
+
+      const currentUser = this.getCurrentUser();
+      if (
+        currentUser &&
+        (currentUser.registration_number === currentRegNum || currentUser.user_id === users[uIndex].user_id)
+      ) {
+        this.setCurrentUser({
+          ...currentUser,
+          registration_number: newRegNum,
+          school_id: targetSchool.school_id,
+        });
+      }
+    }
+
+    // Migrasikan profil murid, orang tua, asal sekolah, alamat, dan dokumen jika no. registrasi berubah
+    const students = this.getStudentsMap();
+    if (students[currentRegNum]) {
+      const studentData = { ...students[currentRegNum], registration_number: newRegNum };
+      students[newRegNum] = studentData;
+      if (currentRegNum !== newRegNum) {
+        delete students[currentRegNum];
+      }
+      localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
+      this.memCache.students = students;
+    }
+
+    if (currentRegNum !== newRegNum) {
+      const parents = this.getParentsMap();
+      if (parents[currentRegNum]) {
+        parents[newRegNum] = parents[currentRegNum];
+        delete parents[currentRegNum];
+        localStorage.setItem(STORAGE_KEYS.PARENTS, JSON.stringify(parents));
+        this.memCache.parents = parents;
+      }
+
+      const origins = this.getSchoolOriginsMap();
+      if (origins[currentRegNum]) {
+        origins[newRegNum] = origins[currentRegNum];
+        delete origins[currentRegNum];
+        localStorage.setItem(STORAGE_KEYS.SCHOOL_ORIGINS, JSON.stringify(origins));
+        this.memCache.school_origins = origins;
+      }
+
+      const addresses = this.getAddressesMap();
+      if (addresses[currentRegNum]) {
+        addresses[newRegNum] = addresses[currentRegNum];
+        delete addresses[currentRegNum];
+        localStorage.setItem(STORAGE_KEYS.ADDRESSES, JSON.stringify(addresses));
+        this.memCache.addresses = addresses;
+      }
+
+      const docs = this.getDocuments();
+      let docsChanged = false;
+      docs.forEach((doc) => {
+        if (doc.registration_number === currentRegNum) {
+          doc.registration_number = newRegNum;
+          docsChanged = true;
+        }
+      });
+      if (docsChanged) {
+        localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(docs));
+        this.memCache.documents = docs;
+      }
+    }
+
+    // Catat Audit Log
+    this.addAuditLog(
+      'TRANSFER_APPLICATION_BY_STUDENT',
+      newRegNum,
+      `Calon murid mengonfirmasi pemindahan tujuan dari [${oldSchoolName}] ke [${targetSchool.school_name}]. Jarak baru: ${formatDistanceIndonesian(newDistance)}. Berkas langsung masuk ke antrean verifikasi madrasah tujuan baru.`
+    );
+
+    // Picu sinkronisasi otomatis ke Google Sheets & Server
+    this.triggerAutoSync();
+
+    return {
+      success: true,
+      message: `Pendaftaran berhasil dialihkan ke ${targetSchool.school_name}. Seluruh data & berkas Anda telah tersimpan di database madrasah baru dan siap diverifikasi oleh panitia PPDB ${targetSchool.school_name}.`,
+      newRegNum,
+      targetSchool,
+      distance_km: newDistance,
+      updatedApp: app,
+    };
+  }
+
   // ================= ANNOUNCEMENTS =================
   getAnnouncements(): Announcement[] {
+    if (this.memCache.announcements) {
+      return this.memCache.announcements;
+    }
     try {
       const data = localStorage.getItem(STORAGE_KEYS.ANNOUNCEMENTS);
-      return data ? JSON.parse(data) : [...INITIAL_ANNOUNCEMENTS];
+      const parsed = data ? JSON.parse(data) : [...INITIAL_ANNOUNCEMENTS];
+      this.memCache.announcements = parsed;
+      return parsed;
     } catch {
       return [...INITIAL_ANNOUNCEMENTS];
     }
@@ -3059,6 +3515,7 @@ class StorageService {
       } else {
         list.unshift(announcement);
       }
+      this.memCache.announcements = list;
       localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(list));
     } catch {
       // ignore
@@ -3071,6 +3528,7 @@ class StorageService {
   deleteAnnouncement(id: string): void {
     try {
       const list = this.getAnnouncements().filter((a) => a.announcement_id !== id);
+      this.memCache.announcements = list;
       localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(list));
     } catch {
       // ignore
@@ -3081,9 +3539,14 @@ class StorageService {
 
   // ================= AUDIT LOGS =================
   getAuditLogs(): AuditLog[] {
+    if (this.memCache.audit_logs) {
+      return this.memCache.audit_logs;
+    }
     try {
       const data = localStorage.getItem(STORAGE_KEYS.AUDIT_LOGS);
-      return data ? JSON.parse(data) : [...INITIAL_AUDIT_LOGS];
+      const parsed = data ? JSON.parse(data) : [...INITIAL_AUDIT_LOGS];
+      this.memCache.audit_logs = parsed;
+      return parsed;
     } catch {
       return [...INITIAL_AUDIT_LOGS];
     }
@@ -3107,6 +3570,7 @@ class StorageService {
       logs.unshift(newLog);
       // Keep max 500 logs
       if (logs.length > 500) logs.pop();
+      this.memCache.audit_logs = logs;
       localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(logs));
     } catch {
       // ignore

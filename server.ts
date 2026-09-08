@@ -233,14 +233,30 @@ function mergeGasDataIntoServerDb(gasData: any): boolean {
   let mutated = false;
 
   if (gasData.users && Array.isArray(gasData.users) && gasData.users.length > 0) {
-    serverDb.users = gasData.users.filter((u: any) => u.role !== 'calon_murid' || !isDemoStudentRecord(u?.registration_number));
+    const existingUsers = serverDb.users || [];
+    serverDb.users = gasData.users
+      .filter((u: any) => u.role !== 'calon_murid' || !isDemoStudentRecord(u?.registration_number))
+      .map((gu: any) => {
+        const ex = existingUsers.find((eu: any) => eu.user_id === gu.user_id || eu.email === gu.email || (eu.registration_number && eu.registration_number === gu.registration_number));
+        return {
+          ...gu,
+          // Crucial: preserve existing photo_url if GAS returns empty string
+          photo_url: gu.photo_url || ex?.photo_url || '',
+        };
+      });
     mutated = true;
   }
   if (gasData.students && typeof gasData.students === 'object') {
     const cleanStudents: Record<string, any> = {};
+    const existingStudents = serverDb.students || {};
     for (const [k, v] of Object.entries(gasData.students)) {
       if (!isDemoStudentRecord(k, (v as any)?.student_id)) {
-        cleanStudents[k] = v;
+        const ex = existingStudents[k];
+        cleanStudents[k] = {
+          ...(v as any),
+          // Crucial: preserve existing photo_url if GAS returns empty string
+          photo_url: (v as any)?.photo_url || ex?.photo_url || '',
+        };
       }
     }
     serverDb.students = cleanStudents;
@@ -628,13 +644,27 @@ app.post('/api/data/sync', async (req: Request, res: Response) => {
       serverDb.settings = { ...serverDb.settings, ...payload.settings };
     }
     if (payload.users !== undefined && Array.isArray(payload.users)) {
-      serverDb.users = payload.users.filter((u: any) => u.role !== 'calon_murid' || !isDemoStudentRecord(u?.registration_number));
+      const existingUsers = serverDb.users || [];
+      serverDb.users = payload.users
+        .filter((u: any) => u.role !== 'calon_murid' || !isDemoStudentRecord(u?.registration_number))
+        .map((pu: any) => {
+          const ex = existingUsers.find((eu: any) => eu.user_id === pu.user_id || (eu.email && pu.email && eu.email.toLowerCase() === pu.email.toLowerCase()) || (eu.registration_number && pu.registration_number && eu.registration_number === pu.registration_number));
+          return {
+            ...pu,
+            photo_url: pu.photo_url || ex?.photo_url || '',
+          };
+        });
     }
     if (payload.students !== undefined && typeof payload.students === 'object') {
       const cleanStudents: Record<string, any> = {};
+      const existingStudents = serverDb.students || {};
       for (const [k, v] of Object.entries(payload.students)) {
         if (!isDemoStudentRecord(k, (v as any)?.student_id)) {
-          cleanStudents[k] = v;
+          const ex = existingStudents[k];
+          cleanStudents[k] = {
+            ...(v as any),
+            photo_url: (v as any)?.photo_url || ex?.photo_url || '',
+          };
         }
       }
       serverDb.students = cleanStudents;
@@ -747,11 +777,18 @@ function formatStandardFileName(params: {
   documentType?: string;
   documentTitle?: string;
   originalFileName?: string;
+  mimeType?: string;
 }): string {
   let ext = '';
   if (params.originalFileName) {
     const m = params.originalFileName.match(/\.([a-zA-Z0-9]+)$/);
     if (m) ext = m[1].toLowerCase();
+  }
+  if (!ext && params.mimeType) {
+    if (params.mimeType.includes('jpeg') || params.mimeType.includes('jpg')) ext = 'jpg';
+    else if (params.mimeType.includes('png')) ext = 'png';
+    else if (params.mimeType.includes('webp')) ext = 'webp';
+    else if (params.mimeType.includes('pdf')) ext = 'pdf';
   }
   if (!ext) {
     if (
@@ -812,6 +849,37 @@ function formatStandardFileName(params: {
   return `${rawName}_${rawReg}_${docLabel}.${ext}`;
 }
 
+export function extractDriveFileId(url?: string): string {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  const m1 = trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  if (m1 && m1[1]) return m1[1];
+  const m2 = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m2 && m2[1]) return m2[1];
+  const m3 = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (m3 && m3[1]) return m3[1];
+  if (trimmed.length >= 20 && !trimmed.includes('/') && !trimmed.includes('.') && !trimmed.includes(' ') && !trimmed.startsWith('DOC-')) {
+    return trimmed;
+  }
+  return '';
+}
+
+export function cleanupLocalFileAndCache(driveFileId?: string, localUrl?: string) {
+  if (driveFileId) {
+    memoryImageCache.delete(driveFileId);
+    try {
+      const diskCache = path.join(UPLOAD_DIR, `cache_drive_${driveFileId}.jpg`);
+      if (fs.existsSync(diskCache)) fs.unlinkSync(diskCache);
+    } catch (e) {}
+  }
+  if (localUrl) {
+    try {
+      const p = path.join(UPLOAD_DIR, path.basename(localUrl));
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    } catch (e) {}
+  }
+}
+
 // 5. Direct Document Upload Proxy to Google Drive via GAS & Local Mirror
 app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
   lastFileUploadTimestamp = Date.now();
@@ -826,7 +894,7 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Data dokumen tidak ditemukan.' });
     }
 
-    // Check if replacing an existing document to cleanup old files
+    // Check if replacing an existing document to cleanup old files from Drive & disk
     if (!serverDb.documents) serverDb.documents = [];
     const docIdx = serverDb.documents.findIndex(
       (d: any) =>
@@ -834,40 +902,92 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
         (d.registration_number === doc.registration_number && d.document_type === doc.document_type)
     );
     const prevDoc = docIdx >= 0 ? serverDb.documents[docIdx] : null;
+    const oldDriveId = extractDriveFileId(
+      prevDoc?.drive_file_id || prevDoc?.drive_url || doc.old_drive_file_id || req.body.old_drive_file_id
+    );
 
-    if (prevDoc && prevDoc.local_url) {
-      try {
-        const oldPath = path.join(UPLOAD_DIR, path.basename(prevDoc.local_url));
-        if (fs.existsSync(oldPath)) {
-          fs.unlinkSync(oldPath);
-        }
-      } catch (e) {}
+    if (oldDriveId) {
+      cleanupLocalFileAndCache(oldDriveId, prevDoc?.local_url);
+    } else if (prevDoc && prevDoc.local_url) {
+      cleanupLocalFileAndCache('', prevDoc.local_url);
     }
 
-    const standardFileName = formatStandardFileName({
+    // Preserve original document_id to avoid duplicating rows
+    if (prevDoc && prevDoc.document_id) {
+      doc.document_id = prevDoc.document_id;
+    }
+
+    let localUrl = '';
+    let detectedMime = doc.mime_type || '';
+    let detectedExt = '';
+
+    if (doc.file_data_base64) {
+      try {
+        const raw = String(doc.file_data_base64);
+        const matches = raw.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        let base64Data = matches ? matches[2] : raw.includes(',') ? raw.split(',')[1] : raw;
+        base64Data = base64Data.replace(/\s/g, '').replace(/ /g, '+');
+        const pad = base64Data.length % 4;
+        if (pad === 2) base64Data += '==';
+        else if (pad === 3) base64Data += '=';
+
+        const buffer = Buffer.from(base64Data, 'base64');
+
+        // Inspect magic bytes to prevent file corruption
+        if (buffer.length >= 4) {
+          const b0 = buffer[0];
+          const b1 = buffer[1];
+          const b2 = buffer[2];
+          const b3 = buffer[3];
+          if (b0 === 0x89 && b1 === 0x50 && b2 === 0x4E && b3 === 0x47) {
+            detectedMime = 'image/png';
+            detectedExt = 'png';
+          } else if (b0 === 0xFF && b1 === 0xD8) {
+            detectedMime = 'image/jpeg';
+            detectedExt = 'jpg';
+          } else if (b0 === 0x25 && b1 === 0x50 && b2 === 0x44 && b3 === 0x46) {
+            detectedMime = 'application/pdf';
+            detectedExt = 'pdf';
+          } else if (b0 === 0x52 && b1 === 0x49 && b2 === 0x46 && b3 === 0x46) {
+            detectedMime = 'image/webp';
+            detectedExt = 'webp';
+          }
+        }
+
+        const standardFileName = formatStandardFileName({
+          accountName: student_name || doc.student_name,
+          registrationNumber: doc.registration_number,
+          documentType: doc.document_type,
+          documentTitle: doc.document_title,
+          originalFileName: doc.file_name,
+          mimeType: detectedMime,
+        });
+
+        const safeDocName = detectedExt && !standardFileName.endsWith(`.${detectedExt}`)
+          ? standardFileName.replace(/\.[a-zA-Z0-9]+$/, `.${detectedExt}`)
+          : standardFileName;
+
+        const filePath = path.join(UPLOAD_DIR, safeDocName);
+        fs.writeFileSync(filePath, buffer);
+        localUrl = `/uploads/${safeDocName}`;
+
+        // Update clean properties for upload
+        doc.file_name = safeDocName;
+        doc.mime_type = detectedMime || doc.mime_type;
+      } catch (localErr) {
+        console.warn('Gagal menyimpan salinan file lokal:', localErr);
+      }
+    }
+
+    const standardFileName = doc.file_name || formatStandardFileName({
       accountName: student_name || doc.student_name,
       registrationNumber: doc.registration_number,
       documentType: doc.document_type,
       documentTitle: doc.document_title,
       originalFileName: doc.file_name,
+      mimeType: detectedMime,
     });
-
-    let localUrl = '';
     const safeDocName = standardFileName;
-
-    if (doc.file_data_base64) {
-      try {
-        const raw = doc.file_data_base64;
-        const matches = raw.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-        const base64Data = matches ? matches[2] : raw.includes(',') ? raw.split(',')[1] : raw;
-        const buffer = Buffer.from(base64Data, 'base64');
-        const filePath = path.join(UPLOAD_DIR, safeDocName);
-        fs.writeFileSync(filePath, buffer);
-        localUrl = `/uploads/${safeDocName}`;
-      } catch (localErr) {
-        console.warn('Gagal menyimpan salinan file lokal:', localErr);
-      }
-    }
 
     // Clean up previous local file copy if re-uploading
     if (prevDoc && prevDoc.file_name && prevDoc.file_name !== safeDocName) {
@@ -901,7 +1021,7 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
             file_size_bytes: doc.file_size_bytes,
             mime_type: doc.mime_type,
             base64_data: doc.file_data_base64,
-            old_drive_file_id: prevDoc?.drive_file_id || '',
+            old_drive_file_id: oldDriveId || prevDoc?.drive_file_id || '',
             is_account: isAccount,
             account_name: req.body.account_name || student_name || 'Pengguna',
             account_id: req.body.account_id || doc.registration_number || '',
@@ -914,7 +1034,14 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
           body: JSON.stringify(uploadPayload),
         });
 
-        const gasResult = await response.json();
+        const resText = await response.text();
+        let gasResult: any = null;
+        try {
+          gasResult = JSON.parse(resText);
+        } catch {
+          console.warn('GAS File Upload response non-JSON');
+        }
+
         if (gasResult && gasResult.success) {
           gasSuccess = true;
           const fInfo = gasResult.file || gasResult.data || {};
@@ -952,16 +1079,24 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
       serverDb.documents.push(updatedDocItem);
     }
 
-    // If it's a student photo, update student photo_url & user record
-    if (doc.document_type === 'foto' || doc.document_type === 'pas_foto') {
+    // If it's a student or user photo, update student photo_url & user record across both tables
+    const isPhotoDoc = doc.document_type === 'foto' || doc.document_type === 'pas_foto' || doc.document_type === 'foto_profil' || req.body.is_account;
+    if (isPhotoDoc) {
       const studentPhotoUrl = effectiveDriveUrl || localUrl;
-      if (serverDb.students && serverDb.students[doc.registration_number]) {
-        serverDb.students[doc.registration_number].photo_url = studentPhotoUrl;
+      const targetReg = doc.registration_number || req.body.account_id;
+      if (serverDb.students && targetReg && serverDb.students[targetReg]) {
+        serverDb.students[targetReg].photo_url = studentPhotoUrl;
       }
       if (serverDb.users) {
-        const u = serverDb.users.find((usr: any) => usr.registration_number === doc.registration_number);
+        const u = serverDb.users.find((usr: any) => 
+          (targetReg && (usr.registration_number === targetReg || usr.user_id === targetReg)) ||
+          (req.body.account_name && usr.name === req.body.account_name)
+        );
         if (u) {
           u.photo_url = studentPhotoUrl;
+          if (u.registration_number && serverDb.students && serverDb.students[u.registration_number]) {
+            serverDb.students[u.registration_number].photo_url = studentPhotoUrl;
+          }
         }
       }
     }
@@ -1144,6 +1279,23 @@ app.post('/api/gas/upload-logo', async (req: Request, res: Response) => {
         const docTitle = isSchool ? `Logo Resmi ${name || 'Madrasah'}` : isAccount ? `Foto Profil ${name || 'Pengguna'}` : 'Logo Aplikasi SIPMA';
         const regNum = isSchool ? (id || 'SCHOOL') : isAccount ? (id || 'USER') : 'SYSTEM';
 
+        // Detect old Drive File ID for cleanup to prevent accumulating abandoned files
+        let oldDriveId = extractDriveFileId(req.body.old_drive_file_id || req.body.old_logo_url);
+        if (!oldDriveId) {
+          if (isSchool && serverDb.schools) {
+            const sch = serverDb.schools.find((s: any) => s.school_id === id);
+            if (sch?.logo_url) oldDriveId = extractDriveFileId(sch.logo_url);
+          } else if (isAccount && serverDb.users) {
+            const usr = serverDb.users.find((u: any) => u.user_id === id || u.email === id);
+            if (usr?.photo_url) oldDriveId = extractDriveFileId(usr.photo_url);
+          } else if (isApp && serverDb.settings?.app_logo) {
+            oldDriveId = extractDriveFileId(serverDb.settings.app_logo);
+          }
+        }
+        if (oldDriveId) {
+          cleanupLocalFileAndCache(oldDriveId);
+        }
+
         const uploadPayload = {
           action: 'uploadDocument',
           spreadsheet_id: ssId,
@@ -1157,6 +1309,7 @@ app.post('/api/gas/upload-logo', async (req: Request, res: Response) => {
             document_title: docTitle,
             file_name: file_name || safeLogoName,
             base64_data: base64_data,
+            old_drive_file_id: oldDriveId || '',
             is_account: isAccount,
             account_name: name || 'Akun Pengguna',
             account_id: id || '',
@@ -1172,7 +1325,14 @@ app.post('/api/gas/upload-logo', async (req: Request, res: Response) => {
           body: JSON.stringify(uploadPayload),
         });
 
-        const gasResult = await response.json();
+        const resText = await response.text();
+        let gasResult: any = null;
+        try {
+          gasResult = JSON.parse(resText);
+        } catch {
+          console.warn('GAS Logo Upload response non-JSON');
+        }
+
         if (gasResult && gasResult.success) {
           gasSuccess = true;
           const fInfo = gasResult.file || gasResult.data || {};
@@ -1198,6 +1358,9 @@ app.post('/api/gas/upload-logo', async (req: Request, res: Response) => {
         const usr = serverDb.users.find((u: any) => u.user_id === id || u.email === id || u.registration_number === id);
         if (usr) {
           usr.photo_url = finalLogoUrl;
+          if (usr.registration_number && serverDb.students && serverDb.students[usr.registration_number]) {
+            serverDb.students[usr.registration_number].photo_url = finalLogoUrl;
+          }
         }
       }
       if (serverDb.students && serverDb.students[id]) {
@@ -1223,6 +1386,58 @@ app.post('/api/gas/upload-logo', async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: `Gagal mengunggah logo: ${err?.message || 'Error'}` });
+  }
+});
+
+// 5a-2. Direct User Profile & Photo Persistence Endpoint
+app.post('/api/user/update-profile', (req: Request, res: Response) => {
+  try {
+    const { user_id, updates } = req.body;
+    if (!user_id || !updates || typeof updates !== 'object') {
+      return res.status(400).json({ success: false, message: 'Invalid payload' });
+    }
+
+    if (!serverDb.users) serverDb.users = [];
+    const idx = serverDb.users.findIndex((u: any) => 
+      u.user_id === user_id || 
+      u.registration_number === user_id || 
+      (u.email && updates.email && u.email.toLowerCase() === updates.email.toLowerCase())
+    );
+
+    let updatedUser: any = null;
+    const now = new Date().toISOString();
+
+    if (idx >= 0) {
+      serverDb.users[idx] = {
+        ...serverDb.users[idx],
+        ...updates,
+        photo_url: updates.photo_url !== undefined && updates.photo_url !== '' ? updates.photo_url : serverDb.users[idx].photo_url,
+        updated_at: now,
+      };
+      updatedUser = serverDb.users[idx];
+    } else {
+      updatedUser = {
+        user_id,
+        ...updates,
+        updated_at: now,
+      };
+      serverDb.users.push(updatedUser);
+    }
+
+    // Also update student profile if applicable
+    const regTarget = updatedUser.registration_number || user_id;
+    if (serverDb.students && regTarget && serverDb.students[regTarget]) {
+      if (updates.photo_url) serverDb.students[regTarget].photo_url = updates.photo_url;
+      if (updates.name) serverDb.students[regTarget].name = updates.name;
+      if (updates.phone) serverDb.students[regTarget].phone = updates.phone;
+    }
+
+    persistServerDb();
+    forwardSyncAllToGas().catch(() => {});
+
+    return res.json({ success: true, message: 'Profil berhasil diperbarui di server.', user: updatedUser });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err?.message || 'Error updating profile' });
   }
 });
 
@@ -1505,34 +1720,102 @@ app.get('/api/gas/test-connection', async (req: Request, res: Response) => {
   }
 });
 
-// 7. Delete Single File/Document from Drive & Server
+// 7. Delete Single File/Document from Drive & Server with full cascade cleanup
 app.post('/api/gas/delete-file', async (req: Request, res: Response) => {
   try {
-    const { drive_file_id, document_id, registration_number, local_url } = req.body;
+    const {
+      drive_file_id,
+      document_id,
+      registration_number,
+      document_type,
+      file_url,
+      local_url,
+      is_account,
+      account_id,
+      is_school_logo,
+      school_id,
+      is_app_logo,
+    } = req.body;
     const settings = serverDb.settings || {};
     const gasUrl = req.body.gas_web_app_url || settings.gas_web_app_url;
     const ssId = req.body.spreadsheet_id || settings.spreadsheet_id;
 
-    // 1. Delete local file from disk if present
-    if (local_url && typeof local_url === 'string') {
-      const fileName = path.basename(local_url);
-      const filePath = path.join(UPLOAD_DIR, fileName);
-      if (fs.existsSync(filePath)) {
-        try { fs.unlinkSync(filePath); } catch (e) {}
+    // 1. Extract Drive ID if not explicitly provided
+    let effectiveDriveId = extractDriveFileId(drive_file_id || file_url);
+
+    // 2. Look up in serverDb.documents if drive ID or docType is missing
+    let docType = document_type;
+    let regNumber = registration_number;
+    if (serverDb.documents && Array.isArray(serverDb.documents)) {
+      const targetDoc = serverDb.documents.find(
+        (d: any) =>
+          (document_id && d.document_id === document_id) ||
+          (effectiveDriveId && (d.drive_file_id === effectiveDriveId || (d.drive_url && d.drive_url.includes(effectiveDriveId)))) ||
+          (registration_number && document_type && d.registration_number === registration_number && d.document_type === document_type)
+      );
+      if (targetDoc) {
+        if (!effectiveDriveId && targetDoc.drive_file_id) effectiveDriveId = targetDoc.drive_file_id;
+        if (!effectiveDriveId && targetDoc.drive_url) effectiveDriveId = extractDriveFileId(targetDoc.drive_url);
+        if (!docType) docType = targetDoc.document_type;
+        if (!regNumber) regNumber = targetDoc.registration_number;
       }
     }
 
-    // 2. Remove document from serverDb
-    if (serverDb.documents) {
+    // 3. Clean up local disk file & in-memory caches
+    cleanupLocalFileAndCache(effectiveDriveId, local_url);
+
+    // 4. Remove document from serverDb
+    if (serverDb.documents && Array.isArray(serverDb.documents)) {
       serverDb.documents = serverDb.documents.filter((d: any) => {
         if (document_id && d.document_id === document_id) return false;
-        if (drive_file_id && d.drive_file_id === drive_file_id) return false;
+        if (effectiveDriveId && (d.drive_file_id === effectiveDriveId || (d.drive_url && d.drive_url.includes(effectiveDriveId)))) return false;
+        if (regNumber && docType && d.registration_number === regNumber && d.document_type === docType) return false;
         return true;
       });
-      persistServerDb();
     }
 
-    // 3. Forward delete action to Google Apps Script if configured
+    // 5. If deleted file was a student/user photo, clear photo_url in students & users
+    const isPhoto = is_account || docType === 'foto' || docType === 'pas_foto' || docType === 'foto_profil' || req.body.logo_type === 'user';
+    if (isPhoto) {
+      if (serverDb.students && Array.isArray(serverDb.students)) {
+        for (const std of serverDb.students) {
+          if ((regNumber && (std.registration_number === regNumber || std.student_id === regNumber)) ||
+              (effectiveDriveId && std.photo_url && std.photo_url.includes(effectiveDriveId))) {
+            std.photo_url = '';
+          }
+        }
+      }
+      if (serverDb.users && Array.isArray(serverDb.users)) {
+        const targetUserId = account_id || regNumber;
+        for (const usr of serverDb.users) {
+          if ((targetUserId && (usr.user_id === targetUserId || usr.email === targetUserId || usr.registration_number === targetUserId)) ||
+              (effectiveDriveId && usr.photo_url && usr.photo_url.includes(effectiveDriveId))) {
+            usr.photo_url = '';
+          }
+        }
+      }
+    }
+
+    // 6. If school logo deleted, clear logo_url in schools
+    const isSchool = is_school_logo || docType === 'logo_sekolah' || req.body.logo_type === 'school' || school_id;
+    if (isSchool && serverDb.schools && Array.isArray(serverDb.schools)) {
+      for (const sch of serverDb.schools) {
+        if ((school_id && sch.school_id === school_id) ||
+            (effectiveDriveId && sch.logo_url && sch.logo_url.includes(effectiveDriveId))) {
+          sch.logo_url = '';
+        }
+      }
+    }
+
+    // 7. If app logo deleted, clear app_logo in settings
+    const isApp = is_app_logo || docType === 'logo_aplikasi' || req.body.logo_type === 'app';
+    if (isApp && serverDb.settings) {
+      serverDb.settings.app_logo = '';
+    }
+
+    persistServerDb();
+
+    // 8. Forward delete action to Google Apps Script for Google Drive & Google Sheets cleanup
     let gasResult = null;
     if (gasUrl && gasUrl.startsWith('http')) {
       try {
@@ -1543,9 +1826,16 @@ app.post('/api/gas/delete-file', async (req: Request, res: Response) => {
             action: 'deleteDocument',
             spreadsheet_id: ssId,
             data: {
-              drive_file_id,
+              drive_file_id: effectiveDriveId,
               document_id,
-              registration_number,
+              registration_number: regNumber,
+              document_type: docType,
+              file_url,
+              is_account,
+              account_id,
+              is_school_logo,
+              school_id,
+              is_app_logo,
             },
           }),
         });
@@ -1557,7 +1847,8 @@ app.post('/api/gas/delete-file', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      message: 'Berkas berhasil dihapus dari server dan Google Drive.',
+      message: 'Berkas berhasil dihapus dari Google Drive, Google Sheets, dan server database.',
+      drive_file_id: effectiveDriveId,
       gas_synced: !!gasResult?.success,
     });
   } catch (err: any) {

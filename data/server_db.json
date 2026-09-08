@@ -8,7 +8,7 @@
     "academic_year_label": "2027/2028",
     "app_name": "SIPMA",
     "app_tagline": "Sistem Penerimaan Murid Madrasah",
-    "app_logo": "https://lh3.googleusercontent.com/d/1d7Palg185pQKZ8DlC_LC0wlx5DWdaUB6",
+    "app_logo": "https://cdn.phototourl.com/free/2026-09-08-b0f28857-9c61-4607-b0b8-d9f8cf8eef3e.png",
     "default_school_id": "SCH-MAN1",
     "max_file_size_mb": 2,
     "registration_open": true,
@@ -34,7 +34,8 @@
       "school_id": "",
       "status": "active",
       "created_at": "",
-      "updated_at": "2026-09-07T16:14:24.861Z"
+      "updated_at": "2026-09-08T12:03:35.594Z",
+      "photo_url": ""
     },
     {
       "user_id": "USR-ADM-MI02-MTEE79SF",
@@ -49,7 +50,8 @@
       "school_id": "SCH-NEW-1787905953621",
       "status": "active",
       "created_at": "",
-      "updated_at": "2026-09-07T16:14:24.861Z"
+      "updated_at": "2026-09-08T12:03:35.595Z",
+      "photo_url": ""
     }
   ],
   "students": {},
@@ -67,6 +69,27 @@
       "drive_file_id": "1IWCC0h_ovnmchXGy7jJsuGZahcgARuuv",
       "drive_url": "https://lh3.googleusercontent.com/d/1IWCC0h_ovnmchXGy7jJsuGZahcgARuuv",
       "upload_time": "2026-09-07T16:14:23.733Z",
+      "verification_status": "menunggu",
+      "notes": "",
+      "local_url": "",
+      "file_data_base64": "",
+      "view_url": "https://lh3.googleusercontent.com/d/1IWCC0h_ovnmchXGy7jJsuGZahcgARuuv"
+    },
+    {
+      "document_id": "TEST-DOC-1",
+      "registration_number": "SIPMA-TEST-001",
+      "document_type": "foto_profil",
+      "document_title": "Foto Profil",
+      "file_name": "Ahmad_Dahlan_SIPMA-TEST-001_Pas_Foto_3x4.png",
+      "file_size_kb": 1,
+      "file_size_bytes": 85,
+      "mime_type": "image/png",
+      "file_data_base64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "drive_file_id": "1ZvHiMj5hXnMZq0mnsBo3vuu9f2qlCDKZ",
+      "drive_url": "https://lh3.googleusercontent.com/d/1ZvHiMj5hXnMZq0mnsBo3vuu9f2qlCDKZ",
+      "local_url": "/uploads/Ahmad_Dahlan_SIPMA-TEST-001_Pas_Foto_3x4.png",
+      "upload_time": "2026-09-08T12:03:34.478Z",
+      "view_url": "https://lh3.googleusercontent.com/d/1ZvHiMj5hXnMZq0mnsBo3vuu9f2qlCDKZ",
       "verification_status": "menunggu",
       "notes": ""
     }
@@ -95,7 +118,8 @@
       "status": "active",
       "principal_name": "Makhfud, S.Pd.",
       "contact_phone": "",
-      "contact_email": ""
+      "contact_email": "",
+      "logo_url": ""
     }
   ],
   "announcements": [
@@ -134,5 +158,5 @@
     }
   ],
   "audit_logs": [],
-  "last_updated": "2026-09-07T16:14:36.477Z"
+  "last_updated": "2026-09-08T12:18:42.650Z"
 }
