@@ -22,6 +22,72 @@ export const GAS_BACKEND_CODE = `/**
 // Masukkan ID Spreadsheet dan Folder Root Google Drive Anda di bawah ini
 var SPREADSHEET_ID = "MASUKKAN_SPREADSHEET_ID_ANDA_DI_SINI";
 var DRIVE_ROOT_FOLDER_ID = "MASUKKAN_DRIVE_ROOT_FOLDER_ID_ANDA_DI_SINI";
+/**
+ * Helper Membuka atau Menghubungkan Google Spreadsheet secara Cerdas & Mandiri (Self-Healing)
+ */
+function getOrOpenSpreadsheet(targetSpreadsheetId) {
+  var ss = null;
+  var tid = String(targetSpreadsheetId || "").trim();
+  if (tid && tid.indexOf("MASUKKAN") === -1 && tid.indexOf("Sample") === -1 && tid.length > 10) {
+    try { ss = SpreadsheetApp.openById(tid); } catch(e) {}
+  }
+  if (!ss && SPREADSHEET_ID && SPREADSHEET_ID.indexOf("MASUKKAN") === -1 && SPREADSHEET_ID.indexOf("Sample") === -1 && SPREADSHEET_ID.length > 10) {
+    try { ss = SpreadsheetApp.openById(SPREADSHEET_ID); } catch(e) {}
+  }
+  if (!ss) {
+    try { ss = SpreadsheetApp.getActiveSpreadsheet(); } catch(e) {}
+  }
+  if (!ss) {
+    try {
+      var files = DriveApp.getFilesByName("SIPMA_Database_PPDB");
+      while (files.hasNext()) {
+        var f = files.next();
+        if (!f.isTrashed()) {
+          ss = SpreadsheetApp.open(f);
+          break;
+        }
+      }
+    } catch(e) {}
+  }
+  if (!ss) {
+    try {
+      ss = SpreadsheetApp.create("SIPMA_Database_PPDB");
+    } catch(e) {}
+  }
+  return ss;
+}
+
+/**
+ * Helper Membuka atau Menghubungkan Root Folder Google Drive secara Cerdas & Mandiri (Self-Healing)
+ */
+function getOrOpenRootFolder(targetFolderId) {
+  var rootFolder = null;
+  var fid = String(targetFolderId || "").trim();
+  if (fid && fid.indexOf("MASUKKAN") === -1 && fid.indexOf("Sample") === -1 && fid.length > 10) {
+    try { rootFolder = DriveApp.getFolderById(fid); } catch(e) {}
+  }
+  if (!rootFolder && DRIVE_ROOT_FOLDER_ID && DRIVE_ROOT_FOLDER_ID.indexOf("MASUKKAN") === -1 && DRIVE_ROOT_FOLDER_ID.indexOf("Sample") === -1 && DRIVE_ROOT_FOLDER_ID.length > 10) {
+    try { rootFolder = DriveApp.getFolderById(DRIVE_ROOT_FOLDER_ID); } catch(e) {}
+  }
+  if (!rootFolder) {
+    try {
+      var defaultFolderName = "SIPMA_Storage_PPDB";
+      var existingFolders = DriveApp.getRootFolder().getFoldersByName(defaultFolderName);
+      while (existingFolders.hasNext()) {
+        var ef = existingFolders.next();
+        if (!ef.isTrashed()) {
+          rootFolder = ef;
+          break;
+        }
+      }
+      if (!rootFolder) {
+        rootFolder = DriveApp.getRootFolder().createFolder(defaultFolderName);
+      }
+    } catch(e) {}
+  }
+  return rootFolder;
+}
+
 
 /**
  * =========================================================================
@@ -32,10 +98,11 @@ var DRIVE_ROOT_FOLDER_ID = "MASUKKAN_DRIVE_ROOT_FOLDER_ID_ANDA_DI_SINI";
  */
 function authorizePermissions() {
   try {
-    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     var driveFolder = DriveApp.getRootFolder();
-    Logger.log("✓ Otorisasi Berhasil! Spreadsheet: " + ss.getName() + " | Folder Drive: " + driveFolder.getName());
-    return "Otorisasi Berhasil!";
+    var ss = getOrOpenSpreadsheet(SPREADSHEET_ID);
+    var ssName = ss ? ss.getName() : "Spreadsheet Siap";
+    Logger.log("✓ Otorisasi Berhasil! Spreadsheet: " + ssName + " | Folder Drive: " + driveFolder.getName());
+    return "Otorisasi Berhasil! Izin akses Google Drive dan Google Sheets aktif.";
   } catch (e) {
     Logger.log("Error otorisasi: " + e.toString());
     return "Error: " + e.toString();
@@ -137,7 +204,7 @@ function doGet(e) {
         version: "2.0.0"
       };
     } else if (action === "testSheets") {
-      var ss = SpreadsheetApp.openById(targetSpreadsheetId);
+      var ss = getOrOpenSpreadsheet(targetSpreadsheetId);
       ensureAllSheetsExist(ss);
       result = {
         success: true,
@@ -251,7 +318,7 @@ function doPost(e) {
  */
 function initDatabaseSchema(spreadsheetId) {
   var targetId = spreadsheetId || SPREADSHEET_ID;
-  var ss = SpreadsheetApp.openById(targetId);
+  var ss = getOrOpenSpreadsheet(targetId); if (!ss) return { success: false, message: "Spreadsheet tidak dapat dibuka" };
   var createdSheets = [];
   var existingSheets = [];
 
@@ -639,11 +706,11 @@ function arrayToMap(arr, keyField) {
 function extractDriveIdFromAnyUrl(url) {
   if (!url || typeof url !== "string") return "";
   var trimmed = String(url).trim();
-  var m1 = trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  var m1 = trimmed.match(new RegExp("/d/([a-zA-Z0-9_-]+)"));
   if (m1 && m1[1]) return m1[1];
   var m2 = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
   if (m2 && m2[1]) return m2[1];
-  var m3 = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  var m3 = trimmed.match(new RegExp("/file/d/([a-zA-Z0-9_-]+)"));
   if (m3 && m3[1]) return m3[1];
   if (trimmed.length >= 20 && trimmed.indexOf("/") === -1 && trimmed.indexOf(".") === -1 && trimmed.indexOf(" ") === -1 && trimmed.indexOf("DOC-") !== 0) {
     return trimmed;
@@ -669,38 +736,11 @@ function extractDriveIdFromAnyUrl(url) {
  * - Memperbarui baris data di Google Sheets (in-place update), tidak menambah baris ganda
  */
 function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
-  var targetFolderId = rootFolderId || DRIVE_ROOT_FOLDER_ID;
-  var rootFolder = null;
+  var rootFolder = getOrOpenRootFolder(rootFolderId);
   
-  try {
-    if (targetFolderId && targetFolderId.length > 5 && targetFolderId.indexOf("MASUKKAN") === -1 && targetFolderId.indexOf("Sample") === -1) {
-      rootFolder = DriveApp.getFolderById(targetFolderId);
-    }
-  } catch(e) {
-    rootFolder = null;
-  }
+// Root folder resolved via getOrOpenRootFolder
 
-  // Fallback: cari atau buat folder SIPMA_Storage_PPDB di Google Drive utama jika root belum ada
-  if (!rootFolder) {
-    try {
-      var defaultFolderName = "SIPMA_Storage_PPDB";
-      var existingFolders = DriveApp.getRootFolder().getFoldersByName(defaultFolderName);
-      while (existingFolders.hasNext()) {
-        var ef = existingFolders.next();
-        try {
-          if (!ef.isTrashed()) {
-            rootFolder = ef;
-            break;
-          }
-        } catch(e) {}
-      }
-      if (!rootFolder) {
-        rootFolder = DriveApp.getRootFolder().createFolder(defaultFolderName);
-      }
-    } catch(e) {}
-  }
-
-  var ss = SpreadsheetApp.openById(targetSpreadsheetId || SPREADSHEET_ID);
+  var ss = getOrOpenSpreadsheet(targetSpreadsheetId || SPREADSHEET_ID);
   ensureAllSheetsExist(ss);
 
   var docType = String(data.document_type || "dokumen").trim();
@@ -795,7 +835,7 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
 
   // Hapus berkas lama jika ID-nya terdaftar di Sheet Documents
   var oldDriveFileId = data.old_drive_file_id || "";
-  var docSheet = ss.getSheetByName(SHEETS.DOCUMENTS);
+  var docSheet = ss ? ss.getSheetByName(SHEETS.DOCUMENTS) : null;
 
   if (docSheet && docSheet.getLastRow() > 1 && data.registration_number) {
     var existingDocRows = docSheet.getDataRange().getValues();
@@ -824,7 +864,7 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
   var rawBase64 = String(data.base64_data || "");
   var base64Content = rawBase64.indexOf(",") > -1 ? rawBase64.split(",")[1] : rawBase64;
   // Clean base64 string: convert spaces to +, strip whitespace, ensure 4-byte padding
-  base64Content = base64Content.replace(/\s/g, "").replace(/ /g, "+");
+  base64Content = base64Content.replace(/\\s/g, "").replace(/ /g, "+");
   var pad = base64Content.length % 4;
   if (pad === 2) base64Content += "==";
   else if (pad === 3) base64Content += "=";
@@ -892,16 +932,16 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
   var directThumbnailUrl = "";
 
   // Penamaan file rapi & terstandarisasi
-  var cleanStudentName = String(data.student_name || "Pendaftar").replace(/[^a-zA-Z0-9_\- ]/g, "").trim().replace(/\s+/g, "_") || "Pendaftar";
+  var cleanStudentName = String(data.student_name || "Pendaftar").replace(/[^a-zA-Z0-9_ -]/g, "").trim().replace(/\\s+/g, "_") || "Pendaftar";
   var cleanReg = String(data.registration_number || "SIPMA").replace(/[^a-zA-Z0-9_\-]/g, "").trim() || "SIPMA";
-  var cleanDocType = String(docType || "Dokumen").replace(/[^a-zA-Z0-9_\-]/g, "").trim().replace(/\s+/g, "_") || "Dokumen";
+  var cleanDocType = String(docType || "Dokumen").replace(/[^a-zA-Z0-9_\-]/g, "").trim().replace(/\\s+/g, "_") || "Dokumen";
 
   var cleanFileName = "";
   if (isAccountFile) {
-    var cleanAcc = String(data.account_name || data.student_name || "Pengguna").replace(/[^a-zA-Z0-9_\- ]/g, "").trim().replace(/\s+/g, "_");
+    var cleanAcc = String(data.account_name || data.student_name || "Pengguna").replace(/[^a-zA-Z0-9_ -]/g, "").trim().replace(/\\s+/g, "_");
     cleanFileName = "Foto_Profil_" + cleanAcc + "." + ext;
   } else if (isSchoolLogo) {
-    var cleanSch = String(data.school_name || "Madrasah").replace(/[^a-zA-Z0-9_\- ]/g, "").trim().replace(/\s+/g, "_");
+    var cleanSch = String(data.school_name || "Madrasah").replace(/[^a-zA-Z0-9_ -]/g, "").trim().replace(/\\s+/g, "_");
     cleanFileName = "Logo_Resmi_" + cleanSch + "." + ext;
   } else if (isAppLogo) {
     cleanFileName = "Logo_Resmi_SIPMA." + ext;
@@ -997,7 +1037,7 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
   // 6. Pembaruan Foto Profil di Sheet Users untuk Akun Pengguna / Siswa / Admin
   var isAnyPhoto = isAccountFile || docType === "foto" || docType === "pas_foto" || docType === "foto_profil";
   if (isAnyPhoto && directThumbnailUrl) {
-    var userSheet = ss.getSheetByName(SHEETS.USERS);
+    var userSheet = ss ? ss.getSheetByName(SHEETS.USERS) : null;
     if (userSheet && userSheet.getLastRow() > 1) {
       var userRows = userSheet.getDataRange().getValues();
       var targetAccId = String(data.account_id || data.user_id || data.registration_number || "").trim();
@@ -1036,7 +1076,7 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
 
   // 7. Pembaruan Pas Foto Calon Murid di Sheet Students (Kolom ke-19)
   if (isAnyPhoto && directThumbnailUrl) {
-    var studentSheet = ss.getSheetByName(SHEETS.STUDENTS);
+    var studentSheet = ss ? ss.getSheetByName(SHEETS.STUDENTS) : null;
     if (studentSheet && studentSheet.getLastRow() > 1) {
       var studentRows = studentSheet.getDataRange().getValues();
       var regTarget = String(data.registration_number || data.account_id || "").trim();
@@ -1044,7 +1084,7 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
         var sReg = String(studentRows[s][2]).trim();
         var sId = String(studentRows[s][0]).trim();
         if ((regTarget && (sReg === regTarget || sId === regTarget)) ||
-            (cleanStudentName && String(studentRows[s][5]).trim().toLowerCase() === cleanStudentName.toLowerCase())) {
+            (cleanStudentName && String(studentRows[s][3] || "").trim().toLowerCase() === cleanStudentName.toLowerCase())) {
           // Bersihkan file foto murid lama dari Drive jika ada
           var prevStdPhoto = String(studentRows[s][18] || "").trim();
           var prevStdPhotoId = extractDriveIdFromAnyUrl(prevStdPhoto);
@@ -1060,7 +1100,7 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
 
   // 8. Pembaruan Logo Resmi Madrasah di Sheet Schools (Kolom ke-24)
   if (isSchoolLogo && directThumbnailUrl) {
-    var schSheet = ss.getSheetByName(SHEETS.SCHOOLS);
+    var schSheet = ss ? ss.getSheetByName(SHEETS.SCHOOLS) : null;
     if (schSheet && schSheet.getLastRow() > 1) {
       var schRows = schSheet.getDataRange().getValues();
       for (var sc = 1; sc < schRows.length; sc++) {
@@ -1081,7 +1121,7 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
 
   // 9. Pembaruan Logo Aplikasi di Sheet Settings
   if (isAppLogo && directThumbnailUrl) {
-    var settSheet = ss.getSheetByName(SHEETS.SETTINGS);
+    var settSheet = ss ? ss.getSheetByName(SHEETS.SETTINGS) : null;
     if (settSheet) {
       var settRows = settSheet.getDataRange().getValues();
       var foundLogoSett = false;
@@ -1841,7 +1881,7 @@ function handleResetPassword(data, spreadsheetId) {
  * Mencegah pembuatan folder ganda / dobel dengan memeriksa folder aktif dan normalisasi nama.
  */
 function getOrCreateFolder(parentFolder, rawName) {
-  var name = String(rawName || "").trim().replace(/[\/\\:]/g, "-").replace(/\s+/g, " ");
+  var name = String(rawName || "").trim().replace(new RegExp("[/\\\\:]", "g"), "-").replace(/\\s+/g, " ");
   if (!name) name = "General";
 
   // 1. Periksa kesamaan nama persis di antara folder yang tidak berada di sampah (non-trashed)
@@ -1876,7 +1916,7 @@ function getOrCreateFolder(parentFolder, rawName) {
  * Menemukan atau membuat folder tahun penerimaan (e.g. "Tahun Penerimaan 2026-2027" atau "2026-2027")
  */
 function getOrCreateYearFolder(rootFolder, rawYear) {
-  var yr = String(rawYear || "2026/2027").replace(/[\/\\:]/g, "-").trim();
+  var yr = String(rawYear || "2026/2027").replace(new RegExp("[/\\\\:]", "g"), "-").trim();
   var targetName = yr;
   if (targetName.toLowerCase().indexOf("tahun") === -1 && targetName.toLowerCase().indexOf("ppdb") === -1) {
     targetName = "Tahun Penerimaan " + yr;
@@ -1906,7 +1946,7 @@ function getOrCreateYearFolder(rootFolder, rawYear) {
  */
 function getOrCreateApplicantFolder(schoolFolder, regNumber, studentName) {
   var cleanReg = String(regNumber || "Draft").trim();
-  var cleanName = String(studentName || "Calon Murid").trim().replace(/[\/\\:]/g, "-").replace(/\s+/g, " ");
+  var cleanName = String(studentName || "Calon Murid").trim().replace(new RegExp("[/\\\\:]", "g"), "-").replace(/\\s+/g, " ");
   var targetFolderName = (cleanReg && cleanReg !== "Draft") ? (cleanName + " - " + cleanReg) : cleanName;
 
   var childFolders = schoolFolder.getFolders();
@@ -1951,8 +1991,8 @@ function getOrCreateApplicantFolder(schoolFolder, regNumber, studentName) {
  * Format: "[Nama Akun] ([Username / User ID])"
  */
 function getOrCreateAccountFolder(accountsBaseFolder, accountName, accountId) {
-  var cleanName = String(accountName || "Akun Pengguna").trim().replace(/[\/\\:]/g, "-").replace(/\s+/g, " ");
-  var cleanId = String(accountId || "").trim().replace(/[\/\\:]/g, "-");
+  var cleanName = String(accountName || "Akun Pengguna").trim().replace(new RegExp("[/\\\\:]", "g"), "-").replace(/\\s+/g, " ");
+  var cleanId = String(accountId || "").trim().replace(new RegExp("[/\\\\:]", "g"), "-");
   var targetFolderName = cleanId ? (cleanName + " (" + cleanId + ")") : cleanName;
 
   var childFolders = accountsBaseFolder.getFolders();

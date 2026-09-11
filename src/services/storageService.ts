@@ -971,14 +971,31 @@ class StorageService {
 
       this.addAuditLog('PASSWORD_CHANGE', user.name, `Pengguna ${user.name} mengganti kata sandi akun.`);
       this.triggerAutoSync();
+
+      // Direct server DB & GAS sync for password change
+      fetch('/api/data/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.user_id,
+          registration_number: user.registration_number,
+          email: user.email,
+          new_password: newPassword.trim(),
+        }),
+      }).catch((e) => console.warn('Change password server sync warning:', e));
+
       return { success: true, message: 'Password berhasil diubah. Gunakan password baru untuk login berikutnya.' };
     } catch (err: any) {
       return { success: false, message: `Gagal mengubah password: ${err.message || 'Error tidak diketahui'}` };
     }
   }
 
-  resetStudentPassword(
-    identifier: string, // registration_number, user_id, or email
+  /**
+   * Reset kata sandi untuk akun pengguna apa pun (Pusat, Admin Madrasah, Operator, atau Calon Murid)
+   * Otomatis menghasilkan kata sandi baru dan mengganti sandi lama di database lokal, server, dan Google Sheets.
+   */
+  resetAnyUserPassword(
+    identifier: string,
     customNewPassword?: string,
     operatorName?: string
   ): { success: boolean; newPassword?: string; user?: User; message: string } {
@@ -990,8 +1007,8 @@ class StorageService {
       for (let i = users.length - 1; i >= 0; i--) {
         const u = users[i];
         if (
-          (u.registration_number && u.registration_number.toLowerCase() === targetQuery) ||
           (u.user_id && u.user_id.toLowerCase() === targetQuery) ||
+          (u.registration_number && u.registration_number.toLowerCase() === targetQuery) ||
           (u.email && u.email.toLowerCase() === targetQuery)
         ) {
           index = i;
@@ -1000,7 +1017,7 @@ class StorageService {
       }
 
       if (index < 0) {
-        // If user record wasn't pre-created in users array, let's look in students map and create/recover user account
+        // Coba cari di data murid jika belum terdaftar di tabel users
         const students = this.getStudentsMap();
         const matchedStudent = Object.values(students).find(
           (s) =>
@@ -1011,7 +1028,7 @@ class StorageService {
         );
 
         if (!matchedStudent) {
-          return { success: false, message: `Data akun calon murid dengan ID/No. Pendaftaran "${identifier}" tidak ditemukan.` };
+          return { success: false, message: `Akun dengan ID/No. Pendaftaran/Email "${identifier}" tidak ditemukan di database.` };
         }
 
         const generatedPass = customNewPassword?.trim() || `sipma${Math.floor(100000 + Math.random() * 900000)}`;
@@ -1030,46 +1047,107 @@ class StorageService {
         };
 
         users.push(newUser);
+        this.memCache.users = users;
         localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
 
+        // Sync ke server & Google Sheets
+        fetch('/api/data/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: newUser.user_id,
+            registration_number: newUser.registration_number,
+            email: newUser.email,
+            new_password: generatedPass,
+          }),
+        }).catch((e) => console.warn('Reset password server sync warning:', e));
+
         this.addAuditLog(
-          'STUDENT_PASSWORD_RESET',
-          matchedStudent.name,
-          `Password akun calon murid ${matchedStudent.name} (${matchedStudent.registration_number}) di-reset oleh ${operatorName || 'Admin'}. Password baru: ${generatedPass}`
+          'USER_PASSWORD_RESET',
+          newUser.name,
+          `Password akun calon murid ${newUser.name} (${newUser.registration_number}) di-reset oleh ${operatorName || 'Admin'}. Password baru: ${generatedPass}`
         );
+        this.notifySubscribers('data_mutated');
         this.triggerAutoSync();
 
         return {
           success: true,
           newPassword: generatedPass,
           user: newUser,
-          message: `Password akun calon murid ${matchedStudent.name} berhasil di-reset menjadi "${generatedPass}".`,
+          message: `Kata sandi akun ${newUser.name} berhasil di-reset menjadi "${generatedPass}".`,
         };
       }
 
       const user = users[index];
-      const generatedPass = customNewPassword?.trim() || `sipma${Math.floor(100000 + Math.random() * 900000)}`;
+      let prefix = 'sipma';
+      if (user.role === 'admin_pusat') prefix = 'pusat';
+      else if (user.role === 'admin_sekolah') prefix = 'adm';
+      else if (user.role === 'operator_sekolah') prefix = 'opr';
+
+      const generatedPass = customNewPassword?.trim() || `${prefix}${Math.floor(100000 + Math.random() * 900000)}`;
       user.password_hash = generatedPass;
       user.updated_at = new Date().toISOString();
       users[index] = user;
+      this.memCache.users = users;
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
 
+      // Jika mereset akun yang sedang aktif login, perbarui sesi pengguna aktif
+      const currentUser = this.getCurrentUser();
+      if (currentUser && (currentUser.user_id === user.user_id || currentUser.email === user.email)) {
+        currentUser.password_hash = generatedPass;
+        this.setCurrentUser(currentUser);
+      }
+
+      // Sync ke server database & Google Sheets secara langsung
+      fetch('/api/data/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.user_id,
+          registration_number: user.registration_number,
+          email: user.email,
+          new_password: generatedPass,
+        }),
+      }).catch((e) => console.warn('Reset password server sync warning:', e));
+
       this.addAuditLog(
-        'STUDENT_PASSWORD_RESET',
+        'USER_PASSWORD_RESET',
         user.name,
-        `Password akun calon murid ${user.name} (${user.registration_number || user.email}) di-reset oleh ${operatorName || 'Admin'}. Password baru: ${generatedPass}`
+        `Password akun ${user.name} (${user.role} - ${user.email}) di-reset oleh ${operatorName || 'Sistem'}. Password baru: ${generatedPass}`
       );
+      this.notifySubscribers('data_mutated');
       this.triggerAutoSync();
 
       return {
         success: true,
         newPassword: generatedPass,
         user,
-        message: `Password akun murid ${user.name} berhasil di-reset menjadi "${generatedPass}".`,
+        message: `Kata sandi akun ${user.name} berhasil di-reset menjadi "${generatedPass}".`,
       };
     } catch (err: any) {
-      return { success: false, message: `Gagal mereset password: ${err.message || 'Error'}` };
+      return { success: false, message: `Gagal mereset kata sandi: ${err?.message || 'Error'}` };
     }
+  }
+
+  /**
+   * Reset kata sandi akun sendiri secara instan
+   * Menghasilkan sandi baru acak yang aman dan memperbarui database serta sesi login aktif.
+   */
+  resetOwnPassword(userId?: string): { success: boolean; newPassword?: string; user?: User; message: string } {
+    const currentUser = this.getCurrentUser();
+    const targetId = userId || currentUser?.user_id;
+    if (!targetId) {
+      return { success: false, message: 'Sesi akun tidak ditemukan. Harap login kembali.' };
+    }
+    return this.resetAnyUserPassword(targetId, undefined, currentUser?.name || 'Pengguna Sendiri');
+  }
+
+  resetStudentPassword(
+    identifier: string, // registration_number, user_id, or email
+    customNewPassword?: string,
+    operatorName?: string
+  ): { success: boolean; newPassword?: string; user?: User; message: string } {
+    return this.resetAnyUserPassword(identifier, customNewPassword, operatorName || 'Panitia PPDB');
   }
 
   saveSchoolAdminUser(userData: {
@@ -1185,37 +1263,7 @@ class StorageService {
     customNewPassword?: string,
     operatorName?: string
   ): { success: boolean; newPassword?: string; user?: User; message: string } {
-    try {
-      const users = this.getUsers();
-      const index = users.findIndex((u) => u.user_id === userId);
-      if (index < 0) {
-        return { success: false, message: 'Akun admin madrasah tidak ditemukan.' };
-      }
-
-      const user = users[index];
-      const generatedPass = customNewPassword?.trim() || `adm${Math.floor(100000 + Math.random() * 900000)}`;
-      user.password_hash = generatedPass;
-      user.updated_at = new Date().toISOString();
-      users[index] = user;
-      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
-
-      this.addAuditLog(
-        'ADMIN_PASSWORD_RESET',
-        user.name,
-        `Password akun admin madrasah ${user.name} (${user.email}) berhasil di-reset oleh ${operatorName || 'Admin Pusat'}. Password baru: ${generatedPass}`
-      );
-      this.notifySubscribers('data_mutated');
-      this.triggerAutoSync();
-
-      return {
-        success: true,
-        newPassword: generatedPass,
-        user,
-        message: `Kata sandi akun admin ${user.name} berhasil di-reset menjadi "${generatedPass}".`,
-      };
-    } catch (err: any) {
-      return { success: false, message: `Gagal mereset kata sandi: ${err?.message || 'Error'}` };
-    }
+    return this.resetAnyUserPassword(userId, customNewPassword, operatorName || 'Admin Pusat');
   }
 
   toggleUserStatus(userId: string): { success: boolean; newStatus?: 'active' | 'inactive'; message: string } {
@@ -1418,37 +1466,7 @@ class StorageService {
     customNewPassword?: string,
     operatorName?: string
   ): { success: boolean; newPassword?: string; user?: User; message: string } {
-    try {
-      const users = this.getUsers();
-      const index = users.findIndex((u) => u.user_id === userId);
-      if (index < 0) {
-        return { success: false, message: 'Akun operator madrasah tidak ditemukan.' };
-      }
-
-      const user = users[index];
-      const generatedPass = customNewPassword?.trim() || `opr${Math.floor(100000 + Math.random() * 900000)}`;
-      user.password_hash = generatedPass;
-      user.updated_at = new Date().toISOString();
-      users[index] = user;
-      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
-
-      this.addAuditLog(
-        'OPERATOR_PASSWORD_RESET',
-        user.name,
-        `Password akun operator ${user.name} (${user.email}) di-reset oleh ${operatorName || 'Admin Madrasah'}. Password baru: ${generatedPass}`
-      );
-      this.notifySubscribers('data_mutated');
-      this.triggerAutoSync();
-
-      return {
-        success: true,
-        newPassword: generatedPass,
-        user,
-        message: `Kata sandi akun operator ${user.name} berhasil di-reset menjadi "${generatedPass}".`,
-      };
-    } catch (err: any) {
-      return { success: false, message: `Gagal mereset kata sandi operator: ${err?.message || 'Error'}` };
-    }
+    return this.resetAnyUserPassword(userId, customNewPassword, operatorName || 'Admin Madrasah');
   }
 
   generateRegistrationNumber(schoolId?: string): string {
@@ -2074,13 +2092,146 @@ class StorageService {
       if (res.ok) {
         const json = await res.json();
         if (json.success && json.logo_url) {
-          return { success: true, photo_url: json.logo_url, message: 'Foto profil berhasil disimpan ke cloud!' };
+          const users = this.getUsers();
+          const idx = users.findIndex((u) => u.user_id === userId || u.email === userId);
+          if (idx >= 0) {
+            users[idx].photo_url = json.logo_url;
+            localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+            this.memCache.users = users;
+            const cur = this.getCurrentUser();
+            if (cur && (cur.user_id === userId || cur.email === userId)) {
+              this.setCurrentUser({ ...cur, photo_url: json.logo_url });
+            }
+            this.notifySubscribers('user_profile_updated', users[idx]);
+            this.triggerAutoSync(true);
+          }
+          return { success: true, photo_url: json.logo_url, message: 'Foto profil berhasil disimpan ke Google Drive & Cloud Database!' };
         }
       }
     } catch (err) {
       console.warn('Error uploadUserAvatar:', err);
     }
     return { success: false, photo_url: base64Data, message: 'Foto disimpan lokal.' };
+  }
+
+  /**
+   * Delete User Avatar from Google Drive and Database
+   */
+  async deleteUserAvatar(userId: string): Promise<ApiResponse> {
+    const settings = this.getSettings();
+    const users = this.getUsers();
+    const idx = users.findIndex((u) => u.user_id === userId || u.email === userId);
+    const targetUser = idx >= 0 ? users[idx] : null;
+    const oldPhotoUrl = targetUser?.photo_url || '';
+    const oldDriveFileId = oldPhotoUrl ? (oldPhotoUrl.match(/[\/=]([a-zA-Z0-9_-]{25,})/) || [])[1] || '' : '';
+
+    if (idx >= 0) {
+      users[idx].photo_url = '';
+      this.memCache.users = users;
+      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+      const cur = this.getCurrentUser();
+      if (cur && (cur.user_id === userId || cur.email === userId)) {
+        this.setCurrentUser({ ...cur, photo_url: '' });
+      }
+      this.notifySubscribers('user_profile_updated', users[idx]);
+    }
+
+    // Call server & GAS to delete from Google Drive
+    try {
+      await fetch('/api/gas/delete-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          is_account: true,
+          account_id: userId,
+          drive_file_id: oldDriveFileId,
+          file_url: oldPhotoUrl,
+          document_type: 'foto_profil',
+          gas_web_app_url: settings.gas_web_app_url,
+          spreadsheet_id: settings.spreadsheet_id,
+        }),
+      });
+    } catch (err) {
+      console.warn('Error deleteUserAvatar:', err);
+    }
+
+    this.triggerAutoSync(true);
+    return { success: true, message: 'Foto profil berhasil dihapus dari Google Drive dan database.' };
+  }
+
+  /**
+   * Delete School Logo from Google Drive and Database
+   */
+  async deleteSchoolLogo(schoolId: string): Promise<ApiResponse> {
+    const settings = this.getSettings();
+    const schools = this.getSchools();
+    const idx = schools.findIndex((s) => s.school_id === schoolId);
+    const targetSchool = idx >= 0 ? schools[idx] : null;
+    const oldLogoUrl = targetSchool?.logo_url || '';
+    const oldDriveFileId = oldLogoUrl ? (oldLogoUrl.match(/[\/=]([a-zA-Z0-9_-]{25,})/) || [])[1] || '' : '';
+
+    if (idx >= 0) {
+      schools[idx].logo_url = '';
+      this.memCache.schools = schools;
+      localStorage.setItem(STORAGE_KEYS.SCHOOLS, JSON.stringify(schools));
+      this.notifySubscribers('data_mutated');
+    }
+
+    try {
+      await fetch('/api/gas/delete-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          is_school_logo: true,
+          school_id: schoolId,
+          drive_file_id: oldDriveFileId,
+          file_url: oldLogoUrl,
+          document_type: 'logo_sekolah',
+          gas_web_app_url: settings.gas_web_app_url,
+          spreadsheet_id: settings.spreadsheet_id,
+        }),
+      });
+    } catch (err) {
+      console.warn('Error deleteSchoolLogo:', err);
+    }
+
+    this.triggerAutoSync(true);
+    return { success: true, message: 'Logo madrasah berhasil dihapus dari Google Drive dan database.' };
+  }
+
+  /**
+   * Delete App Logo from Google Drive and Database
+   */
+  async deleteAppLogo(): Promise<ApiResponse> {
+    const settings = this.getSettings();
+    const oldLogoUrl = settings.app_logo || '';
+    const oldDriveFileId = oldLogoUrl ? (oldLogoUrl.match(/[\/=]([a-zA-Z0-9_-]{25,})/) || [])[1] || '' : '';
+
+    const updatedSettings = { ...settings, app_logo: '' };
+    this.memCache.settings = updatedSettings;
+    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updatedSettings));
+    updateAppFavicon('');
+    this.notifySubscribers('settings_updated', updatedSettings);
+
+    try {
+      await fetch('/api/gas/delete-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          is_app_logo: true,
+          drive_file_id: oldDriveFileId,
+          file_url: oldLogoUrl,
+          document_type: 'logo_aplikasi',
+          gas_web_app_url: settings.gas_web_app_url,
+          spreadsheet_id: settings.spreadsheet_id,
+        }),
+      });
+    } catch (err) {
+      console.warn('Error deleteAppLogo:', err);
+    }
+
+    this.triggerAutoSync(true);
+    return { success: true, message: 'Logo aplikasi berhasil dihapus dari Google Drive dan database.' };
   }
 
   saveSchool(school: School): void {
@@ -2643,6 +2794,21 @@ class StorageService {
     const isAccount = options?.isAccount || doc.document_type === 'foto_profil' || doc.document_type === 'avatar' || doc.document_type === 'dokumen_akun';
     const appYear = settings.academic_year_label || settings.application_year || '2026/2027';
 
+    // Auto-detect old Drive file id if replacing an existing document of same type
+    let effectiveOldDriveId = doc.old_drive_file_id || '';
+    if (!effectiveOldDriveId) {
+      const allDocs = this.getDocuments();
+      const matchDoc = allDocs.find(
+        (d) =>
+          d.registration_number === doc.registration_number &&
+          d.document_type === doc.document_type &&
+          d.document_id !== doc.document_id
+      );
+      if (matchDoc && matchDoc.drive_file_id) {
+        effectiveOldDriveId = matchDoc.drive_file_id;
+      }
+    }
+
     // 1. Try upload via server proxy (which handles local backup + GAS Drive dispatch)
     try {
       const res = await fetch('/api/gas/upload-file', {
@@ -2657,7 +2823,7 @@ class StorageService {
           is_account: isAccount,
           account_name: options?.accountName || studentName,
           account_id: options?.accountId || doc.registration_number,
-          old_drive_file_id: doc.old_drive_file_id || doc.drive_file_id || '',
+          old_drive_file_id: effectiveOldDriveId || doc.drive_file_id || '',
           gas_web_app_url: settings.gas_web_app_url,
           spreadsheet_id: settings.spreadsheet_id,
           drive_root_folder_id: settings.drive_root_folder_id,
@@ -2694,7 +2860,7 @@ class StorageService {
               file_size_bytes: doc.file_size_bytes,
               mime_type: doc.mime_type,
               base64_data: doc.file_data_base64,
-              old_drive_file_id: doc.old_drive_file_id || doc.drive_file_id || '',
+              old_drive_file_id: effectiveOldDriveId || doc.drive_file_id || '',
               is_account: isAccount,
               account_name: options?.accountName || studentName || 'Pengguna',
               account_id: options?.accountId || doc.registration_number || '',
@@ -2767,12 +2933,15 @@ class StorageService {
     return { uploaded: count, total: pending.length };
   }
 
-  deleteDocument(documentId: string): void {
+  /**
+   * Permanently delete a document from Google Drive, Google Sheets, and local database.
+   */
+  async deleteDocumentPermanently(documentId: string): Promise<ApiResponse> {
     try {
       const allDocs = this.getDocuments();
       const targetDoc = allDocs.find((d) => d.document_id === documentId);
       const remainingDocs = allDocs.filter((d) => d.document_id !== documentId);
-      
+
       this.memCache.documents = remainingDocs;
       localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(remainingDocs));
 
@@ -2792,19 +2961,57 @@ class StorageService {
           }
         }
 
-        // Trigger server & GAS Drive cleanup
-        fetch('/api/gas/delete-file', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            document_id: documentId,
-            drive_file_id: targetDoc.drive_file_id,
-            registration_number: targetDoc.registration_number,
-            document_type: targetDoc.document_type,
-            file_url: targetDoc.drive_url || targetDoc.local_url,
-            local_url: targetDoc.local_url,
-          }),
-        }).catch((e) => console.warn('Delete document file sync error:', e));
+        const settings = this.getSettings();
+        const payload = {
+          document_id: documentId,
+          drive_file_id: targetDoc.drive_file_id || '',
+          registration_number: targetDoc.registration_number,
+          document_type: targetDoc.document_type,
+          file_url: targetDoc.drive_url || targetDoc.local_url || '',
+          local_url: targetDoc.local_url || '',
+          gas_web_app_url: settings.gas_web_app_url,
+          spreadsheet_id: settings.spreadsheet_id,
+        };
+
+        let deleted = false;
+
+        // 1. Delete via server proxy (which handles local disk cleanup & GAS Drive deletion)
+        try {
+          const res = await fetch('/api/gas/delete-file', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          if (res.ok) {
+            const json = await res.json();
+            if (json.success) deleted = true;
+          }
+        } catch (serverErr) {
+          console.warn('Server delete file proxy error:', serverErr);
+        }
+
+        // 2. Direct browser fallback to GAS Web App
+        if (!deleted && settings.gas_web_app_url && settings.gas_web_app_url.startsWith('http')) {
+          try {
+            await fetch(settings.gas_web_app_url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({
+                action: 'deleteDocument',
+                spreadsheet_id: settings.spreadsheet_id,
+                data: {
+                  drive_file_id: targetDoc.drive_file_id,
+                  document_id: documentId,
+                  registration_number: targetDoc.registration_number,
+                  document_type: targetDoc.document_type,
+                  file_url: targetDoc.drive_url,
+                },
+              }),
+            });
+          } catch (gasErr) {
+            console.warn('Direct GAS delete fallback error:', gasErr);
+          }
+        }
 
         this.addAuditLog(
           'DELETE_DOCUMENT',
@@ -2812,11 +3019,17 @@ class StorageService {
           `Berkas ${targetDoc.document_title} (${targetDoc.file_name}) dihapus permanen dari Google Drive dan database.`
         );
       }
-    } catch {
-      // ignore
+
+      this.notifySubscribers('data_mutated');
+      this.triggerAutoSync(true);
+      return { success: true, message: 'Berkas berhasil dihapus permanen dari Google Drive dan Google Sheets.' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Gagal menghapus berkas.' };
     }
-    this.notifySubscribers('data_mutated');
-    this.triggerAutoSync();
+  }
+
+  deleteDocument(documentId: string): void {
+    this.deleteDocumentPermanently(documentId).catch(() => {});
   }
 
   // ================= VERIFICATION & SELECTION =================

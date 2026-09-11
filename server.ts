@@ -2023,6 +2023,67 @@ app.post('/api/data/delete-user', async (req: Request, res: Response) => {
   }
 });
 
+// 11. Direct Reset Password to Server DB & Google Sheets
+app.post('/api/data/reset-password', async (req: Request, res: Response) => {
+  try {
+    const { user_id, registration_number, email, new_password } = req.body;
+    if (!new_password) {
+      return res.status(400).json({ success: false, message: 'new_password wajib diisi' });
+    }
+
+    const settings = serverDb.settings || {};
+    const gasUrl = req.body.gas_web_app_url || settings.gas_web_app_url;
+    const ssId = req.body.spreadsheet_id || settings.spreadsheet_id;
+
+    // Update in server database memory & persist
+    if (serverDb.users && Array.isArray(serverDb.users)) {
+      const idx = serverDb.users.findIndex((u: any) =>
+        (user_id && u.user_id === user_id) ||
+        (registration_number && u.registration_number === registration_number) ||
+        (email && String(u.email || '').toLowerCase() === String(email || '').toLowerCase())
+      );
+      if (idx >= 0) {
+        serverDb.users[idx].password_hash = new_password;
+        serverDb.users[idx].updated_at = new Date().toISOString();
+        persistServerDb();
+      }
+    }
+
+    // Direct GAS trigger for sheet Users update
+    if (gasUrl && gasUrl.startsWith('http')) {
+      try {
+        await fetch(gasUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'resetPassword',
+            spreadsheet_id: ssId,
+            data: {
+              user_id,
+              registration_number,
+              email,
+              new_password,
+            },
+          }),
+        });
+      } catch (gasErr) {
+        console.warn('Direct GAS resetPassword warning:', gasErr);
+      }
+    }
+
+    // Async forward sync to ensure full data parity
+    forwardSyncAllToGas().catch(() => {});
+
+    res.json({
+      success: true,
+      message: 'Kata sandi baru berhasil disimpan di database server & Google Sheets.',
+      new_password,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err?.message || 'Error' });
+  }
+});
+
 // ================= VITE MIDDLEWARE / STATIC ASSETS =================
 async function startServer() {
   try {

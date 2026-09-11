@@ -421,7 +421,13 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
                         />
                         <button
                           type="button"
-                          onClick={() => setEditingSchool({ ...editingSchool, logo_url: '' })}
+                          onClick={async () => {
+                            if (editingSchool.school_id) {
+                              await storageService.deleteSchoolLogo(editingSchool.school_id);
+                            }
+                            setEditingSchool({ ...editingSchool, logo_url: '' });
+                            showToast('Logo madrasah dihapus dari Google Drive & database', 'info');
+                          }}
                           className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-rose-500 text-white rounded-full flex items-center justify-center text-[10px] shadow-xs cursor-pointer"
                           title="Hapus Logo"
                         >

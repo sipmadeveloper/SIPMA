@@ -20,6 +20,12 @@ import {
   EyeOff,
   Camera,
   Upload,
+  Loader2,
+  Trash2,
+  RefreshCw,
+  Copy,
+  Check,
+  Sparkles,
 } from 'lucide-react';
 import { User as UserType, School } from '../../types/sipma';
 import { storageService } from '../../services/storageService';
@@ -39,7 +45,7 @@ export const AdminProfileModal: React.FC<Props> = ({
   onClose,
   onProfileUpdated,
 }) => {
-  const { showAlert } = useFeedback();
+  const { showAlert, showToast } = useFeedback();
   const [activeTab, setActiveTab] = useState<'profile' | 'password'>('profile');
 
   // Profile Form State
@@ -64,6 +70,12 @@ export const AdminProfileModal: React.FC<Props> = ({
   const [showNewPassword, setShowNewPassword] = useState<boolean>(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState<boolean>(false);
+
+  // Self-Service Auto Reset Password State
+  const [resetResultPassword, setResetResultPassword] = useState<string | null>(null);
+  const [isResettingOwnPassword, setIsResettingOwnPassword] = useState<boolean>(false);
+  const [copiedResetPassword, setCopiedResetPassword] = useState<boolean>(false);
 
   const isAdminPusat = currentUser.role === 'admin_pusat';
   const isCalonMurid = currentUser.role === 'calon_murid';
@@ -77,19 +89,27 @@ export const AdminProfileModal: React.FC<Props> = ({
       return;
     }
 
+    setIsUploadingAvatar(true);
     try {
       // Auto compress and optimize avatar client-side
       const compressed = await compressAndResizeImage(file, 600, 600, 0.88);
       setPhotoUrl(compressed.base64);
-    } catch {
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-        const b64 = evt.target?.result as string;
-        if (b64) {
-          setPhotoUrl(b64);
-        }
-      };
-      reader.readAsDataURL(file);
+
+      // Direct upload to Google Drive & Cloud Database
+      const uploadRes = await storageService.uploadUserAvatar(
+        currentUser.user_id,
+        name || currentUser.name || 'Pengguna',
+        compressed.base64
+      );
+
+      setIsUploadingAvatar(false);
+      if (uploadRes && uploadRes.photo_url) {
+        setPhotoUrl(uploadRes.photo_url);
+        showAlert('Foto Profil Tersimpan', 'Foto profil berhasil diunggah ke Google Drive & Cloud Database!', 'success');
+      }
+    } catch (err: any) {
+      setIsUploadingAvatar(false);
+      console.warn('Avatar compression/upload error:', err);
     }
   };
 
@@ -164,6 +184,37 @@ export const AdminProfileModal: React.FC<Props> = ({
     } else {
       showAlert('Gagal Mengubah Password', res.message, 'error');
     }
+  };
+
+  const handleResetOwnPassword = () => {
+    const confirmMsg = `Reset kata sandi akun ${currentUser.name} (${currentUser.email}) secara otomatis?\n\nSistem akan membuat kata sandi baru acak yang aman dan langsung mengganti sandi lama Anda di database.`;
+    if (!window.confirm(confirmMsg)) {
+      return;
+    }
+
+    setIsResettingOwnPassword(true);
+    const res = storageService.resetOwnPassword(currentUser.user_id);
+    setIsResettingOwnPassword(false);
+
+    if (res.success && res.newPassword) {
+      setResetResultPassword(res.newPassword);
+      showAlert(
+        'Kata Sandi Baru Berhasil Disetel!',
+        `Kata sandi akun Anda telah diperbarui di database. Kata sandi baru Anda: "${res.newPassword}". Harap salin dan simpan kata sandi ini.`,
+        'success'
+      );
+      if (res.user && onProfileUpdated) {
+        onProfileUpdated(res.user);
+      }
+    } else {
+      showAlert('Gagal Mereset Password', res.message, 'error');
+    }
+  };
+
+  const handleCopyResetPassword = (pass: string) => {
+    navigator.clipboard.writeText(pass);
+    setCopiedResetPassword(true);
+    setTimeout(() => setCopiedResetPassword(false), 2000);
   };
 
   return (
@@ -302,16 +353,40 @@ export const AdminProfileModal: React.FC<Props> = ({
                     : `Panitia ${currentSchool?.school_name || 'Madrasah'}`}
                 </p>
                 <div className="mt-1 flex items-center gap-2">
-                  <label className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-md cursor-pointer border border-emerald-200">
-                    <Upload className="w-3 h-3" />
-                    <span>Pilih Foto Profil</span>
+                  <label className={`inline-flex items-center gap-1 text-[10px] font-semibold ${isUploadingAvatar ? 'bg-emerald-100 text-emerald-600 cursor-not-allowed' : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 cursor-pointer'} px-2 py-1 rounded-md border border-emerald-200 transition-colors`}>
+                    {isUploadingAvatar ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                    <span>{isUploadingAvatar ? 'Mengunggah ke Drive...' : 'Pilih Foto Profil'}</span>
                     <input
                       type="file"
+                      disabled={isUploadingAvatar}
                       accept="image/jpeg,image/png,image/webp"
                       className="hidden"
                       onChange={handleAvatarFileSelect}
                     />
                   </label>
+                  {photoUrl && (
+                    <button
+                      type="button"
+                      disabled={isUploadingAvatar}
+                      onClick={async () => {
+                        setIsUploadingAvatar(true);
+                        try {
+                          await storageService.deleteUserAvatar(currentUser.user_id);
+                          setPhotoUrl('');
+                          showToast('Foto profil berhasil dihapus dari Google Drive & akun.', 'info');
+                        } catch {
+                          setPhotoUrl('');
+                        } finally {
+                          setIsUploadingAvatar(false);
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded-md border border-rose-200 transition-colors cursor-pointer"
+                      title="Hapus foto profil dari Google Drive & akun"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>Hapus Foto</span>
+                    </button>
+                  )}
                   {photoUrl && photoUrl !== currentUser.photo_url && (
                     <button
                       type="button"
@@ -427,15 +502,80 @@ export const AdminProfileModal: React.FC<Props> = ({
           </form>
         )}
 
-        {/* ================= TAB 2: CHANGE PASSWORD ================= */}
+        {/* ================= TAB 2: CHANGE / RESET PASSWORD ================= */}
         {activeTab === 'password' && (
-          <form onSubmit={handleChangePassword} className="space-y-4 text-xs">
-            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-[11px] flex items-start gap-2">
-              <KeyRound className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-              <span>
-                Gunakan kombinasi minimal 6 karakter untuk memastikan keamanan akun Anda dalam mengakses sistem PPDB.
-              </span>
+          <div className="space-y-5 text-xs">
+            {/* FITUR RESET PASSWORD OTOMATIS AKUN SENDIRI */}
+            <div className="p-4 bg-emerald-50/80 border-2 border-emerald-300/80 rounded-2xl space-y-3 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 bg-emerald-600 text-white rounded-xl shadow-xs shrink-0 mt-0.5">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                      <span>Reset Kata Sandi Akun Sendiri (Otomatis)</span>
+                      <span className="text-[10px] bg-emerald-200 text-emerald-900 font-bold px-2 py-0.5 rounded-full">1-Klik</span>
+                    </h4>
+                    <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                      Sistem akan membuat kata sandi baru yang aman secara otomatis, menggantikan kata sandi lama Anda di database secara langsung, dan menampilkannya di layar.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleResetOwnPassword}
+                  disabled={isResettingOwnPassword}
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-xs transition-colors shrink-0 cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isResettingOwnPassword ? 'animate-spin' : ''}`} />
+                  <span>{isResettingOwnPassword ? 'Memproses...' : 'Reset Sandi Otomatis'}</span>
+                </button>
+              </div>
+
+              {/* HASIL RESET KATA SANDI BARU */}
+              {resetResultPassword && (
+                <div className="p-4 bg-white border-2 border-emerald-400 rounded-xl space-y-2.5 mt-2 animate-in fade-in">
+                  <div className="flex items-center gap-2 text-emerald-900">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="font-bold text-xs">Kata Sandi Baru Akun Anda Siap Digunakan & Tersimpan:</span>
+                  </div>
+                  <div className="flex items-center justify-between bg-slate-50 px-3.5 py-2.5 rounded-lg border border-slate-200">
+                    <span className="font-mono font-black text-emerald-800 text-base tracking-wider select-all">
+                      {resetResultPassword}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyResetPassword(resetResultPassword)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer"
+                    >
+                      {copiedResetPassword ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedResetPassword ? 'Disalin!' : 'Salin Sandi'}</span>
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500 italic">
+                    * Harap catat kata sandi baru di atas. Kata sandi lama di database telah berhasil diperbarui.
+                  </p>
+                </div>
+              )}
             </div>
+
+            {/* DIVIDER */}
+            <div className="relative flex py-1 items-center">
+              <div className="grow border-t border-slate-200"></div>
+              <span className="shrink mx-3 text-slate-400 text-[10px] font-bold uppercase tracking-wider">
+                Atau Ubah Kata Sandi Secara Manual
+              </span>
+              <div className="grow border-t border-slate-200"></div>
+            </div>
+
+            <form onSubmit={handleChangePassword} className="space-y-4 text-xs">
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-[11px] flex items-start gap-2">
+                <KeyRound className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                <span>
+                  Gunakan kombinasi minimal 6 karakter untuk memastikan keamanan akun Anda dalam mengakses sistem PPDB.
+                </span>
+              </div>
 
             <div className="space-y-3">
               <div>
@@ -528,6 +668,7 @@ export const AdminProfileModal: React.FC<Props> = ({
               </button>
             </div>
           </form>
+          </div>
         )}
       </div>
     </div>

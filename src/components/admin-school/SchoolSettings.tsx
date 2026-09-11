@@ -206,11 +206,14 @@ export const SchoolSettings: React.FC<Props> = ({ school, onSave }) => {
                     />
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
+                        if (formData.school_id) {
+                          await storageService.deleteSchoolLogo(formData.school_id);
+                        }
                         const updated = { ...formData, logo_url: '' };
                         setFormData(updated);
                         onSave(updated);
-                        showToast('Logo madrasah dihapus.', 'info');
+                        showToast('Logo madrasah berhasil dihapus dari Google Drive & database.', 'info');
                       }}
                       title="Hapus Logo Madrasah"
                       className="absolute -top-2 -right-2 w-6 h-6 bg-rose-500 hover:bg-rose-600 text-white rounded-full flex items-center justify-center text-xs shadow-md cursor-pointer transition-transform hover:scale-110"
@@ -259,11 +262,14 @@ export const SchoolSettings: React.FC<Props> = ({ school, onSave }) => {
                     {formData.logo_url && (
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={async () => {
+                          if (formData.school_id) {
+                            await storageService.deleteSchoolLogo(formData.school_id);
+                          }
                           const updated = { ...formData, logo_url: '' };
                           setFormData(updated);
                           onSave(updated);
-                          showToast('Logo madrasah dihapus.', 'info');
+                          showToast('Logo madrasah berhasil dihapus dari Google Drive & database.', 'info');
                         }}
                         className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 hover:bg-rose-50 border border-rose-200 transition-colors"
                       >

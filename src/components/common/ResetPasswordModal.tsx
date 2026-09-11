@@ -10,6 +10,7 @@ import {
   User,
   CheckCircle2,
   Lock,
+  Sparkles,
 } from 'lucide-react';
 import { Application, StudentProfile, User as UserType } from '../../types/sipma';
 import { storageService } from '../../services/storageService';
@@ -189,6 +190,14 @@ export const ResetPasswordModal: React.FC<Props> = ({
                     <RefreshCw className="w-4 h-4" />
                   </button>
                 </div>
+                <button
+                  type="button"
+                  onClick={(e) => handleSubmit(e)}
+                  className="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs text-xs mt-1"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>⚡ Terapkan Sandi Ini & Simpan ke Database (1-Klik)</span>
+                </button>
               </div>
             ) : (
               <div className="space-y-1.5">

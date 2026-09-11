@@ -29,6 +29,7 @@ import {
   ShieldAlert,
   HelpCircle,
   FileSpreadsheet,
+  Sparkles,
 } from 'lucide-react';
 
 interface Props {
@@ -736,6 +737,31 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
                 <p className="text-[11px] text-slate-400 mt-1">
                   Jika dikosongkan, sistem akan membuatkan kata sandi acak yang aman (misal: adm829104).
                 </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const res = storageService.resetSchoolAdminPassword(
+                      resetModalAdmin.user_id,
+                      undefined,
+                      'Admin Pusat'
+                    );
+                    if (res.success && res.newPassword && res.user) {
+                      setResetResult({
+                        password: res.newPassword,
+                        admin: res.user,
+                      });
+                      setResetModalAdmin(null);
+                      setCustomNewPass('');
+                      if (onRefreshData) onRefreshData();
+                    } else {
+                      showAlert('Gagal Mereset Password', res.message, 'error');
+                    }
+                  }}
+                  className="w-full mt-2 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs text-xs"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>⚡ Reset Sandi Otomatis Sekarang (1-Klik)</span>
+                </button>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">

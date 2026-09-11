@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   Award,
   Share2,
+  Sparkles,
 } from 'lucide-react';
 import { User as UserType, School } from '../../types/sipma';
 import { storageService } from '../../services/storageService';
@@ -740,6 +741,32 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
                 <p className="text-[10px] text-slate-500 mt-1">
                   Jika dikosongkan, sistem membuat kata sandi acak 6 karakter.
                 </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const res = storageService.resetSchoolOperatorPassword(
+                      resetModalOperator.user_id,
+                      undefined,
+                      currentUser?.name || 'Admin Madrasah'
+                    );
+                    if (res.success && res.user && res.newPassword) {
+                      setCredentialsModal({
+                        operator: res.user,
+                        password: res.newPassword,
+                        isNew: false,
+                      });
+                      setResetModalOperator(null);
+                      setCustomNewPass('');
+                      if (onRefreshData) onRefreshData();
+                    } else {
+                      showAlert('Gagal Mereset Kata Sandi', res.message, 'error');
+                    }
+                  }}
+                  className="w-full mt-2 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs text-xs"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>⚡ Reset Sandi Otomatis Sekarang (1-Klik)</span>
+                </button>
               </div>
 
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 text-[11px] flex items-start gap-2">

@@ -99,19 +99,44 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
     showToast('URL logo aplikasi berhasil disimpan!', 'success');
   };
 
-  const handleRemoveLogo = () => {
+  const handleRemoveLogo = async () => {
+    try {
+      await storageService.deleteAppLogo();
+    } catch {}
     setFormData((prev) => ({ ...prev, app_logo: '' }));
     const current = storageService.getSettings();
     const updated = { ...current, ...formData, app_logo: '' };
     storageService.saveSettings(updated);
     onSaveSettings(updated);
-    showToast('Logo aplikasi telah dihapus.', 'info');
+    showToast('Logo aplikasi berhasil dihapus dari Google Drive & sistem.', 'info');
+  };
+
+  const getFormattedGasCode = () => {
+    let code = GAS_BACKEND_CODE;
+    const currentSsId = (formData.spreadsheet_id || '').trim();
+    const currentDriveId = (formData.drive_root_folder_id || '').trim();
+
+    if (currentSsId && !currentSsId.includes('MASUKKAN')) {
+      code = code.replace(
+        'var SPREADSHEET_ID = "MASUKKAN_SPREADSHEET_ID_ANDA_DI_SINI";',
+        `var SPREADSHEET_ID = "${currentSsId}";`
+      );
+    }
+    if (currentDriveId && !currentDriveId.includes('MASUKKAN')) {
+      code = code.replace(
+        'var DRIVE_ROOT_FOLDER_ID = "MASUKKAN_DRIVE_ROOT_FOLDER_ID_ANDA_DI_SINI";',
+        `var DRIVE_ROOT_FOLDER_ID = "${currentDriveId}";`
+      );
+    }
+    return code;
   };
 
   const handleCopyCode = () => {
-    navigator.clipboard.writeText(GAS_BACKEND_CODE);
+    const formattedCode = getFormattedGasCode();
+    navigator.clipboard.writeText(formattedCode);
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 2500);
+    showToast('Kode GAS dengan ID Anda berhasil disalin ke clipboard!', 'success');
   };
 
   const handleCopyText = (text: string, type: 'gas' | 'ss' | 'drive') => {
@@ -1307,7 +1332,7 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
           </div>
 
           <pre className="p-4 bg-slate-900 text-emerald-300 font-mono text-xs rounded-xl overflow-x-auto max-h-[500px] leading-relaxed select-all">
-            {GAS_BACKEND_CODE}
+            {getFormattedGasCode()}
           </pre>
         </div>
       )}

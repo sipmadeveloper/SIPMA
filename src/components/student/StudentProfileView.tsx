@@ -19,6 +19,10 @@ import {
   Lock,
   Eye,
   EyeOff,
+  RefreshCw,
+  Copy,
+  Check,
+  Sparkles,
 } from 'lucide-react';
 import {
   StudentProfile,
@@ -27,7 +31,7 @@ import {
   User,
   DocumentItem,
 } from '../../types/sipma';
-import { normalizeImageUrl, handleImageError } from '../../utils/imageUrl';
+import { normalizeImageUrl, handleImageError, compressAndResizeImage } from '../../utils/imageUrl';
 import { storageService } from '../../services/storageService';
 import { useFeedback } from '../../context/FeedbackContext';
 import { formatStandardDocumentFileName } from '../../utils/fileDownload';
@@ -67,7 +71,12 @@ export const StudentProfileView: React.FC<Props> = ({
   const [showConfirmPassword, setShowConfirmPassword] = useState<boolean>(false);
   const [isChangingPassword, setIsChangingPassword] = useState<boolean>(false);
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Self-Service Auto Reset Password State
+  const [resetResultPassword, setResetResultPassword] = useState<string | null>(null);
+  const [isResettingPassword, setIsResettingPassword] = useState<boolean>(false);
+  const [copiedResetPassword, setCopiedResetPassword] = useState<boolean>(false);
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -78,22 +87,23 @@ export const StudentProfileView: React.FC<Props> = ({
       return;
     }
 
-    // Validate size (max 3MB for profile photo)
-    if (file.size > 3 * 1024 * 1024) {
-      setErrorMsg('Ukuran file foto maksimal 3 MB.');
-      setTimeout(() => setErrorMsg(null), 4000);
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = reader.result as string;
-      setPhotoUrl(base64);
-      setStudent((prev) => ({ ...prev, photo_url: base64 }));
-      setSuccessMsg('Foto profil berhasil diunggah. Klik "Simpan Perubahan" untuk menyimpan.');
+    try {
+      const compressed = await compressAndResizeImage(file, 600, 600, 0.88);
+      setPhotoUrl(compressed.base64);
+      setStudent((prev) => ({ ...prev, photo_url: compressed.base64 }));
+      setSuccessMsg('Foto profil dipilih & dioptimalkan. Klik "Simpan Perubahan" untuk menyimpan ke cloud.');
       setTimeout(() => setSuccessMsg(null), 3500);
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = reader.result as string;
+        setPhotoUrl(base64);
+        setStudent((prev) => ({ ...prev, photo_url: base64 }));
+        setSuccessMsg('Foto profil berhasil dipilih. Klik "Simpan Perubahan" untuk menyimpan ke cloud.');
+        setTimeout(() => setSuccessMsg(null), 3500);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleRemovePhoto = () => {
@@ -104,7 +114,7 @@ export const StudentProfileView: React.FC<Props> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
     setErrorMsg(null);
@@ -123,7 +133,9 @@ export const StudentProfileView: React.FC<Props> = ({
         const existingDocs = storageService.getDocumentsByRegistration(student.registration_number);
         const fotoDoc = existingDocs.find((d) => d.document_type === 'foto' || d.document_type === 'pas_foto');
         if (fotoDoc) {
-          storageService.deleteDocument(fotoDoc.document_id);
+          await storageService.deleteDocumentPermanently(fotoDoc.document_id);
+        } else if (currentUser?.user_id) {
+          await storageService.deleteUserAvatar(currentUser.user_id);
         }
       } else if (photoUrl.startsWith('data:image')) {
         // Only trigger upload if a newly selected photo base64 exists
@@ -137,22 +149,18 @@ export const StudentProfileView: React.FC<Props> = ({
 
         const existingDocs = storageService.getDocumentsByRegistration(student.registration_number);
         const fotoDoc = existingDocs.find((d) => d.document_type === 'foto' || d.document_type === 'pas_foto');
+        const oldDriveId = fotoDoc?.drive_file_id || (student.photo_url ? (student.photo_url.match(/[\/=]([a-zA-Z0-9_-]{25,})/) || [])[1] : '') || '';
+        let effectiveDoc: DocumentItem;
         if (fotoDoc) {
-          const updatedDoc = {
+          effectiveDoc = {
             ...fotoDoc,
             file_name: standardFileName,
             file_data_base64: photoUrl,
-            old_drive_file_id: fotoDoc.drive_file_id || '',
+            old_drive_file_id: oldDriveId,
             upload_time: new Date().toISOString(),
           };
-          storageService.saveDocument(updatedDoc, student.name);
-          storageService.uploadDocumentToDrive(updatedDoc, student.name, undefined, {
-            isAccount: true,
-            accountName: student.name,
-            accountId: currentUser?.user_id,
-          });
         } else {
-          const newFotoDoc: DocumentItem = {
+          effectiveDoc = {
             document_id: `DOC-FOTO-${Date.now()}`,
             registration_number: student.registration_number,
             student_id: student.student_id || `STD-${Date.now()}`,
@@ -164,16 +172,29 @@ export const StudentProfileView: React.FC<Props> = ({
             upload_time: new Date().toISOString(),
             verification_status: 'menunggu',
           };
-          storageService.saveDocument(newFotoDoc, student.name);
-          storageService.uploadDocumentToDrive(newFotoDoc, student.name, undefined, {
-            isAccount: true,
+        }
+        storageService.saveDocument(effectiveDoc, student.name, school?.school_name);
+        const uploadRes = await storageService.uploadDocumentToDrive(
+          effectiveDoc,
+          student.name,
+          school?.school_name,
+          {
+            schoolId: school?.school_id,
             accountName: student.name,
-            accountId: currentUser?.user_id,
-          });
+            accountId: currentUser?.user_id || student.registration_number,
+          }
+        );
+
+        if (uploadRes?.file?.drive_url || uploadRes?.file?.thumbnail_url) {
+          const drivePhotoUrl = uploadRes.file.thumbnail_url || uploadRes.file.drive_url;
+          updatedProfile.photo_url = drivePhotoUrl;
+          storageService.saveStudentProfile(updatedProfile);
+          setPhotoUrl(drivePhotoUrl);
+          setStudent(updatedProfile);
         }
       }
 
-      setSuccessMsg('Profil dan foto berhasil disimpan secara permanen!');
+      setSuccessMsg('Profil dan foto berhasil disimpan ke database & Google Drive!');
       setTimeout(() => setSuccessMsg(null), 3000);
       onRefresh();
     } catch (err: any) {
@@ -208,6 +229,34 @@ export const StudentProfileView: React.FC<Props> = ({
     } else {
       showAlert('Gagal Mengubah Kata Sandi', res.message, 'error');
     }
+  };
+
+  const handleResetOwnPassword = () => {
+    const confirmMsg = `Reset kata sandi akun calon siswa atas nama ${student.name} secara otomatis?\n\nSistem akan membuat kata sandi baru acak yang aman dan langsung mengganti sandi lama Anda di database.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    const targetIdentifier = student.user_id || currentUser?.user_id || student.registration_number;
+    setIsResettingPassword(true);
+    const res = storageService.resetOwnPassword(targetIdentifier);
+    setIsResettingPassword(false);
+
+    if (res.success && res.newPassword) {
+      setResetResultPassword(res.newPassword);
+      showAlert(
+        'Kata Sandi Baru Berhasil Disetel!',
+        `Kata sandi akun Anda telah diperbarui di database menjadi "${res.newPassword}". Harap salin dan simpan kata sandi ini.`,
+        'success'
+      );
+      onRefresh();
+    } else {
+      showAlert('Gagal Mereset Kata Sandi', res.message, 'error');
+    }
+  };
+
+  const handleCopyResetPassword = (pass: string) => {
+    navigator.clipboard.writeText(pass);
+    setCopiedResetPassword(true);
+    setTimeout(() => setCopiedResetPassword(false), 2000);
   };
 
   return (
@@ -537,19 +586,84 @@ export const StudentProfileView: React.FC<Props> = ({
         </form>
       )}
 
-      {/* TAB 2: Change Password Form */}
+      {/* TAB 2: Change / Reset Password */}
       {activeTab === 'password' && (
-        <form onSubmit={handleChangePassword} className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-xs space-y-6">
+        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-xs space-y-6">
           <div className="border-b border-slate-100 pb-3">
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <KeyRound className="w-5 h-5 text-emerald-700" />
-              Ganti Kata Sandi Akun Siswa
+              Kelola Kata Sandi Akun Siswa
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Ubah kata sandi akun pendaftaran Anda secara mandiri untuk menjaga keamanan akun.
+              Reset otomatis atau ubah kata sandi akun pendaftaran Anda secara mandiri untuk menjaga keamanan akun.
             </p>
           </div>
 
+          {/* FITUR RESET KATA SANDI OTOMATIS */}
+          <div className="p-4 sm:p-5 bg-emerald-50/80 border-2 border-emerald-300 rounded-2xl space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <div className="p-2.5 bg-emerald-700 text-white rounded-xl shadow-xs shrink-0 mt-0.5">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                    <span>Reset Kata Sandi Akun Siswa (Otomatis)</span>
+                    <span className="text-[10px] bg-emerald-200 text-emerald-900 font-bold px-2 py-0.5 rounded-full">1-Klik</span>
+                  </h4>
+                  <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                    Sistem akan membuat kata sandi baru secara otomatis, mengganti kata sandi lama Anda di database secara langsung, dan menampilkannya di layar.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleResetOwnPassword}
+                disabled={isResettingPassword}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs shadow-xs transition-colors shrink-0 cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${isResettingPassword ? 'animate-spin' : ''}`} />
+                <span>{isResettingPassword ? 'Memproses...' : 'Reset Sandi Otomatis'}</span>
+              </button>
+            </div>
+
+            {/* HASIL RESET KATA SANDI BARU */}
+            {resetResultPassword && (
+              <div className="p-4 bg-white border-2 border-emerald-400 rounded-xl space-y-2.5 mt-2 animate-in fade-in">
+                <div className="flex items-center gap-2 text-emerald-900">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="font-bold text-xs">Kata Sandi Baru Akun Anda Berhasil Disimpan di Database:</span>
+                </div>
+                <div className="flex items-center justify-between bg-slate-50 px-3.5 py-2.5 rounded-lg border border-slate-200">
+                  <span className="font-mono font-black text-emerald-800 text-base tracking-wider select-all">
+                    {resetResultPassword}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyResetPassword(resetResultPassword)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg text-xs transition-colors cursor-pointer"
+                  >
+                    {copiedResetPassword ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedResetPassword ? 'Disalin!' : 'Salin Sandi'}</span>
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-500 italic">
+                  * Harap catat kata sandi baru ini. Sandi lama di database telah diganti dan Anda dapat login menggunakan no. pendaftaran dan sandi baru ini.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* DIVIDER */}
+          <div className="relative flex py-1 items-center">
+            <div className="grow border-t border-slate-200"></div>
+            <span className="shrink mx-3 text-slate-400 text-[10px] font-bold uppercase tracking-wider">
+              Atau Ubah Kata Sandi Secara Manual
+            </span>
+            <div className="grow border-t border-slate-200"></div>
+          </div>
+
+          <form onSubmit={handleChangePassword} className="space-y-6">
           <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-950 text-xs flex items-start gap-2.5">
             <Shield className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
             <div className="space-y-1">
@@ -655,6 +769,7 @@ export const StudentProfileView: React.FC<Props> = ({
             </button>
           </div>
         </form>
+        </div>
       )}
     </div>
   );

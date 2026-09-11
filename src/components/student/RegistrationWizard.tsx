@@ -451,25 +451,31 @@ export const RegistrationWizard: React.FC<Props> = ({
           originalFileName: file.name,
         });
 
+        const effectiveRegNumber = activeRegNumber || registrationNumber;
+        const existingDocs = storageService.getDocumentsByRegistration(effectiveRegNumber);
+        const prevDoc = existingDocs.find((d) => d.document_type === docType);
+        const oldDriveFileId = prevDoc?.drive_file_id || prevDoc?.old_drive_file_id || '';
+
         const newDoc: DocumentItem = {
-          document_id: `DOC-${Date.now()}`,
-          registration_number: activeRegNumber || registrationNumber,
-          student_id: student?.student_id || 'STD-001',
+          document_id: prevDoc ? prevDoc.document_id : `DOC-${Date.now()}`,
+          registration_number: effectiveRegNumber,
+          student_id: student?.student_id || prevDoc?.student_id || 'STD-001',
           document_type: docType,
           document_title: docTitle,
           file_name: standardFileName,
           file_size_kb: originalSizeKb,
           file_data_base64: base64Data,
+          old_drive_file_id: oldDriveFileId,
           upload_time: new Date().toISOString(),
           verification_status: 'menunggu',
         };
 
         storageService.saveDocument(newDoc, student?.name, effectiveSchool?.school_name);
         
-        // Push directly to Google Drive via server proxy
+        // Push directly to Google Drive via server proxy (mengganti berkas lama)
         const uploadRes = await storageService.uploadDocumentToDrive(newDoc, student?.name, effectiveSchool?.school_name);
 
-        setDocuments(storageService.getDocumentsByRegistration(activeRegNumber || registrationNumber));
+        setDocuments(storageService.getDocumentsByRegistration(effectiveRegNumber));
 
         // Also update student photo if docType is foto
         if ((docType === 'foto' || docType === 'pas_foto') && student) {
@@ -517,14 +523,17 @@ export const RegistrationWizard: React.FC<Props> = ({
   };
 
   const handleDeleteDocument = (docId: string) => {
-    showConfirm('Hapus Dokumen', 'Apakah Anda yakin ingin menghapus berkas dokumen ini?', () => {
-      showLoading('Menghapus berkas dokumen...');
-      setTimeout(() => {
-        storageService.deleteDocument(docId);
+    showConfirm('Hapus Dokumen', 'Apakah Anda yakin ingin menghapus berkas dokumen ini dari Google Drive dan database?', async () => {
+      showLoading('Menghapus berkas dari Google Drive...');
+      try {
+        const res = await storageService.deleteDocumentPermanently(docId);
         setDocuments(storageService.getDocumentsByRegistration(activeRegNumber || registrationNumber));
         hideLoading();
-        showToast('Dokumen berhasil dihapus', 'info');
-      }, 300);
+        showToast(res.message || 'Dokumen berhasil dihapus dari Google Drive & database', 'info');
+      } catch (err: any) {
+        hideLoading();
+        showToast(err?.message || 'Gagal menghapus berkas dokumen', 'error');
+      }
     });
   };
 
@@ -945,15 +954,21 @@ export const RegistrationWizard: React.FC<Props> = ({
                       reader.onload = async () => {
                         try {
                           const base64 = reader.result as string;
+                          const effectiveReg = activeRegNumber || registrationNumber;
+                          const existingDocs = storageService.getDocumentsByRegistration(effectiveReg);
+                          const prevPhotoDoc = existingDocs.find((d) => d.document_type === 'foto' || d.document_type === 'pas_foto');
+                          const oldPhotoDriveId = prevPhotoDoc?.drive_file_id || prevPhotoDoc?.old_drive_file_id || (student?.photo_url ? (student.photo_url.match(/[\/=]([a-zA-Z0-9_-]{25,})/) || [])[1] : '') || '';
+
                           const photoDoc: DocumentItem = {
-                            document_id: `DOC-FOTO-${Date.now()}`,
-                            registration_number: activeRegNumber || registrationNumber,
-                            student_id: student?.student_id || 'STD-001',
+                            document_id: prevPhotoDoc ? prevPhotoDoc.document_id : `DOC-FOTO-${Date.now()}`,
+                            registration_number: effectiveReg,
+                            student_id: student?.student_id || prevPhotoDoc?.student_id || 'STD-001',
                             document_type: 'foto',
                             document_title: 'Pas Foto 3x4 Calon Murid',
                             file_name: file.name,
                             file_size_kb: Math.round(file.size / 1024),
                             file_data_base64: base64,
+                            old_drive_file_id: oldPhotoDriveId,
                             upload_time: new Date().toISOString(),
                             verification_status: 'menunggu',
                           };
