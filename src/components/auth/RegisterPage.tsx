@@ -38,12 +38,18 @@ export const RegisterPage: React.FC<Props> = ({
       return;
     }
 
+    if (password.trim().length < 6) {
+      showAlert('Peringatan Kata Sandi', 'Kata sandi akun pendaftaran minimal harus 6 karakter.', 'warning');
+      return;
+    }
+
     try {
       const { registration_number } = storageService.registerStudentUser({
         name,
         nik,
         email,
         phone,
+        password: password.trim(),
       });
 
       // Update gender if specified

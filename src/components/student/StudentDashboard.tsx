@@ -15,6 +15,7 @@ import {
   ArrowRight,
   ShieldCheck,
   ChevronRight,
+  KeyRound,
 } from 'lucide-react';
 import {
   StudentProfile,
@@ -63,6 +64,7 @@ export const StudentDashboard: React.FC<Props> = ({
 }) => {
   const { showAlert, showConfirm } = useFeedback();
   const [internalTab, setInternalTab] = useState<'overview' | 'form' | 'print' | 'announcements' | 'profile'>('overview');
+  const [profileTab, setProfileTab] = useState<'profile' | 'password'>('profile');
   const activeTab = controlledTab !== undefined ? controlledTab : internalTab;
 
   const setActiveTab = (tab: 'overview' | 'form' | 'print' | 'announcements' | 'profile') => {
@@ -244,8 +246,12 @@ export const StudentDashboard: React.FC<Props> = ({
         student={student}
         application={application}
         school={safeSchool}
+        initialTab={profileTab}
         onRefresh={onRefresh}
-        onBack={() => setActiveTab('overview')}
+        onBack={() => {
+          setProfileTab('profile');
+          setActiveTab('overview');
+        }}
       />
     );
   }
@@ -322,11 +328,27 @@ export const StudentDashboard: React.FC<Props> = ({
           <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto pt-2 lg:pt-0 border-t lg:border-t-0 border-emerald-800/60">
             <button
               type="button"
-              onClick={() => setActiveTab('profile')}
+              onClick={() => {
+                setProfileTab('profile');
+                setActiveTab('profile');
+              }}
               className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 sm:px-4 sm:py-2.5 bg-emerald-600/30 hover:bg-emerald-600/50 text-white border border-emerald-400/30 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
             >
               <User className="w-3.5 h-3.5 text-emerald-300" />
               <span>Profil Saya</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setProfileTab('password');
+                setActiveTab('profile');
+              }}
+              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 sm:px-4 sm:py-2.5 bg-amber-500/25 hover:bg-amber-500/40 text-amber-200 border border-amber-400/40 rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
+              title="Reset Kata Sandi Akun Siswa"
+            >
+              <KeyRound className="w-3.5 h-3.5 text-amber-300" />
+              <span>Reset Sandi</span>
             </button>
 
             {application.final_status !== 'draft' && (

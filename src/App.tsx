@@ -151,6 +151,7 @@ export default function App() {
   const [searchResultApp, setSearchResultApp] = useState<Application | null>(null);
   const [searchResultStudent, setSearchResultStudent] = useState<StudentProfile | null>(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+  const [profileModalTab, setProfileModalTab] = useState<'profile' | 'password'>('profile');
 
   // Load all initial data from storageService
   const refreshData = useCallback(() => {
@@ -486,7 +487,14 @@ export default function App() {
           settings={settings}
           onLogout={handleLogout}
           onNavigateHome={() => updateViewMode(currentUser ? 'app' : 'landing')}
-          onOpenProfile={() => setIsProfileModalOpen(true)}
+          onOpenProfile={() => {
+            setProfileModalTab('profile');
+            setIsProfileModalOpen(true);
+          }}
+          onResetPassword={() => {
+            setProfileModalTab('password');
+            setIsProfileModalOpen(true);
+          }}
         />
       )}
 
@@ -831,6 +839,7 @@ export default function App() {
         <AdminProfileModal
           currentUser={currentUser}
           currentSchool={currentSchool}
+          initialTab={profileModalTab}
           onClose={() => setIsProfileModalOpen(false)}
           onProfileUpdated={(updatedUser) => {
             setCurrentUser(updatedUser);

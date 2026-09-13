@@ -20,6 +20,7 @@ import {
   formatDistanceIndonesian,
 } from '../utils/geo';
 import { updateAppFavicon } from '../utils/favicon';
+import { extractDriveFileId, clearImageUrlCache } from '../utils/imageUrl';
 import {
   INITIAL_SCHOOLS,
   INITIAL_USERS,
@@ -226,6 +227,31 @@ class StorageService {
       }
       if (!localStorage.getItem(STORAGE_KEYS.USERS)) {
         localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(INITIAL_USERS));
+      } else {
+        // Ensure existing users have valid password_hash
+        try {
+          const rawU = localStorage.getItem(STORAGE_KEYS.USERS);
+          if (rawU) {
+            const parsedUsers: User[] = JSON.parse(rawU);
+            let mutated = false;
+            parsedUsers.forEach((u) => {
+              if (!u.password_hash || u.password_hash.trim() === '') {
+                if (u.role === 'admin_pusat' || u.role === 'admin_sekolah') {
+                  u.password_hash = 'sipma123';
+                } else if (u.role === 'operator_sekolah') {
+                  u.password_hash = 'operator123';
+                } else {
+                  u.password_hash = 'sipma123';
+                }
+                mutated = true;
+              }
+            });
+            if (mutated) {
+              localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(parsedUsers));
+              if (this.memCache.users) this.memCache.users = parsedUsers;
+            }
+          }
+        } catch {}
       }
       if (!localStorage.getItem(STORAGE_KEYS.STUDENTS)) {
         localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(INITIAL_STUDENTS));
@@ -833,6 +859,166 @@ class StorageService {
     return this.getUsers().find((u) => u.registration_number === regNumber);
   }
 
+  /**
+   * Memvalidasi kredensial pengguna (email / nomor registrasi dan kata sandi) secara ketat.
+   * Menolak jika kata sandi salah, akun tidak ditemukan, atau akun dinonaktifkan.
+   */
+  authenticateUser(
+    identifier: string,
+    passwordInput: string,
+    requestedTab?: 'calon_murid' | 'admin'
+  ): {
+    success: boolean;
+    user?: User;
+    message: string;
+    code?: 'USER_NOT_FOUND' | 'ROLE_MISMATCH' | 'INACTIVE_ACCOUNT' | 'INVALID_PASSWORD' | 'EMPTY_CREDENTIALS';
+  } {
+    const cleanIdent = (identifier || '').trim().toLowerCase();
+    const cleanPass = (passwordInput || '').trim();
+
+    if (!cleanIdent || !cleanPass) {
+      return {
+        success: false,
+        message: 'Silakan masukkan alamat email dan kata sandi Anda.',
+        code: 'EMPTY_CREDENTIALS',
+      };
+    }
+
+    const users = this.getUsers();
+    const user = users.find((u) => {
+      const uEmail = (u.email || '').toLowerCase().trim();
+      const uReg = (u.registration_number || '').toLowerCase().trim();
+      return uEmail === cleanIdent || (uReg && uReg === cleanIdent);
+    });
+
+    if (!user) {
+      this.addAuditLog(
+        'FAILED_LOGIN_ATTEMPT',
+        cleanIdent,
+        `Percobaan login gagal: Akun dengan email/ID "${cleanIdent}" tidak terdaftar dalam sistem.`
+      );
+      return {
+        success: false,
+        message: `Akun "${cleanIdent}" belum terdaftar dalam sistem PPDB Madrasah. Pastikan penulisan email sudah benar atau lakukan pendaftaran terlebih dahulu.`,
+        code: 'USER_NOT_FOUND',
+      };
+    }
+
+    if (user.status === 'inactive') {
+      return {
+        success: false,
+        message: 'Akun Anda saat ini berstatus non-aktif. Silakan hubungi Administrator atau Panitia PPDB.',
+        code: 'INACTIVE_ACCOUNT',
+      };
+    }
+
+    // Role validation with tab
+    if (requestedTab === 'calon_murid') {
+      if (user.role !== 'calon_murid') {
+        const roleLabel =
+          user.role === 'admin_pusat'
+            ? 'Administrator Pusat'
+            : user.role === 'operator_sekolah'
+            ? 'Operator Madrasah'
+            : 'Administrator Madrasah';
+        return {
+          success: false,
+          message: `Email "${user.email}" terdaftar sebagai ${roleLabel}. Silakan gunakan tab "Admin & Operator" untuk masuk.`,
+          code: 'ROLE_MISMATCH',
+        };
+      }
+    } else if (requestedTab === 'admin') {
+      if (user.role === 'calon_murid') {
+        return {
+          success: false,
+          message: `Email "${user.email}" terdaftar sebagai Calon Peserta Didik. Silakan gunakan tab "Calon Murid" untuk masuk.`,
+          code: 'ROLE_MISMATCH',
+        };
+      }
+    }
+
+    // Strict Password Verification
+    const storedHash = (user.password_hash || '').trim();
+    let isPasswordValid = false;
+
+    if (storedHash) {
+      isPasswordValid = storedHash === cleanPass;
+    } else {
+      // Legacy fallback if registered before password hash enforcement
+      const validDefaults = ['sipma123', 'admin123', 'operator123'];
+      if (validDefaults.includes(cleanPass)) {
+        isPasswordValid = true;
+        user.password_hash = cleanPass;
+        this.memCache.users = users;
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+      }
+    }
+
+    if (!isPasswordValid) {
+      this.addAuditLog(
+        'FAILED_LOGIN_ATTEMPT',
+        user.name || cleanIdent,
+        `Percobaan login ditolak: Kata sandi yang dimasukkan salah untuk akun ${user.email} (${user.role}).`
+      );
+      return {
+        success: false,
+        message: 'Kata sandi yang Anda masukkan tidak sesuai. Periksa kembali huruf besar, huruf kecil, dan angka kata sandi Anda.',
+        code: 'INVALID_PASSWORD',
+      };
+    }
+
+    this.addAuditLog(
+      'USER_LOGIN',
+      user.name || cleanIdent,
+      `Pengguna ${user.name} (${user.role}) berhasil masuk ke portal sistem.`
+    );
+
+    return {
+      success: true,
+      user,
+      message: 'Autentikasi berhasil.',
+    };
+  }
+
+  /**
+   * Verifikasi data siswa untuk reset kata sandi mandiri (memeriksa NIK dan Email / No. Registrasi)
+   */
+  verifyStudentForPasswordReset(
+    identifier: string,
+    nik: string
+  ): { success: boolean; user?: User; student?: any; message: string } {
+    const cleanIdent = (identifier || '').trim().toLowerCase();
+    const cleanNik = (nik || '').replace(/\D/g, '').trim();
+
+    if (!cleanIdent || !cleanNik) {
+      return { success: false, message: 'Harap masukkan Email / No. Registrasi dan NIK 16 digit siswa.' };
+    }
+
+    const users = this.getUsers();
+    const user = users.find((u) => {
+      const uEmail = (u.email || '').toLowerCase().trim();
+      const uReg = (u.registration_number || '').toLowerCase().trim();
+      return u.role === 'calon_murid' && (uEmail === cleanIdent || (uReg && uReg === cleanIdent));
+    });
+
+    if (!user) {
+      return { success: false, message: 'Akun calon murid dengan identitas tersebut tidak ditemukan.' };
+    }
+
+    const studentsMap = this.getStudentsMap();
+    const regNum = user.registration_number || '';
+    const student = studentsMap[regNum];
+
+    if (!student || student.nik.replace(/\D/g, '') !== cleanNik) {
+      return {
+        success: false,
+        message: 'Data NIK yang Anda masukkan tidak cocok dengan data pendaftaran siswa ini.',
+      };
+    }
+
+    return { success: true, user, student, message: 'Identitas terverifikasi.' };
+  }
+
   updateUserProfile(userId: string, updates: Partial<User>): { success: boolean; user?: User; message: string } {
     try {
       const users = this.getUsers();
@@ -953,9 +1139,14 @@ class StorageService {
       }
 
       const user = users[index];
-      // If user has existing password_hash and oldPassword provided, we validate
-      if (user.password_hash && oldPassword && user.password_hash !== oldPassword) {
-        return { success: false, message: 'Password lama tidak sesuai!' };
+      // If user has existing password_hash, validate oldPassword
+      if (user.password_hash && user.password_hash.trim()) {
+        if (!oldPassword) {
+          return { success: false, message: 'Harap masukkan kata sandi lama Anda.' };
+        }
+        if (user.password_hash.trim() !== oldPassword.trim()) {
+          return { success: false, message: 'Kata sandi lama yang Anda masukkan tidak sesuai!' };
+        }
       }
 
       user.password_hash = newPassword.trim();
@@ -1497,6 +1688,7 @@ class StorageService {
     nisn?: string;
     email: string;
     phone: string;
+    password?: string;
     school_id?: string;
   }): { user: User; registration_number: string } {
     const users = this.getUsers();
@@ -1526,6 +1718,7 @@ class StorageService {
       name: params.name,
       email: params.email,
       phone: params.phone,
+      password_hash: params.password?.trim() || 'sipma123',
       role: 'calon_murid',
       school_id: targetSchoolId || undefined,
       status: 'active',
@@ -1534,6 +1727,7 @@ class StorageService {
     };
 
     users.push(newUser);
+    this.memCache.users = users;
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
 
     // Initialize Student Profile record
@@ -1922,13 +2116,13 @@ class StorageService {
 
     let oldDriveFileId = '';
     if (logoType === 'app') {
-      oldDriveFileId = settings.app_logo ? (settings.app_logo.match(/[\/=]([a-zA-Z0-9_-]{25,})/) || [])[1] || '' : '';
+      oldDriveFileId = extractDriveFileId(settings.app_logo) || '';
     } else if (logoType === 'school') {
       const sch = this.getSchools().find((s) => s.school_id === id || s.school_name === name);
-      oldDriveFileId = sch?.logo_url ? (sch.logo_url.match(/[\/=]([a-zA-Z0-9_-]{25,})/) || [])[1] || '' : '';
+      oldDriveFileId = extractDriveFileId(sch?.logo_url) || '';
     } else if (logoType === 'user') {
       const usr = this.getUsers().find((u) => u.user_id === id || u.email === id);
-      oldDriveFileId = usr?.photo_url ? (usr.photo_url.match(/[\/=]([a-zA-Z0-9_-]{25,})/) || [])[1] || '' : '';
+      oldDriveFileId = extractDriveFileId(usr?.photo_url) || '';
     }
 
     try {
@@ -1950,6 +2144,7 @@ class StorageService {
       if (res.ok) {
         const json = await res.json();
         if (json.success && json.logo_url) {
+          clearImageUrlCache(oldDriveFileId);
           if (logoType === 'user') {
             const currentUser = this.getCurrentUser();
             if (currentUser && (currentUser.user_id === id || currentUser.email === id)) {
@@ -1980,7 +2175,7 @@ class StorageService {
    */
   async uploadAppLogo(base64Data: string, fileName?: string): Promise<{ success: boolean; logo_url: string; message: string }> {
     const settings = this.getSettings();
-    const oldDriveFileId = settings.app_logo ? (settings.app_logo.match(/[\/=]([a-zA-Z0-9_-]{25,})/) || [])[1] || '' : '';
+    const oldDriveFileId = extractDriveFileId(settings.app_logo) || '';
     try {
       const res = await fetch('/api/gas/upload-logo', {
         method: 'POST',
@@ -2000,6 +2195,7 @@ class StorageService {
       if (res.ok) {
         const json = await res.json();
         if (json.success && json.logo_url) {
+          clearImageUrlCache(oldDriveFileId);
           const updatedSettings = { ...this.getSettings(), app_logo: json.logo_url };
           localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updatedSettings));
           updateAppFavicon(json.logo_url);
@@ -2029,7 +2225,7 @@ class StorageService {
   async uploadSchoolLogo(schoolId: string, schoolName: string, base64Data: string, fileName?: string): Promise<{ success: boolean; logo_url: string; message: string }> {
     const settings = this.getSettings();
     const sch = this.getSchools().find((s) => s.school_id === schoolId || s.school_name === schoolName);
-    const oldDriveFileId = sch?.logo_url ? (sch.logo_url.match(/[\/=]([a-zA-Z0-9_-]{25,})/) || [])[1] || '' : '';
+    const oldDriveFileId = extractDriveFileId(sch?.logo_url) || '';
     try {
       const res = await fetch('/api/gas/upload-logo', {
         method: 'POST',
@@ -2049,6 +2245,7 @@ class StorageService {
       if (res.ok) {
         const json = await res.json();
         if (json.success && json.logo_url) {
+          clearImageUrlCache(oldDriveFileId);
           const schools = this.getSchools();
           const idx = schools.findIndex((s) => s.school_id === schoolId);
           if (idx >= 0) {
@@ -2072,7 +2269,7 @@ class StorageService {
   async uploadUserAvatar(userId: string, userName: string, base64Data: string): Promise<{ success: boolean; photo_url: string; message: string }> {
     const settings = this.getSettings();
     const usr = this.getUsers().find((u) => u.user_id === userId || u.email === userId);
-    const oldDriveFileId = usr?.photo_url ? (usr.photo_url.match(/[\/=]([a-zA-Z0-9_-]{25,})/) || [])[1] || '' : '';
+    const oldDriveFileId = extractDriveFileId(usr?.photo_url) || '';
     try {
       const res = await fetch('/api/gas/upload-logo', {
         method: 'POST',
@@ -2092,6 +2289,7 @@ class StorageService {
       if (res.ok) {
         const json = await res.json();
         if (json.success && json.logo_url) {
+          clearImageUrlCache(oldDriveFileId);
           const users = this.getUsers();
           const idx = users.findIndex((u) => u.user_id === userId || u.email === userId);
           if (idx >= 0) {
@@ -2123,7 +2321,10 @@ class StorageService {
     const idx = users.findIndex((u) => u.user_id === userId || u.email === userId);
     const targetUser = idx >= 0 ? users[idx] : null;
     const oldPhotoUrl = targetUser?.photo_url || '';
-    const oldDriveFileId = oldPhotoUrl ? (oldPhotoUrl.match(/[\/=]([a-zA-Z0-9_-]{25,})/) || [])[1] || '' : '';
+    const oldDriveFileId = extractDriveFileId(oldPhotoUrl) || '';
+
+    clearImageUrlCache(oldPhotoUrl);
+    clearImageUrlCache(oldDriveFileId);
 
     if (idx >= 0) {
       users[idx].photo_url = '';
@@ -2168,7 +2369,10 @@ class StorageService {
     const idx = schools.findIndex((s) => s.school_id === schoolId);
     const targetSchool = idx >= 0 ? schools[idx] : null;
     const oldLogoUrl = targetSchool?.logo_url || '';
-    const oldDriveFileId = oldLogoUrl ? (oldLogoUrl.match(/[\/=]([a-zA-Z0-9_-]{25,})/) || [])[1] || '' : '';
+    const oldDriveFileId = extractDriveFileId(oldLogoUrl) || '';
+
+    clearImageUrlCache(oldLogoUrl);
+    clearImageUrlCache(oldDriveFileId);
 
     if (idx >= 0) {
       schools[idx].logo_url = '';
@@ -2205,7 +2409,10 @@ class StorageService {
   async deleteAppLogo(): Promise<ApiResponse> {
     const settings = this.getSettings();
     const oldLogoUrl = settings.app_logo || '';
-    const oldDriveFileId = oldLogoUrl ? (oldLogoUrl.match(/[\/=]([a-zA-Z0-9_-]{25,})/) || [])[1] || '' : '';
+    const oldDriveFileId = extractDriveFileId(oldLogoUrl) || '';
+
+    clearImageUrlCache(oldLogoUrl);
+    clearImageUrlCache(oldDriveFileId);
 
     const updatedSettings = { ...settings, app_logo: '' };
     this.memCache.settings = updatedSettings;
@@ -2640,6 +2847,9 @@ class StorageService {
     this.addAuditLog('SUBMIT_APPLICATION', registrationNumber, `Formulir pendaftaran nomor ${registrationNumber} resmi disubmit.`);
     this.notifySubscribers('data_mutated');
     this.triggerAutoSync();
+
+    // Notifikasi otomatis ke email pendaftar: Pendaftaran Berhasil Diajukan
+    this.notifyStudentRegistrationEvent(registrationNumber, 'registration_submitted', 'terdaftar');
   }
 
   deleteApplication(registrationNumber: string): { success: boolean; message: string } {
@@ -2794,19 +3004,22 @@ class StorageService {
     const isAccount = options?.isAccount || doc.document_type === 'foto_profil' || doc.document_type === 'avatar' || doc.document_type === 'dokumen_akun';
     const appYear = settings.academic_year_label || settings.application_year || '2026/2027';
 
-    // Auto-detect old Drive file id if replacing an existing document of same type
+    // Auto-detect old Drive file id if replacing an existing document of same type or same document_id
     let effectiveOldDriveId = doc.old_drive_file_id || '';
     if (!effectiveOldDriveId) {
       const allDocs = this.getDocuments();
       const matchDoc = allDocs.find(
         (d) =>
           d.registration_number === doc.registration_number &&
-          d.document_type === doc.document_type &&
-          d.document_id !== doc.document_id
+          d.document_type === doc.document_type
       );
-      if (matchDoc && matchDoc.drive_file_id) {
-        effectiveOldDriveId = matchDoc.drive_file_id;
+      if (matchDoc) {
+        effectiveOldDriveId = matchDoc.drive_file_id || extractDriveFileId(matchDoc.drive_url) || '';
       }
+    }
+    if (effectiveOldDriveId) {
+      doc.old_drive_file_id = effectiveOldDriveId;
+      clearImageUrlCache(effectiveOldDriveId);
     }
 
     // 1. Try upload via server proxy (which handles local backup + GAS Drive dispatch)
@@ -2961,10 +3174,14 @@ class StorageService {
           }
         }
 
+        const effectiveDriveId = targetDoc.drive_file_id || extractDriveFileId(targetDoc.drive_url) || '';
+        clearImageUrlCache(effectiveDriveId);
+        clearImageUrlCache(targetDoc.drive_url);
+
         const settings = this.getSettings();
         const payload = {
           document_id: documentId,
-          drive_file_id: targetDoc.drive_file_id || '',
+          drive_file_id: effectiveDriveId,
           registration_number: targetDoc.registration_number,
           document_type: targetDoc.document_type,
           file_url: targetDoc.drive_url || targetDoc.local_url || '',
@@ -3032,16 +3249,106 @@ class StorageService {
     this.deleteDocumentPermanently(documentId).catch(() => {});
   }
 
-  // ================= VERIFICATION & SELECTION =================
+  // ================= VERIFICATION, SELECTION & EMAIL NOTIFICATIONS =================
+  /**
+   * Helper komprehensif untuk mendapatkan profil lengkap penerima notifikasi (murid yang mendaftar)
+   * serta informasi madrasah yang dipilih sebagai pengirim resmi email.
+   */
+  getStudentNotificationRecipient(registrationNumber: string): {
+    email: string;
+    studentName: string;
+    schoolName: string;
+    schoolEmail: string;
+    schoolPhone: string;
+    schoolAddress: string;
+    pathway: string;
+    application: Application | null;
+  } {
+    const app = this.getApplication(registrationNumber);
+    const student = this.getStudentProfile(registrationNumber);
+    const users = this.getUsers();
+    const user = users.find(
+      (u) =>
+        u.registration_number === registrationNumber ||
+        (app?.student_id && u.user_id === app.student_id) ||
+        (app?.user_id && u.user_id === app.user_id) ||
+        (student?.user_id && u.user_id === student.user_id)
+    );
+    const parents = this.getParentsMap();
+    const parent =
+      (student?.student_id ? parents[student.student_id] : null) ||
+      (app?.student_id ? parents[app.student_id] : null);
+
+    // Prioritas email penerima (email calon peserta didik sendiri):
+    // 1. user.email
+    // 2. student.email
+    let email = (user?.email || '').trim();
+    if (!email && student?.email) {
+      email = String(student.email).trim();
+    }
+    if (!email && parent) {
+      email = ((parent as any).father_email || (parent as any).mother_email || (parent as any).guardian_email || (parent as any).email || '').trim();
+    }
+    if (!email) {
+      const cur = this.getCurrentUser();
+      if (cur && cur.role === 'calon_murid' && cur.email) {
+        email = cur.email.trim();
+      }
+    }
+
+    const studentName = student?.name || user?.name || 'Calon Peserta Didik';
+    const school = app?.school_id ? this.getSchoolById(app.school_id) : null;
+    const schoolName = school?.school_name || 'Madrasah Pilihan';
+
+    // Email pengirim resmi (email madrasah yang dipilih saat mendaftar)
+    let schoolEmail = (school?.contact_email || '').trim();
+    if (!schoolEmail && school?.school_id) {
+      const schoolAdmin = users.find(
+        (u) =>
+          u.school_id === school.school_id &&
+          (u.role === 'admin_sekolah' || u.role === 'operator_sekolah')
+      );
+      if (schoolAdmin?.email) {
+        schoolEmail = schoolAdmin.email.trim();
+      }
+    }
+    if (!schoolEmail) {
+      schoolEmail = 'panitia.ppdb@madrasah.sch.id';
+    }
+
+    const schoolPhone = school?.contact_phone || '-';
+    const schoolAddress = school?.address || '-';
+    const pathway = app?.pathway || '';
+
+    return {
+      email,
+      studentName,
+      schoolName,
+      schoolEmail,
+      schoolPhone,
+      schoolAddress,
+      pathway,
+      application: app,
+    };
+  }
+
   async sendNotificationEmail(params: {
     email: string;
     student_name: string;
     registration_number: string;
     school_name: string;
-    event_type: 'verification' | 'selection';
+    school_email?: string;
+    school_phone?: string;
+    school_address?: string;
+    event_type: 'registration_submitted' | 'verification' | 'selection' | 'announcement' | 'transfer';
     new_status: string;
     notes?: string;
-  }): Promise<{ success: boolean; message: string }> {
+    pathway?: string;
+    title?: string;
+    announcement_content?: string;
+    app_name?: string;
+    app_logo_url?: string;
+  }): Promise<{ success: boolean; message: string; sender_name?: string; sender_email?: string; recipient?: string }> {
     const settings = this.getSettings();
     try {
       const res = await fetch('/api/notifications/send-status-email', {
@@ -3049,6 +3356,8 @@ class StorageService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...params,
+          app_name: params.app_name || settings.app_name || 'SIPMA',
+          app_logo_url: params.app_logo_url || settings.app_logo || '',
           gas_web_app_url: settings.gas_web_app_url,
           spreadsheet_id: settings.spreadsheet_id,
         }),
@@ -3058,6 +3367,54 @@ class StorageService {
     } catch (err: any) {
       console.warn('sendNotificationEmail client error:', err);
       return { success: false, message: err?.message || 'Gagal mengirim email' };
+    }
+  }
+
+  /**
+   * Pemicu notifikasi email otomatis ke calon peserta didik untuk seluruh tahap PPDB
+   */
+  notifyStudentRegistrationEvent(
+    registrationNumber: string,
+    eventType: 'registration_submitted' | 'verification' | 'selection' | 'announcement' | 'transfer',
+    newStatus: string,
+    options?: {
+      notes?: string;
+      title?: string;
+      announcement_content?: string;
+      customSchoolName?: string;
+      customSchoolEmail?: string;
+    }
+  ): void {
+    try {
+      const info = this.getStudentNotificationRecipient(registrationNumber);
+      if (!info.email || !info.email.includes('@')) {
+        console.log(`[SIPMA Notification] Tidak ada email penerima valid untuk registrasi: ${registrationNumber}`);
+        return;
+      }
+
+      this.sendNotificationEmail({
+        email: info.email,
+        student_name: info.studentName,
+        registration_number: registrationNumber,
+        school_name: options?.customSchoolName || info.schoolName,
+        school_email: options?.customSchoolEmail || info.schoolEmail,
+        school_phone: info.schoolPhone,
+        school_address: info.schoolAddress,
+        event_type: eventType,
+        new_status: newStatus,
+        notes: options?.notes,
+        pathway: info.pathway,
+        title: options?.title,
+        announcement_content: options?.announcement_content,
+      })
+        .then((res) => {
+          console.log(`[SIPMA Email] Notifikasi ${eventType} (${newStatus}) terkirim ke ${info.email} (Pengirim: ${options?.customSchoolName || info.schoolName}):`, res?.message);
+        })
+        .catch((err) => {
+          console.warn(`[SIPMA Email] Gagal mengirim notifikasi ${eventType}:`, err);
+        });
+    } catch (err) {
+      console.warn(`[SIPMA Email] Error menyiapkan notifikasi ${eventType}:`, err);
     }
   }
 
@@ -3091,25 +3448,8 @@ class StorageService {
       `Verifikasi diubah menjadi [${status.toUpperCase()}] oleh ${verifiedBy}. Catatan: ${notes || '-'}`
     );
 
-    // Automatic email notification dispatch
-    const student = this.getStudentProfile(registrationNumber);
-    const user = this.getUsers().find((u) => u.registration_number === registrationNumber || u.user_id === app.student_id);
-    const studentEmail = user?.email || '';
-    const studentName = student?.name || user?.name || 'Calon Murid';
-    const school = this.getSchoolById(app.school_id);
-    const schoolName = school?.school_name || 'Madrasah';
-
-    if (studentEmail && studentEmail.includes('@')) {
-      this.sendNotificationEmail({
-        email: studentEmail,
-        student_name: studentName,
-        registration_number: registrationNumber,
-        school_name: schoolName,
-        event_type: 'verification',
-        new_status: status,
-        notes: notes,
-      }).catch((e) => console.warn('Gagal memicu email verifikasi:', e));
-    }
+    // Automatic email notification dispatch ke calon peserta didik dari email madrasah yang dipilih
+    this.notifyStudentRegistrationEvent(registrationNumber, 'verification', status, { notes });
 
     this.triggerAutoSync();
   }
@@ -3357,6 +3697,13 @@ class StorageService {
       `Berkas dialihkan otomatis dari [${oldSchoolName}] ke [${targetSchool.school_name}]. Jarak: ${formatDistanceIndonesian(newDistance)}, Sisa Kuota: ${availableSlots}. Diproses oleh: ${processedBy}`
     );
 
+    // Notifikasi otomatis ke email pendaftar: Berkas dialihkan
+    this.notifyStudentRegistrationEvent(registrationNumber, 'transfer', 'berkas_dialihkan', {
+      notes: reasonText,
+      customSchoolName: targetSchool.school_name,
+      customSchoolEmail: targetSchool.contact_email,
+    });
+
     return {
       success: true,
       message: `Berkas pendaftaran ${registrationNumber} berhasil dialihkan ke ${targetSchool.school_name}.`,
@@ -3418,25 +3765,9 @@ class StorageService {
       );
     }
 
-    // Automatic email notification on graduation status change (lulus / tidak_lulus)
+    // Automatic email notification on graduation status change (lulus / tidak_lulus) from chosen madrasah
     if (status === 'lulus' || status === 'tidak_lulus') {
-      const student = this.getStudentProfile(registrationNumber);
-      const user = this.getUsers().find((u) => u.registration_number === registrationNumber || u.user_id === app.student_id);
-      const studentEmail = user?.email || '';
-      const studentName = student?.name || user?.name || 'Calon Murid';
-      const school = this.getSchoolById(app.school_id);
-      const schoolName = school?.school_name || 'Madrasah';
-
-      if (studentEmail && studentEmail.includes('@')) {
-        this.sendNotificationEmail({
-          email: studentEmail,
-          student_name: studentName,
-          registration_number: registrationNumber,
-          school_name: schoolName,
-          event_type: 'selection',
-          new_status: status,
-        }).catch((e) => console.warn('Gagal memicu email kelulusan:', e));
-      }
+      this.notifyStudentRegistrationEvent(registrationNumber, 'selection', status);
     }
 
     return { rerouteResult };
@@ -3694,6 +4025,13 @@ class StorageService {
     // Picu sinkronisasi otomatis ke Google Sheets & Server
     this.triggerAutoSync();
 
+    // Notifikasi otomatis ke email pendaftar atas konfirmasi pemindahan madrasah
+    this.notifyStudentRegistrationEvent(newRegNum, 'transfer', 'berkas_dialihkan', {
+      notes: reasonText,
+      customSchoolName: targetSchool.school_name,
+      customSchoolEmail: targetSchool.contact_email,
+    });
+
     return {
       success: true,
       message: `Pendaftaran berhasil dialihkan ke ${targetSchool.school_name}. Seluruh data & berkas Anda telah tersimpan di database madrasah baru dan siap diverifikasi oleh panitia PPDB ${targetSchool.school_name}.`,
@@ -3736,6 +4074,25 @@ class StorageService {
     this.addAuditLog('ANNOUNCEMENT_SAVE', announcement.title, `Pengumuman '${announcement.title}' disimpan.`);
     this.notifySubscribers('data_mutated');
     this.triggerAutoSync();
+
+    // Kirim notifikasi email ke murid yang terdaftar jika pengumuman dipublikasikan
+    if (announcement.is_published) {
+      try {
+        const apps = this.getApplications().filter((a) => {
+          if (!a.is_locked) return false;
+          if (announcement.school_id && a.school_id !== announcement.school_id) return false;
+          return true;
+        });
+        apps.slice(0, 25).forEach((a) => {
+          this.notifyStudentRegistrationEvent(a.registration_number, 'announcement', 'pengumuman', {
+            title: announcement.title,
+            announcement_content: announcement.content,
+          });
+        });
+      } catch (err) {
+        console.warn('Gagal memicu email pengumuman:', err);
+      }
+    }
   }
 
   deleteAnnouncement(id: string): void {

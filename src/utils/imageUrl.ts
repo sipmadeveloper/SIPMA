@@ -108,6 +108,27 @@ export const FAST_IMG_PROPS = {
 };
 
 /**
+ * Clears URL caches when images are replaced or deleted to prevent stale previews
+ */
+export function clearImageUrlCache(urlOrId?: string | null): void {
+  if (!urlOrId) {
+    normalizedUrlCache.clear();
+    preloadedUrls.clear();
+    return;
+  }
+  const trimmed = urlOrId.trim();
+  normalizedUrlCache.delete(trimmed);
+  preloadedUrls.delete(trimmed);
+  const fileId = extractDriveFileId(trimmed);
+  if (fileId) {
+    normalizedUrlCache.delete(fileId);
+    normalizedUrlCache.delete(`/api/drive/image/${fileId}`);
+    preloadedUrls.delete(fileId);
+    preloadedUrls.delete(`/api/drive/image/${fileId}`);
+  }
+}
+
+/**
  * Preloads images into browser memory and GPU decode cache ahead of time.
  * When requested in components or modals, they render instantly in < 0.01s (0ms perceived latency).
  */

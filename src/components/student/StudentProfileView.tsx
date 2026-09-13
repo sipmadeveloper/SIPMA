@@ -31,7 +31,7 @@ import {
   User,
   DocumentItem,
 } from '../../types/sipma';
-import { normalizeImageUrl, handleImageError, compressAndResizeImage } from '../../utils/imageUrl';
+import { normalizeImageUrl, handleImageError, compressAndResizeImage, extractDriveFileId, clearImageUrlCache } from '../../utils/imageUrl';
 import { storageService } from '../../services/storageService';
 import { useFeedback } from '../../context/FeedbackContext';
 import { formatStandardDocumentFileName } from '../../utils/fileDownload';
@@ -41,6 +41,7 @@ interface Props {
   application: Application;
   school: School;
   currentUser?: User | null;
+  initialTab?: 'profile' | 'password';
   onRefresh: () => void;
   onBack: () => void;
 }
@@ -50,11 +51,12 @@ export const StudentProfileView: React.FC<Props> = ({
   application,
   school,
   currentUser,
+  initialTab = 'profile',
   onRefresh,
   onBack,
 }) => {
   const { showAlert } = useFeedback();
-  const [activeTab, setActiveTab] = useState<'profile' | 'password'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'password'>(initialTab);
   const [student, setStudent] = useState<StudentProfile>({ ...initialStudent });
   const [photoUrl, setPhotoUrl] = useState<string>(student.photo_url || currentUser?.photo_url || '');
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -149,7 +151,10 @@ export const StudentProfileView: React.FC<Props> = ({
 
         const existingDocs = storageService.getDocumentsByRegistration(student.registration_number);
         const fotoDoc = existingDocs.find((d) => d.document_type === 'foto' || d.document_type === 'pas_foto');
-        const oldDriveId = fotoDoc?.drive_file_id || (student.photo_url ? (student.photo_url.match(/[\/=]([a-zA-Z0-9_-]{25,})/) || [])[1] : '') || '';
+        const oldDriveId = extractDriveFileId(fotoDoc?.drive_file_id || fotoDoc?.drive_url || student.photo_url) || '';
+        if (oldDriveId) {
+          clearImageUrlCache(oldDriveId);
+        }
         let effectiveDoc: DocumentItem;
         if (fotoDoc) {
           effectiveDoc = {
@@ -603,13 +608,14 @@ export const StudentProfileView: React.FC<Props> = ({
           <div className="p-4 sm:p-5 bg-emerald-50/80 border-2 border-emerald-300 rounded-2xl space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-start gap-3">
-                <div className="p-2.5 bg-emerald-700 text-white rounded-xl shadow-xs shrink-0 mt-0.5">
-                  <Sparkles className="w-5 h-5" />
+                <div className="p-2.5 bg-amber-600 text-white rounded-xl shadow-xs shrink-0 mt-0.5">
+                  <KeyRound className="w-5 h-5" />
                 </div>
                 <div>
                   <h4 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                    <KeyRound className="w-4 h-4 text-amber-700 inline-block" />
                     <span>Reset Kata Sandi Akun Siswa (Otomatis)</span>
-                    <span className="text-[10px] bg-emerald-200 text-emerald-900 font-bold px-2 py-0.5 rounded-full">1-Klik</span>
+                    <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-full">1-Klik</span>
                   </h4>
                   <p className="text-xs text-slate-600 mt-1 leading-relaxed">
                     Sistem akan membuat kata sandi baru secara otomatis, mengganti kata sandi lama Anda di database secara langsung, dan menampilkannya di layar.
@@ -620,9 +626,14 @@ export const StudentProfileView: React.FC<Props> = ({
                 type="button"
                 onClick={handleResetOwnPassword}
                 disabled={isResettingPassword}
-                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs shadow-xs transition-colors shrink-0 cursor-pointer disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs shadow-xs transition-colors shrink-0 cursor-pointer disabled:opacity-50"
+                title="Reset Kata Sandi Akun Siswa Otomatis"
               >
-                <RefreshCw className={`w-4 h-4 ${isResettingPassword ? 'animate-spin' : ''}`} />
+                {isResettingPassword ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <KeyRound className="w-4 h-4" />
+                )}
                 <span>{isResettingPassword ? 'Memproses...' : 'Reset Sandi Otomatis'}</span>
               </button>
             </div>

@@ -157,6 +157,18 @@
       "author_name": "Panitia PPDB MAN 1"
     }
   ],
-  "audit_logs": [],
-  "last_updated": "2026-09-08T12:18:42.650Z"
+  "audit_logs": [
+    {
+      "log_id": "LOG-MAIL-1789267007148",
+      "timestamp": "2026-09-13T02:36:47.148Z",
+      "user_id": "SYSTEM",
+      "username": "Panitia PPDB MAN 1 Kota",
+      "role": "system",
+      "action": "SEND_EMAIL_NOTIFICATION",
+      "target": "SIPMA-MAN01-2026-0001",
+      "description": "Notifikasi email PPDB [VERIFICATION: terverifikasi] dikirim ke test.calonmurid@example.com dari pengirim madrasah 'MAN 1 Kota' (email madrasah). (Tersimpan di antrean sistem)",
+      "status": "queued"
+    }
+  ],
+  "last_updated": "2026-09-13T02:36:47.148Z"
 }

@@ -8,6 +8,7 @@ import {
   GraduationCap,
   ChevronDown,
   UserCheck,
+  KeyRound,
 } from 'lucide-react';
 import { User as UserType, School, SystemSettings } from '../../types/sipma';
 import { normalizeImageUrl, handleImageError } from '../../utils/imageUrl';
@@ -19,6 +20,7 @@ interface Props {
   onLogout: () => void;
   onNavigateHome: () => void;
   onOpenProfile?: () => void;
+  onResetPassword?: () => void;
 }
 
 export const Navbar: React.FC<Props> = ({
@@ -28,6 +30,7 @@ export const Navbar: React.FC<Props> = ({
   onLogout,
   onNavigateHome,
   onOpenProfile,
+  onResetPassword,
 }) => {
   const getRoleBadge = () => {
     switch (currentUser?.role) {
@@ -112,6 +115,16 @@ export const Navbar: React.FC<Props> = ({
         <div className="flex items-center gap-3">
           {currentUser ? (
             <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={onResetPassword || onOpenProfile}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300/80 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer group"
+                title="Reset Kata Sandi Akun Sendiri"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-amber-700 group-hover:rotate-12 transition-transform" />
+                <span className="hidden sm:inline">Reset Sandi</span>
+              </button>
+
               <button
                 type="button"
                 onClick={onOpenProfile}

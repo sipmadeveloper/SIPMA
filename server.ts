@@ -1453,9 +1453,17 @@ app.post('/api/notifications/send-status-email', async (req: Request, res: Respo
       student_name,
       registration_number,
       school_name,
-      event_type, // 'verification' | 'selection'
+      school_email,
+      school_phone,
+      school_address,
+      event_type, // 'registration_submitted' | 'verification' | 'selection' | 'announcement' | 'transfer'
       new_status,
       notes,
+      pathway,
+      title,
+      announcement_content,
+      app_name,
+      app_logo_url,
     } = req.body;
 
     if (!email || !email.includes('@')) {
@@ -1465,6 +1473,32 @@ app.post('/api/notifications/send-status-email', async (req: Request, res: Respo
       });
     }
 
+    // Automatically resolve school contact info if not passed directly
+    let targetSchool: any = null;
+    if (registration_number && serverDb.applications) {
+      const app = serverDb.applications.find((a: any) => a.registration_number === registration_number);
+      if (app?.school_id && serverDb.schools) {
+        targetSchool = serverDb.schools.find((s: any) => s.school_id === app.school_id);
+      }
+    }
+    if (!targetSchool && school_name && serverDb.schools) {
+      targetSchool = serverDb.schools.find((s: any) => s.school_name?.toLowerCase() === school_name?.toLowerCase());
+    }
+
+    const finalSchoolName = school_name || targetSchool?.school_name || 'Madrasah Pilihan';
+    const finalSchoolEmail = school_email || targetSchool?.contact_email || '';
+    const finalSchoolPhone = school_phone || targetSchool?.contact_phone || '';
+    const finalSchoolAddress = school_address || targetSchool?.address || '';
+
+    // Automatically resolve public App Logo
+    let finalAppLogo = app_logo_url || settings.app_logo || '';
+    if (finalAppLogo.includes('drive.google.com') || (finalAppLogo.length > 20 && !finalAppLogo.includes('/') && !finalAppLogo.startsWith('data:'))) {
+      const driveId = extractDriveFileId(finalAppLogo) || finalAppLogo;
+      finalAppLogo = `https://lh3.googleusercontent.com/d/${driveId}`;
+    } else if (!finalAppLogo || finalAppLogo.startsWith('data:image/') || finalAppLogo.includes('localhost')) {
+      finalAppLogo = 'https://cdn.phototourl.com/free/2026-09-01-6c787787-6585-4830-b0a6-9bfab3f1dba4.png';
+    }
+
     const emailPayload = {
       action: 'sendNotificationEmail',
       spreadsheet_id: ssId,
@@ -1472,11 +1506,18 @@ app.post('/api/notifications/send-status-email', async (req: Request, res: Respo
         email: email.trim(),
         student_name: student_name || 'Calon Murid',
         registration_number: registration_number || '',
-        school_name: school_name || settings.app_name || 'Madrasah',
+        school_name: finalSchoolName,
+        school_email: finalSchoolEmail,
+        school_phone: finalSchoolPhone,
+        school_address: finalSchoolAddress,
         event_type: event_type || 'verification',
         new_status: new_status || '',
         notes: notes || '',
-        app_name: settings.app_name || 'SIPMA',
+        pathway: pathway || '',
+        title: title || '',
+        announcement_content: announcement_content || notes || '',
+        app_name: app_name || settings.app_name || 'SIPMA',
+        app_logo_url: finalAppLogo,
       },
     };
 
@@ -1508,11 +1549,11 @@ app.post('/api/notifications/send-status-email', async (req: Request, res: Respo
       log_id: `LOG-MAIL-${Date.now()}`,
       timestamp: new Date().toISOString(),
       user_id: 'SYSTEM',
-      username: 'Notifikasi Otomatis',
+      username: `Panitia PPDB ${finalSchoolName}`,
       role: 'system',
       action: 'SEND_EMAIL_NOTIFICATION',
       target: registration_number || email,
-      description: `Notifikasi email status [${event_type?.toUpperCase()}: ${new_status}] dikirim ke ${email}. ${gasSent ? '(Terkirim via GAS)' : '(Tersimpan di antrean sistem)'}`,
+      description: `Notifikasi email PPDB [${event_type?.toUpperCase()}: ${new_status}] dikirim ke ${email} dari pengirim madrasah '${finalSchoolName}' (${finalSchoolEmail || 'email madrasah'}). ${gasSent ? '(Terkirim via GAS)' : '(Tersimpan di antrean sistem)'}`,
       status: gasSent ? 'success' : 'queued',
     };
 
@@ -1523,10 +1564,13 @@ app.post('/api/notifications/send-status-email', async (req: Request, res: Respo
     return res.json({
       success: true,
       message: gasSent
-        ? `Notifikasi email otomatis berhasil dikirim ke ${email}.`
-        : `Notifikasi email telah dicatat untuk ${email} (GAS belum terkonfigurasi atau respons diterima).`,
+        ? `Notifikasi email otomatis resmi dari ${finalSchoolName} berhasil dikirim ke ${email}.`
+        : `Notifikasi email telah dicatat untuk ${email} (pengirim: ${finalSchoolName}).`,
       gas_sent: gasSent,
       gas_message: gasMessage,
+      sender_name: `Panitia PPDB ${finalSchoolName}`,
+      sender_email: finalSchoolEmail,
+      recipient: email,
     });
   } catch (err: any) {
     res.status(500).json({

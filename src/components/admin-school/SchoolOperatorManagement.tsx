@@ -762,10 +762,10 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
                       showAlert('Gagal Mereset Kata Sandi', res.message, 'error');
                     }
                   }}
-                  className="w-full mt-2 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs text-xs"
+                  className="w-full mt-2 py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs text-xs"
                 >
-                  <Sparkles className="w-4 h-4" />
-                  <span>⚡ Reset Sandi Otomatis Sekarang (1-Klik)</span>
+                  <KeyRound className="w-4 h-4" />
+                  <span>🔑 Reset Sandi Otomatis Sekarang (1-Klik)</span>
                 </button>
               </div>
 

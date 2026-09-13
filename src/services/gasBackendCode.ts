@@ -1453,13 +1453,18 @@ function handleSendNotificationEmail(data, targetSpreadsheetId) {
   var studentName = data.student_name || "Calon Murid";
   var regNumber = data.registration_number || "";
   var schoolName = data.school_name || "Madrasah";
-  var eventType = data.event_type || "verification"; // "verification" | "selection"
+  var schoolEmail = (data.school_email || "").trim();
+  var schoolPhone = (data.school_phone || "").trim();
+  var schoolAddress = (data.school_address || "").trim();
+  var eventType = data.event_type || "verification"; // "registration_submitted" | "verification" | "selection" | "announcement" | "transfer"
   var newStatus = String(data.new_status || "").toLowerCase();
   var notes = data.notes || "";
+  var pathway = data.pathway || "";
   var appName = data.app_name || "SIPMA PPDB Madrasah";
+  var appLogoUrl = data.app_logo_url || "https://cdn.phototourl.com/free/2026-09-01-6c787787-6585-4830-b0a6-9bfab3f1dba4.png";
 
-  // Validasi email
-  if (!email || email.indexOf("@") === -1) {
+  // Validasi email penerima
+  if (!email || email.indexOf("@") === -1 || email.indexOf(".") === -1) {
     return { success: false, message: "Alamat email penerima tidak valid: " + email };
   }
 
@@ -1469,115 +1474,313 @@ function handleSendNotificationEmail(data, targetSpreadsheetId) {
   var headline = "";
   var detailHtml = "";
 
-  if (eventType === "verification") {
+  // 1. TAHAP PENDAFTARAN BERHASIL DISERAHKAN
+  if (eventType === "registration_submitted" || eventType === "submission") {
+    subject = "[SIPMA] Bukti Pendaftaran Berhasil Diajukan - " + studentName + " (" + regNumber + ")";
+    statusBadge = "PENDAFTARAN BERHASIL DIAJUKAN";
+    badgeColor = "#059669"; // Emerald
+    headline = "Selamat! Formulir pendaftaran Anda telah berhasil diserahkan ke Panitia PPDB " + schoolName + ".";
+    detailHtml = "<p>Data biodata diri, data orang tua/wali, titik lokasi tempat tinggal, serta dokumen berkas persyaratan Anda telah terkunci di sistem dan diteruskan ke panitia pemeriksa.</p>" +
+      "<div style='background-color:#ecfdf5;border-left:4px solid #10b981;padding:14px;margin:14px 0;border-radius:6px;font-size:13px;color:#065f46;'>" +
+      "<b>Langkah Selanjutnya:</b> Panitia PPDB " + schoolName + " akan melakukan verifikasi keabsahan dokumen berkas yang Anda lampirkan. Pantau status berkas secara berkala melalui akun portal pendaftaran Anda." +
+      "</div>" +
+      "<p style='margin-top:10px;'>Simpan nomor pendaftaran <b>" + regNumber + "</b> ini sebagai bukti sah keikutsertaan Anda.</p>";
+  }
+  // 2. TAHAP VERIFIKASI BERKAS
+  else if (eventType === "verification") {
     if (newStatus === "terverifikasi") {
       subject = "[SIPMA] Berkas Pendaftaran DIVERIFIKASI - " + studentName + " (" + regNumber + ")";
-      statusBadge = "BERKAS TERVERIFIKASI";
+      statusBadge = "BERKAS TERVERIFIKASI (VALID)";
       badgeColor = "#059669"; // Emerald
-      headline = "Kabar Baik! Seluruh berkas pendaftaran Anda telah berhasil diverifikasi oleh panitia.";
-      detailHtml = "<p>Seluruh dokumen dan berkas persyaratan yang Anda unggah telah diperiksa dan dinyatakan <b>LENGKAP & VALID</b> sesuai ketentuan PPDB.</p>";
-    } else if (newStatus === "perlu_perbaikan") {
-      subject = "[SIPMA] Perhatian: Berkas Pendaftaran Perlu Perbaikan - " + regNumber;
-      statusBadge = "PERLU PERBAIKAN";
-      badgeColor = "#d97706"; // Amber
-      headline = "Terdapat berkas pendaftaran yang memerlukan perbaikan dari Anda.";
-      detailHtml = "<p>Panitia pemeriksa menemukan beberapa catatan pada berkas dokumen Anda:</p>" +
-        "<div style='background-color:#fef3c7;border-left:4px solid #f59e0b;padding:12px;margin:12px 0;font-size:14px;color:#92400e;'>" +
-        "<b>Catatan Panitia:</b> " + (notes || "Mohon periksa kembali kelengkapan dokumen dan unggah berkas yang jelas.") +
-        "</div>" +
-        "<p>Silakan segera masuk ke portal SIPMA untuk mengunggah ulang dokumen yang diminta agar pendaftaran Anda dapat diproses lebih lanjut.</p>";
-    } else if (newStatus === "ditolak") {
-      subject = "[SIPMA] Pemberitahuan Status Verifikasi Berkas - " + regNumber;
-      statusBadge = "DITOLAK";
-      badgeColor = "#dc2626"; // Red
-      headline = "Berkas pendaftaran belum memenuhi kriteria persyaratan.";
-      detailHtml = "<p>Mohon maaf, berkas persyaratan yang diajukan belum dapat kami terima dengan catatan:</p>" +
-        "<div style='background-color:#fee2e2;border-left:4px solid #ef4444;padding:12px;margin:12px 0;font-size:14px;color:#991b1b;'>" +
-        "<b>Alasan/Catatan:</b> " + (notes || "Tidak memenuhi syarat administrasi.") +
+      headline = "Kabar Baik! Seluruh berkas pendaftaran Anda telah berhasil diverifikasi oleh Panitia PPDB " + schoolName + ".";
+      detailHtml = "<p>Seluruh dokumen dan berkas persyaratan yang Anda unggah telah diperiksa oleh panitia dan dinyatakan <b>LENGKAP, VALID & MEMENUHI SYARAT</b>.</p>" +
+        "<div style='background-color:#ecfdf5;border-left:4px solid #10b981;padding:12px;margin:12px 0;border-radius:6px;font-size:13px;color:#065f46;'>" +
+        "<b>Tahap Berikutnya:</b> Nama calon peserta didik kini secara resmi masuk ke tahap perangkingan dan seleksi penerimaan murid baru sesuai kuota jalur yang dipilih." +
         "</div>";
-    }
-  } else if (eventType === "selection") {
-    if (newStatus === "lulus") {
-      subject = "[SIPMA] SELAMAT! Anda Dinyatakan LULUS Seleksi PPDB - " + regNumber;
-      statusBadge = "LULUS SELEKSI";
-      badgeColor = "#059669"; // Emerald
-      headline = "Selamat! Anda secara resmi dinyatakan LULUS dalam seleksi penerimaan murid baru.";
-      detailHtml = "<p>Panitia PPDB mengumumkan bahwa calon peserta didik atas nama <b>" + studentName + "</b> dengan nomor registrasi <b>" + regNumber + "</b> telah diterima di <b>" + schoolName + "</b>.</p>" +
-        "<p>Silakan login ke akun pendaftar Anda di portal SIPMA untuk mencetak <b>Bukti Tanda Kelulusan</b> dan melihat jadwal daftar ulang.</p>";
-    } else if (newStatus === "tidak_lulus") {
-      subject = "[SIPMA] Pengumuman Hasil Seleksi PPDB - " + regNumber;
-      statusBadge = "TIDAK LULUS";
-      badgeColor = "#64748b"; // Slate
-      headline = "Pengumuman Hasil Seleksi PPDB Madrasah";
-      detailHtml = "<p>Terima kasih atas partisipasi Anda dalam proses seleksi. Mohon maaf, berdasarkan kuota dan perangkingan seleksi saat ini, calon peserta didik atas nama <b>" + studentName + "</b> (" + regNumber + ") belum masuk dalam kuota penerimaan di pilihan ini.</p>" +
-        "<p>Anda dapat memantau alternatif rekomendasi madrasah terdekat lainnya yang masih memiliki kuota melalui portal SIPMA.</p>";
+    } else if (newStatus === "perlu_perbaikan") {
+      subject = "[SIPMA] PENTING: Berkas Pendaftaran Perlu Perbaikan - " + studentName + " (" + regNumber + ")";
+      statusBadge = "PERLU PERBAIKAN BERKAS";
+      badgeColor = "#d97706"; // Amber
+      headline = "Perhatian: Terdapat berkas pendaftaran yang memerlukan perbaikan dari Anda.";
+      detailHtml = "<p>Panitia pemeriksa berkas di <b>" + schoolName + "</b> menemukan catatan pada dokumen yang Anda lampirkan:</p>" +
+        "<div style='background-color:#fef3c7;border-left:4px solid #f59e0b;padding:14px;margin:12px 0;border-radius:6px;font-size:14px;color:#92400e;line-height:1.5;'>" +
+        "<b>Catatan Panitia:</b><br/>" + (notes || "Mohon periksa kembali kelengkapan dokumen dan unggah berkas pengganti yang lebih jelas.") +
+        "</div>" +
+        "<p><b>Tindakan Diperlukan:</b> Akses formulir pendaftaran Anda pada portal SIPMA, masuk ke menu unggah dokumen, lalu klik tombol <b>Ganti File</b> untuk mengunggah dokumen revisi agar pendaftaran Anda dapat segera disetujui.</p>";
+    } else if (newStatus === "ditolak") {
+      subject = "[SIPMA] Pemberitahuan Status Verifikasi Berkas - " + studentName + " (" + regNumber + ")";
+      statusBadge = "BERKAS DITOLAK";
+      badgeColor = "#dc2626"; // Red
+      headline = "Pemberitahuan hasil pemeriksaan berkas persyaratan administrasi pendaftaran.";
+      detailHtml = "<p>Mohon maaf, berdasarkan verifikasi panitia di <b>" + schoolName + "</b>, berkas persyaratan yang diajukan belum dapat kami terima dengan catatan:</p>" +
+        "<div style='background-color:#fee2e2;border-left:4px solid #ef4444;padding:12px;margin:12px 0;border-radius:6px;font-size:14px;color:#991b1b;'>" +
+        "<b>Alasan Penolakan:</b> " + (notes || "Tidak memenuhi ketentuan kriteria administrasi yang dipersyaratkan.") +
+        "</div>" +
+        "<p>Akun pendaftaran Anda telah dibuka kembali. Anda dapat memperbaiki data atau memilih madrasah alternatif lain yang sesuai melalui portal SIPMA.</p>";
     }
   }
+  // 3. TAHAP SELEKSI AKHIR & KELULUSAN
+  else if (eventType === "selection") {
+    if (newStatus === "lulus") {
+      subject = "[SIPMA] SELAMAT! Anda Dinyatakan LULUS Seleksi PPDB di " + schoolName + " - " + regNumber;
+      statusBadge = "SELAMAT, ANDA LULUS SELEKSI!";
+      badgeColor = "#059669"; // Emerald
+      headline = "Alhamdulillah! Anda secara resmi dinyatakan LULUS dalam seleksi penerimaan murid baru.";
+      detailHtml = "<p>Panitia PPDB mengumumkan bahwa calon peserta didik:</p>" +
+        "<div style='background-color:#ecfdf5;border:1px solid #a7f3d0;padding:14px 16px;border-radius:8px;margin:12px 0;font-size:14px;color:#065f46;'>" +
+        "Nama Calon Murid: <b>" + studentName + "</b><br/>" +
+        "Nomor Registrasi: <b>" + regNumber + "</b><br/>" +
+        "Madrasah Diterima: <b>" + schoolName + "</b>" +
+        (pathway ? ("<br/>Jalur: <b>" + pathway.toUpperCase() + "</b>") : "") +
+        "</div>" +
+        "<p><b>Instruksi Daftar Ulang:</b> Silakan masuk ke akun portal SIPMA Anda untuk mengunduh dan mencetak <b>Bukti Tanda Lulus Seleksi</b> serta melihat jadwal pelaksanaan daftar ulang di " + schoolName + ".</p>";
+    } else if (newStatus === "tidak_lulus") {
+      subject = "[SIPMA] Pengumuman Hasil Seleksi PPDB - " + studentName + " (" + regNumber + ")";
+      statusBadge = "TIDAK LULUS SELEKSI";
+      badgeColor = "#64748b"; // Slate
+      headline = "Pengumuman Hasil Seleksi Akhir PPDB Madrasah.";
+      detailHtml = "<p>Terima kasih atas partisipasi Anda dalam proses seleksi penerimaan murid baru di <b>" + schoolName + "</b>.</p>" +
+        "<p>Berdasarkan kuota daya tampung dan perangkingan seleksi akhir saat ini, calon peserta didik atas nama <b>" + studentName + "</b> (" + regNumber + ") belum masuk dalam kuota penerimaan di madrasah ini.</p>" +
+        "<div style='background-color:#f1f5f9;border-left:4px solid #64748b;padding:12px;margin:12px 0;border-radius:6px;font-size:13px;color:#334155;'>" +
+        "<b>Rekomendasi Lanjutan:</b> Sistem SIPMA menyediakan fitur pencarian madrasah alternatif terdekat yang masih memiliki sisa kuota. Silakan login ke portal SIPMA untuk melihat pilihan rekomendasi madrasah lain." +
+        "</div>";
+    } else if (newStatus === "cadangan" || newStatus === "waiting_list") {
+      subject = "[SIPMA] Informasi Status Cadangan Seleksi PPDB - " + studentName + " (" + regNumber + ")";
+      statusBadge = "STATUS CADANGAN (WAITING LIST)";
+      badgeColor = "#d97706"; // Amber
+      headline = "Status Seleksi: Anda Masuk Daftar Cadangan / Waiting List.";
+      detailHtml = "<p>Calon peserta didik atas nama <b>" + studentName + "</b> berada di daftar cadangan kuota penerimaan di <b>" + schoolName + "</b>.</p>" +
+        "<p>Apabila terdapat peserta utama yang tidak melakukan daftar ulang hingga batas waktu yang ditentukan, panitia akan memanggil peserta dari daftar cadangan sesuai urutan perangkingan.</p>";
+    }
+  }
+  // 4. PENGUMUMAN RESMI DARI MADRASAH
+  else if (eventType === "announcement") {
+    subject = "[SIPMA] Pengumuman Resmi PPDB " + schoolName + ": " + (data.title || "Pemberitahuan Pendaftar");
+    statusBadge = "PENGUMUMAN RESMI";
+    badgeColor = "#2563eb"; // Blue
+    headline = data.title || ("Pemberitahuan Resmi dari Panitia PPDB " + schoolName);
+    detailHtml = "<div style='background-color:#eff6ff;border-left:4px solid #3b82f6;padding:14px;margin:12px 0;border-radius:6px;font-size:14px;color:#1e40af;line-height:1.6;'>" +
+      (notes || data.announcement_content || "Terdapat pengumuman resmi terbaru terkait pelaksanaan PPDB di madrasah pilihan Anda.") +
+      "</div>" +
+      "<p>Informasi selengkapnya dapat dilihat langsung pada papan pengumuman di portal SIPMA.</p>";
+  }
+  // 5. PEMINDAHAN / PENGALIHAN BERKAS
+  else if (eventType === "transfer" || eventType === "reroute") {
+    subject = "[SIPMA] Pemberitahuan Pemindahan Berkas Pendaftaran - " + studentName + " (" + regNumber + ")";
+    statusBadge = "BERKAS DIALIHKAN";
+    badgeColor = "#7c3aed"; // Purple
+    headline = "Berkas pendaftaran Anda telah berhasil dialihkan ke madrasah tujuan baru.";
+    detailHtml = "<p>Pendaftaran Anda atas nama <b>" + studentName + "</b> (" + regNumber + ") telah dialihkan ke <b>" + schoolName + "</b>.</p>" +
+      "<div style='background-color:#f5f3ff;border-left:4px solid #8b5cf6;padding:12px;margin:12px 0;border-radius:6px;font-size:13px;color:#5b21b6;'>" +
+      (notes || "Berkas pendaftaran siap ditinjau oleh Panitia PPDB madrasah tujuan baru.") +
+      "</div>";
+  }
 
+  // Fallback subjek jika belum terisi
   if (!subject) {
-    subject = "[SIPMA] Pembaruan Status Pendaftaran - " + regNumber;
-    statusBadge = newStatus.toUpperCase() || "UPDATE STATUS";
+    subject = "[SIPMA] Pemberitahuan PPDB Madrasah - " + studentName + " (" + regNumber + ")";
+    statusBadge = (newStatus || "PEMBERITAHUAN").toUpperCase();
     headline = "Terdapat pembaruan status pendaftaran Anda di sistem SIPMA.";
     detailHtml = "<p>" + (notes || "Silakan cek akun portal pendaftaran Anda untuk informasi lebih lengkap.") + "</p>";
   }
 
-  var htmlBody = buildNotificationEmailHtml(appName, schoolName, studentName, regNumber, statusBadge, badgeColor, headline, detailHtml);
+  var htmlBody = buildNotificationEmailHtml({
+    appName: appName,
+    appLogoUrl: appLogoUrl,
+    schoolName: schoolName,
+    schoolEmail: schoolEmail,
+    schoolPhone: schoolPhone,
+    schoolAddress: schoolAddress,
+    studentName: studentName,
+    regNumber: regNumber,
+    pathway: pathway,
+    statusBadge: statusBadge,
+    badgeColor: badgeColor,
+    headline: headline,
+    detailHtml: detailHtml
+  });
 
+  // Konfigurasi pengirim email:
+  // Nama Pengirim: Panitia PPDB [Nama Madrasah]
+  // Reply-To: [Email Madrasah yang dipilih saat mendaftar]
+  var senderDisplayName = schoolName ? ("Panitia PPDB " + schoolName) : (appName || "SIPMA PPDB Madrasah");
+  var mailOptions = {
+    to: email,
+    subject: subject,
+    htmlBody: htmlBody,
+    name: senderDisplayName
+  };
+
+  if (schoolEmail && schoolEmail.indexOf("@") > -1) {
+    mailOptions.replyTo = schoolEmail;
+  }
+
+  // Kirim dengan perlindungan error bertingkat (MailApp -> GmailApp -> error safe return)
   try {
-    MailApp.sendEmail({
-      to: email,
-      subject: subject,
-      htmlBody: htmlBody
-    });
+    MailApp.sendEmail(mailOptions);
     return {
       success: true,
       message: "Email notifikasi berhasil dikirim via MailApp ke " + email,
       recipient: email,
+      sender_name: senderDisplayName,
+      sender_email: schoolEmail || "default",
       status: newStatus
     };
-  } catch (err) {
-    return {
-      success: false,
-      message: "Gagal mengirim email: " + err.toString(),
-      recipient: email
-    };
+  } catch (errMail) {
+    try {
+      GmailApp.sendEmail(email, subject, "", {
+        htmlBody: htmlBody,
+        name: senderDisplayName,
+        replyTo: (schoolEmail && schoolEmail.indexOf("@") > -1) ? schoolEmail : undefined
+      });
+      return {
+        success: true,
+        message: "Email notifikasi berhasil dikirim via GmailApp ke " + email,
+        recipient: email,
+        sender_name: senderDisplayName,
+        sender_email: schoolEmail || "default",
+        status: newStatus
+      };
+    } catch (errGmail) {
+      return {
+        success: false,
+        message: "Gagal mengirim email: " + (errMail ? errMail.toString() : errGmail ? errGmail.toString() : "Unknown error"),
+        recipient: email
+      };
+    }
   }
 }
 
 /**
- * Format Template HTML Email Elegan dan Rapi
+ * Format Template HTML Email Elegan, Rapi, & Kompatibel Semua Email Client
+ * Bagian atas menampilkan Nama Aplikasi, Logo Aplikasi, serta Identitas Madrasah Pengirim
  */
-function buildNotificationEmailHtml(appName, schoolName, studentName, regNumber, statusBadge, badgeColor, headline, detailHtml) {
+function buildNotificationEmailHtml(params) {
+  var appName = params.appName || "SIPMA";
+  var appLogoUrl = params.appLogoUrl || "https://cdn.phototourl.com/free/2026-09-01-6c787787-6585-4830-b0a6-9bfab3f1dba4.png";
+  var schoolName = params.schoolName || "Madrasah";
+  var schoolEmail = params.schoolEmail || "";
+  var schoolPhone = params.schoolPhone || "";
+  var schoolAddress = params.schoolAddress || "";
+  var studentName = params.studentName || "Calon Murid";
+  var regNumber = params.regNumber || "";
+  var pathway = params.pathway || "";
+  var statusBadge = params.statusBadge || "PEMBERITAHUAN";
+  var badgeColor = params.badgeColor || "#059669";
+  var headline = params.headline || "";
+  var detailHtml = params.detailHtml || "";
+
+  var pathwayLabel = pathway ? (pathway === 'zonasi' ? 'Zonasi' : pathway === 'afirmasi' ? 'Afirmasi' : pathway === 'prestasi' ? 'Prestasi' : pathway === 'mutasi' ? 'Perpindahan Orang Tua' : pathway) : '-';
+
   return '<!DOCTYPE html>' +
-    '<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>' +
-    '<body style="font-family: Arial, Helvetica, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px; color: #1e293b;">' +
-    '<div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">' +
-    '  <div style="background-color: #065f46; padding: 24px; text-align: center; color: #ffffff;">' +
-    '    <h1 style="margin: 0 0 6px 0; font-size: 20px; font-weight: bold; letter-spacing: 0.5px;">' + appName + '</h1>' +
-    '    <p style="margin: 0; font-size: 14px; opacity: 0.9;">Sistem Informasi Penerimaan Murid Baru - ' + schoolName + '</p>' +
-    '  </div>' +
-    '  <div style="padding: 24px;">' +
-    '    <div style="margin-bottom: 20px; text-align: center;">' +
-    '      <span style="display: inline-block; padding: 6px 16px; border-radius: 9999px; font-size: 13px; font-weight: bold; color: #ffffff; background-color: ' + badgeColor + ';">' +
-    '        ' + statusBadge +
-    '      </span>' +
-    '    </div>' +
-    '    <p style="font-size: 16px; font-weight: 600; margin: 0 0 12px 0;">Yth. Orang Tua / Calon Murid: ' + studentName + '</p>' +
-    '    <div style="background-color: #f1f5f9; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 13px;">' +
-    '      <table style="width: 100%; border-collapse: collapse;">' +
-    '        <tr><td style="padding: 4px 0; color: #64748b; width: 140px;">No. Registrasi</td><td style="padding: 4px 0; font-weight: bold; font-family: monospace;">' + regNumber + '</td></tr>' +
-    '        <tr><td style="padding: 4px 0; color: #64748b;">Nama Murid</td><td style="padding: 4px 0; font-weight: bold;">' + studentName + '</td></tr>' +
-    '        <tr><td style="padding: 4px 0; color: #64748b;">Madrasah Tujuan</td><td style="padding: 4px 0; font-weight: bold;">' + schoolName + '</td></tr>' +
-    '      </table>' +
-    '    </div>' +
-    '    <p style="font-size: 15px; line-height: 1.6; margin: 0 0 14px 0; color: #334155;">' + headline + '</p>' +
-    '    <div style="font-size: 14px; line-height: 1.6; color: #475569;">' + detailHtml + '</div>' +
-    '    <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8; text-align: center;">' +
-    '      <p style="margin: 0 0 4px 0;">Email ini dikirimkan secara otomatis oleh Sistem PPDB Madrasah.</p>' +
-    '      <p style="margin: 0;">Jangan membalas ke email ini.</p>' +
-    '    </div>' +
-    '  </div>' +
-    '</div></body></html>';
+    '<html lang="id">' +
+    '<head>' +
+    '  <meta charset="UTF-8">' +
+    '  <meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+    '  <title>' + appName + ' - ' + statusBadge + '</title>' +
+    '</head>' +
+    '<body style="margin:0;padding:0;background-color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;line-height:1.6;">' +
+    '  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color:#f1f5f9;padding:24px 12px;">' +
+    '    <tr>' +
+    '      <td align="center">' +
+    '        <!-- Container Utama -->' +
+    '        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width:600px;background-color:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0;box-shadow:0 10px 25px -5px rgba(0,0,0,0.06);">' +
+    '          ' +
+    '          <!-- HEADER ATAS: LOGO APLIKASI & NAMA APLIKASI -->' +
+    '          <tr>' +
+    '            <td style="background-color:#065f46;padding:24px 28px;text-align:left;border-bottom:3px solid #047857;">' +
+    '              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">' +
+    '                <tr>' +
+    '                  <td width="56" valign="middle" style="padding-right:16px;">' +
+    '                    <img src="' + appLogoUrl + '" alt="' + appName + '" width="52" height="52" style="display:block;width:52px;height:52px;border-radius:12px;background-color:#ffffff;padding:2px;box-shadow:0 2px 6px rgba(0,0,0,0.2);object-fit:contain;" />' +
+    '                  </td>' +
+    '                  <td valign="middle">' +
+    '                    <h1 style="margin:0;font-size:22px;font-weight:800;color:#ffffff;letter-spacing:0.5px;line-height:1.2;">' + appName + '</h1>' +
+    '                    <p style="margin:3px 0 0 0;font-size:12px;color:#a7f3d0;font-weight:500;letter-spacing:0.3px;">Sistem Informasi Penerimaan Murid Baru Madrasah</p>' +
+    '                  </td>' +
+    '                </tr>' +
+    '              </table>' +
+    '            </td>' +
+    '          </tr>' +
+    '          ' +
+    '          <!-- BARIS IDENTITAS PENGIRIM: NAMA MADRASAH -->' +
+    '          <tr>' +
+    '            <td style="background-color:#f0fdf4;padding:12px 28px;border-bottom:1px solid #dcfce7;font-size:12px;color:#166534;">' +
+    '              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">' +
+    '                <tr>' +
+    '                  <td>' +
+    '                    <span style="font-weight:700;color:#065f46;">Pengirim Resmi:</span> Panitia PPDB <b>' + schoolName + '</b>' +
+    '                    ' + (schoolEmail ? ('<br/><span style="color:#15803d;">Email Kontak: <b>' + schoolEmail + '</b></span>') : '') +
+    '                  </td>' +
+    '                </tr>' +
+    '              </table>' +
+    '            </td>' +
+    '          </tr>' +
+    '          ' +
+    '          <!-- BADGE STATUS -->' +
+    '          <tr>' +
+    '            <td style="padding:24px 28px 12px 28px;text-align:center;">' +
+    '              <span style="display:inline-block;padding:8px 20px;border-radius:9999px;font-size:13px;font-weight:800;letter-spacing:0.5px;color:#ffffff;background-color:' + badgeColor + ';box-shadow:0 2px 6px rgba(0,0,0,0.1);">' +
+    '                ' + statusBadge +
+    '              </span>' +
+    '            </td>' +
+    '          </tr>' +
+    '          ' +
+    '          <!-- KONTEN INTI -->' +
+    '          <tr>' +
+    '            <td style="padding:12px 28px 24px 28px;">' +
+    '              <p style="font-size:15px;font-weight:700;color:#0f172a;margin:0 0 14px 0;">' +
+    '                Yth. Calon Peserta Didik & Orang Tua / Wali: <u>' + studentName + '</u>' +
+    '              </p>' +
+    '              ' +
+    '              <!-- KOTAK DATA RINGKASAN -->' +
+    '              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;margin-bottom:18px;font-size:13px;">' +
+    '                <tr>' +
+    '                  <td style="padding:10px 14px;color:#64748b;width:140px;border-bottom:1px solid #edf2f7;">Nomor Registrasi</td>' +
+    '                  <td style="padding:10px 14px;font-weight:700;color:#0f172a;font-family:monospace;font-size:14px;border-bottom:1px solid #edf2f7;">' + regNumber + '</td>' +
+    '                </tr>' +
+    '                <tr>' +
+    '                  <td style="padding:10px 14px;color:#64748b;border-bottom:1px solid #edf2f7;">Nama Murid</td>' +
+    '                  <td style="padding:10px 14px;font-weight:700;color:#0f172a;border-bottom:1px solid #edf2f7;">' + studentName + '</td>' +
+    '                </tr>' +
+    '                <tr>' +
+    '                  <td style="padding:10px 14px;color:#64748b;border-bottom:1px solid #edf2f7;">Madrasah Tujuan</td>' +
+    '                  <td style="padding:10px 14px;font-weight:700;color:#065f46;border-bottom:1px solid #edf2f7;">' + schoolName + '</td>' +
+    '                </tr>' +
+    '                ' + (pathwayLabel !== '-' ? ('<tr><td style="padding:10px 14px;color:#64748b;">Jalur Pendaftaran</td><td style="padding:10px 14px;font-weight:600;color:#0f172a;">' + pathwayLabel + '</td></tr>') : '') +
+    '              </table>' +
+    '              ' +
+    '              <!-- HEADLINE & DETAIL -->' +
+    '              <p style="font-size:15px;line-height:1.6;font-weight:600;color:#1e293b;margin:0 0 12px 0;">' + headline + '</p>' +
+    '              <div style="font-size:14px;line-height:1.65;color:#334155;">' + detailHtml + '</div>' +
+    '              ' +
+    '              <!-- TOMBOL AKSES PORTAL -->' +
+    '              <div style="text-align:center;margin:28px 0 16px 0;">' +
+    '                <a href="https://ais-pre-r6ibehii5xazujavc2lern-297916787355.asia-southeast1.run.app" target="_blank" style="display:inline-block;padding:12px 28px;background-color:#065f46;color:#ffffff;text-decoration:none;border-radius:10px;font-size:14px;font-weight:700;letter-spacing:0.3px;box-shadow:0 4px 10px rgba(6,95,70,0.25);">' +
+    '                  Masuk ke Portal Pendaftaran' +
+    '                </a>' +
+    '              </div>' +
+    '            </td>' +
+    '          </tr>' +
+    '          ' +
+    '          <!-- FOOTER: INFORMASI RESMI MADRASAH PENGIRIM -->' +
+    '          <tr>' +
+    '            <td style="background-color:#f8fafc;padding:20px 28px;border-top:1px solid #e2e8f0;font-size:12px;color:#64748b;line-height:1.5;">' +
+    '              <p style="margin:0 0 6px 0;font-weight:700;color:#334155;">Panitia Penerimaan Peserta Didik Baru (PPDB)</p>' +
+    '              <p style="margin:0 0 4px 0;font-weight:600;color:#065f46;">' + schoolName + '</p>' +
+    '              ' + (schoolAddress ? ('<p style="margin:0 0 4px 0;">Alamat: ' + schoolAddress + '</p>') : '') +
+    '              ' + (schoolEmail || schoolPhone ? ('<p style="margin:0 0 4px 0;">' + (schoolEmail ? ('Email: ' + schoolEmail) : '') + (schoolEmail && schoolPhone ? ' | ' : '') + (schoolPhone ? ('Telp: ' + schoolPhone) : '') + '</p>') : '') +
+    '              <p style="margin:12px 0 0 0;padding-top:10px;border-top:1px dashed #cbd5e1;font-size:11px;color:#94a3b8;text-align:center;">' +
+    '                Notifikasi ini dikirimkan otomatis oleh ' + appName + ' kepada Calon Peserta Didik yang terdaftar. Untuk pertanyaan resmi, Anda dapat membalas (reply) langsung ke email madrasah di atas.' +
+    '              </p>' +
+    '            </td>' +
+    '          </tr>' +
+    '        </table>' +
+    '      </td>' +
+    '    </tr>' +
+    '  </table>' +
+    '</body>' +
+    '</html>';
 }
 
 /**

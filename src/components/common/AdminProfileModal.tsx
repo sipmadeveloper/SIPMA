@@ -35,6 +35,7 @@ import { normalizeImageUrl, handleImageError, compressAndResizeImage } from '../
 interface Props {
   currentUser: UserType;
   currentSchool?: School | null;
+  initialTab?: 'profile' | 'password';
   onClose: () => void;
   onProfileUpdated?: (updatedUser: UserType) => void;
 }
@@ -42,11 +43,12 @@ interface Props {
 export const AdminProfileModal: React.FC<Props> = ({
   currentUser,
   currentSchool,
+  initialTab = 'profile',
   onClose,
   onProfileUpdated,
 }) => {
   const { showAlert, showToast } = useFeedback();
-  const [activeTab, setActiveTab] = useState<'profile' | 'password'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'password'>(initialTab);
 
   // Profile Form State
   const [name, setName] = useState<string>(currentUser.name || '');
@@ -280,12 +282,12 @@ export const AdminProfileModal: React.FC<Props> = ({
             onClick={() => setActiveTab('password')}
             className={`pb-2.5 px-3 border-b-2 flex items-center gap-1.5 transition-colors cursor-pointer ${
               activeTab === 'password'
-                ? 'border-emerald-600 text-emerald-800'
+                ? 'border-amber-600 text-amber-800 font-bold'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
             }`}
           >
-            <KeyRound className="w-4 h-4" />
-            <span>Ganti Kata Sandi</span>
+            <KeyRound className="w-4 h-4 text-amber-600" />
+            <span>Reset & Ganti Kata Sandi</span>
           </button>
         </div>
 
@@ -509,13 +511,14 @@ export const AdminProfileModal: React.FC<Props> = ({
             <div className="p-4 bg-emerald-50/80 border-2 border-emerald-300/80 rounded-2xl space-y-3 shadow-xs">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-start gap-3">
-                  <div className="p-2.5 bg-emerald-600 text-white rounded-xl shadow-xs shrink-0 mt-0.5">
-                    <Sparkles className="w-5 h-5" />
+                  <div className="p-2.5 bg-amber-600 text-white rounded-xl shadow-xs shrink-0 mt-0.5">
+                    <KeyRound className="w-5 h-5" />
                   </div>
                   <div>
                     <h4 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                      <KeyRound className="w-4 h-4 text-amber-700 inline-block" />
                       <span>Reset Kata Sandi Akun Sendiri (Otomatis)</span>
-                      <span className="text-[10px] bg-emerald-200 text-emerald-900 font-bold px-2 py-0.5 rounded-full">1-Klik</span>
+                      <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded-full">1-Klik</span>
                     </h4>
                     <p className="text-xs text-slate-600 mt-1 leading-relaxed">
                       Sistem akan membuat kata sandi baru yang aman secara otomatis, menggantikan kata sandi lama Anda di database secara langsung, dan menampilkannya di layar.
@@ -526,9 +529,14 @@ export const AdminProfileModal: React.FC<Props> = ({
                   type="button"
                   onClick={handleResetOwnPassword}
                   disabled={isResettingOwnPassword}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-xs transition-colors shrink-0 cursor-pointer disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs shadow-xs transition-colors shrink-0 cursor-pointer disabled:opacity-50"
+                  title="Reset Kata Sandi Akun Sendiri Otomatis"
                 >
-                  <RefreshCw className={`w-4 h-4 ${isResettingOwnPassword ? 'animate-spin' : ''}`} />
+                  {isResettingOwnPassword ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <KeyRound className="w-4 h-4" />
+                  )}
                   <span>{isResettingOwnPassword ? 'Memproses...' : 'Reset Sandi Otomatis'}</span>
                 </button>
               </div>

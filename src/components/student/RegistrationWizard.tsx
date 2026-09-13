@@ -28,6 +28,7 @@ import {
   AlertCircle,
   Lock,
   XCircle,
+  RefreshCw,
 } from 'lucide-react';
 import {
   StudentProfile,
@@ -1004,13 +1005,45 @@ export const RegistrationWizard: React.FC<Props> = ({
                       reader.readAsDataURL(file);
                     }}
                   />
-                  <label
-                    htmlFor="wizard-photo-upload"
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold shadow-xs cursor-pointer transition-colors"
-                  >
-                    <Upload className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>{student.photo_url ? 'Ganti Foto Profil' : 'Unggah Foto Profil'}</span>
-                  </label>
+                  <div className="flex items-center gap-2">
+                    <label
+                      htmlFor="wizard-photo-upload"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-semibold shadow-xs cursor-pointer transition-colors"
+                    >
+                      <Upload className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>{student.photo_url ? 'Ganti Foto' : 'Unggah Pas Foto'}</span>
+                    </label>
+                    {student.photo_url && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          showConfirm('Hapus Pas Foto', 'Apakah Anda yakin ingin menghapus pas foto ini dari database dan Google Drive?', async () => {
+                            showLoading('Menghapus pas foto...');
+                            try {
+                              const existingDocs = storageService.getDocumentsByRegistration(activeRegNumber || registrationNumber);
+                              const fotoDoc = existingDocs.find((d) => d.document_type === 'foto' || d.document_type === 'pas_foto');
+                              if (fotoDoc) {
+                                await storageService.deleteDocumentPermanently(fotoDoc.document_id);
+                              }
+                              const updated = { ...student, photo_url: '' };
+                              setStudent(updated);
+                              storageService.saveStudentProfile(updated);
+                              hideLoading();
+                              showToast('Pas foto berhasil dihapus dari Google Drive & database.', 'info');
+                            } catch (err: any) {
+                              hideLoading();
+                              showToast(err?.message || 'Gagal menghapus pas foto.', 'error');
+                            }
+                          });
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
+                        title="Hapus pas foto profil"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Hapus</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -2827,6 +2860,21 @@ export const RegistrationWizard: React.FC<Props> = ({
                     <div className="flex items-center gap-2 shrink-0">
                       {uploaded ? (
                         <>
+                          <label
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-xs font-semibold cursor-pointer shadow-xs transition-colors"
+                            title="Ganti berkas ini dengan berkas baru (berkas lama akan otomatis dihapus)"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5 text-amber-700" />
+                            <span>Ganti File</span>
+                            <input
+                              type="file"
+                              accept="image/jpeg,image/png,application/pdf"
+                              onChange={(e) =>
+                                handleFileUpload(e, item.type as DocumentItem['document_type'], item.title)
+                              }
+                              className="hidden"
+                            />
+                          </label>
                           <button
                             type="button"
                             onClick={() => downloadDocumentFile(uploaded)}
@@ -2847,8 +2895,8 @@ export const RegistrationWizard: React.FC<Props> = ({
                           <button
                             type="button"
                             onClick={() => handleDeleteDocument(uploaded.document_id)}
-                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg"
-                            title="Hapus file"
+                            className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Hapus berkas ini dari database & Google Drive"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>

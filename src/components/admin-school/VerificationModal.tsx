@@ -489,9 +489,15 @@ export const VerificationModal: React.FC<Props> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="p-6 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
-          <div className="text-xs text-slate-500">
-            Status saat ini: <strong className="uppercase">{application.verification_status}</strong>
+        <div className="p-5 border-t border-slate-200 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-col gap-1 text-xs text-slate-500">
+            <div>
+              Status saat ini: <strong className="uppercase text-slate-800">{application.verification_status}</strong>
+            </div>
+            <div className="flex items-center gap-1.5 text-emerald-700 font-medium">
+              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>Notifikasi email berlogo resmi atas nama madrasah otomatis dikirimkan ke email pendaftar saat status disimpan</span>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
