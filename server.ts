@@ -1821,11 +1821,21 @@ app.post('/api/gas/delete-file', async (req: Request, res: Response) => {
     // 5. If deleted file was a student/user photo, clear photo_url in students & users
     const isPhoto = is_account || docType === 'foto' || docType === 'pas_foto' || docType === 'foto_profil' || req.body.logo_type === 'user';
     if (isPhoto) {
-      if (serverDb.students && Array.isArray(serverDb.students)) {
-        for (const std of serverDb.students) {
-          if ((regNumber && (std.registration_number === regNumber || std.student_id === regNumber)) ||
-              (effectiveDriveId && std.photo_url && std.photo_url.includes(effectiveDriveId))) {
-            std.photo_url = '';
+      if (serverDb.students) {
+        if (Array.isArray(serverDb.students)) {
+          for (const std of serverDb.students) {
+            if ((regNumber && (std.registration_number === regNumber || std.student_id === regNumber)) ||
+                (effectiveDriveId && std.photo_url && std.photo_url.includes(effectiveDriveId))) {
+              std.photo_url = '';
+            }
+          }
+        } else if (typeof serverDb.students === 'object') {
+          for (const key of Object.keys(serverDb.students)) {
+            const std = serverDb.students[key];
+            if (std && ((regNumber && (key === regNumber || std.registration_number === regNumber || std.student_id === regNumber)) ||
+                (effectiveDriveId && std.photo_url && std.photo_url.includes(effectiveDriveId)))) {
+              std.photo_url = '';
+            }
           }
         }
       }
@@ -2005,6 +2015,44 @@ app.post('/api/data/delete-school', async (req: Request, res: Response) => {
 
     if (serverDb.schools) {
       serverDb.schools = serverDb.schools.filter((s: any) => s.school_id !== school_id);
+    }
+
+    // Clean up local files and memory cache for drive_file_ids
+    if (Array.isArray(drive_file_ids)) {
+      for (const fId of drive_file_ids) {
+        if (fId) cleanupLocalFileAndCache(fId);
+      }
+    }
+
+    // Remove school's associated applications, documents, students, and users from serverDb
+    const regSet = new Set(Array.isArray(registration_numbers) ? registration_numbers : []);
+    if (serverDb.documents && Array.isArray(serverDb.documents)) {
+      serverDb.documents = serverDb.documents.filter((d: any) => {
+        if (regSet.has(d.registration_number)) {
+          if (d.local_url) cleanupLocalFileAndCache(d.drive_file_id, d.local_url);
+          return false;
+        }
+        return true;
+      });
+    }
+    if (serverDb.applications && Array.isArray(serverDb.applications)) {
+      serverDb.applications = serverDb.applications.filter((a: any) => a.school_id !== school_id && !regSet.has(a.registration_number));
+    }
+    if (serverDb.students && typeof serverDb.students === 'object') {
+      for (const reg of regSet) {
+        if (serverDb.students[reg]) {
+          const sId = serverDb.students[reg].student_id;
+          delete serverDb.students[reg];
+          if (sId) {
+            if (serverDb.parents && serverDb.parents[sId]) delete serverDb.parents[sId];
+            if (serverDb.school_origins && serverDb.school_origins[sId]) delete serverDb.school_origins[sId];
+            if (serverDb.addresses && serverDb.addresses[sId]) delete serverDb.addresses[sId];
+          }
+        }
+      }
+    }
+    if (serverDb.users && Array.isArray(serverDb.users)) {
+      serverDb.users = serverDb.users.filter((u: any) => u.school_id !== school_id && !regSet.has(u.registration_number));
     }
     persistServerDb();
 

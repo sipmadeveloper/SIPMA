@@ -9,6 +9,10 @@ import {
   Eye,
   EyeOff,
   AlertCircle,
+  KeyRound,
+  X,
+  CheckCircle2,
+  HelpCircle,
 } from 'lucide-react';
 import { UserRole, SystemSettings } from '../../types/sipma';
 import { normalizeImageUrl, handleImageError } from '../../utils/imageUrl';
@@ -34,6 +38,12 @@ export const LoginPage: React.FC<Props> = ({
   const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showForgotModal, setShowForgotModal] = useState<boolean>(false);
+  const [forgotEmail, setForgotEmail] = useState<string>('');
+  const [forgotNik, setForgotNik] = useState<string>('');
+  const [forgotNewPassword, setForgotNewPassword] = useState<string>('');
+  const [forgotStep, setForgotStep] = useState<'verify' | 'new_password' | 'success'>('verify');
+  const [verifiedUser, setVerifiedUser] = useState<any>(null);
 
   const appName = settings?.app_name || 'SIPMA';
   const appTagline = settings?.app_tagline || 'Sistem Penerimaan Murid Madrasah';
@@ -44,20 +54,61 @@ export const LoginPage: React.FC<Props> = ({
     setErrorMessage(null);
   };
 
-  const resolveAdminRole = (adminEmail: string): UserRole => {
-    const existingUsers = storageService.getUsers();
-    const found = existingUsers.find((u) => u.email.toLowerCase() === adminEmail.trim().toLowerCase());
-    if (found && (found.role === 'admin_sekolah' || found.role === 'operator_sekolah' || found.role === 'admin_pusat')) {
-      return found.role;
+  const handleOpenForgot = () => {
+    setForgotEmail(email.trim());
+    setForgotNik('');
+    setForgotNewPassword('');
+    setForgotStep('verify');
+    setVerifiedUser(null);
+    setShowForgotModal(true);
+  };
+
+  const handleVerifyStudentReset = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotEmail.trim() || !forgotNik.trim()) {
+      showAlert('Data Belum Lengkap', 'Silakan masukkan Email/No. Registrasi dan NIK siswa.', 'warning');
+      return;
     }
-    const lower = adminEmail.toLowerCase();
-    if (lower.includes('pusat') || lower.includes('kemenag') || lower.includes('kanwil')) {
-      return 'admin_pusat';
+
+    showLoading('Memverifikasi identitas pendaftar...');
+    setTimeout(() => {
+      hideLoading();
+      const res = storageService.verifyStudentForPasswordReset(forgotEmail, forgotNik);
+      if (!res.success) {
+        showAlert('Verifikasi Gagal', res.message, 'error');
+        return;
+      }
+      setVerifiedUser(res.user);
+      setForgotStep('new_password');
+    }, 400);
+  };
+
+  const handleSaveNewPassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotNewPassword || forgotNewPassword.trim().length < 6) {
+      showAlert('Peringatan', 'Kata sandi baru minimal harus 6 karakter.', 'warning');
+      return;
     }
-    if (lower.includes('operator') || lower.includes('opr')) {
-      return 'operator_sekolah';
-    }
-    return 'admin_sekolah';
+
+    if (!verifiedUser) return;
+
+    showLoading('Memperbarui kata sandi akun...');
+    setTimeout(() => {
+      hideLoading();
+      const res = storageService.resetAnyUserPassword(
+        verifiedUser.user_id,
+        forgotNewPassword.trim(),
+        'Calon Siswa (Reset Mandiri via NIK)'
+      );
+
+      if (res.success) {
+        setPassword(forgotNewPassword.trim());
+        setEmail(verifiedUser.email);
+        setForgotStep('success');
+      } else {
+        showAlert('Gagal Memperbarui', res.message, 'error');
+      }
+    }, 400);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -74,66 +125,25 @@ export const LoginPage: React.FC<Props> = ({
       return;
     }
 
-    showLoading('Memverifikasi akun dan data pendaftaran...');
+    showLoading('Memverifikasi akun dan kata sandi...');
 
     setTimeout(() => {
       hideLoading();
-      const existingUsers = storageService.getUsers();
-      const foundUser = existingUsers.find((u) => u.email.toLowerCase() === cleanEmail);
+      const authRes = storageService.authenticateUser(cleanEmail, password, selectedTab);
 
-      if (selectedTab === 'calon_murid') {
-        if (!foundUser) {
-          showAlert(
-            'Akun Calon Murid Tidak Ditemukan',
-            `Email "${cleanEmail}" belum terdaftar dalam sistem PPDB Madrasah. Silakan lakukan pendaftaran akun baru terlebih dahulu.`,
-            'warning'
-          );
-          return;
-        }
-
-        if (foundUser.role !== 'calon_murid') {
-          showAlert(
-            'Peran Akun Tidak Sesuai',
-            `Email "${cleanEmail}" terdaftar sebagai ${
-              foundUser.role === 'admin_pusat'
-                ? 'Admin Pusat'
-                : foundUser.role === 'operator_sekolah'
-                ? 'Operator Madrasah'
-                : 'Admin Madrasah'
-            }. Silakan pilih tab "Admin & Operator" untuk masuk.`,
-            'warning'
-          );
-          return;
-        }
-
-        onLogin(cleanEmail, 'calon_murid');
-      } else {
-        // Admin / Operator tab
-        if (!foundUser || (foundUser.role !== 'admin_sekolah' && foundUser.role !== 'operator_sekolah' && foundUser.role !== 'admin_pusat')) {
-          // Check if it matches an admin/operator email pattern
-          const resolvedRole = resolveAdminRole(cleanEmail);
-          if (
-            cleanEmail.includes('admin') ||
-            cleanEmail.includes('madrasah') ||
-            cleanEmail.includes('kemenag') ||
-            cleanEmail.includes('operator') ||
-            cleanEmail.includes('opr')
-          ) {
-            onLogin(cleanEmail, resolvedRole);
-            return;
-          }
-
-          showAlert(
-            'Akun Tidak Ditemukan',
-            `Email "${cleanEmail}" tidak terdaftar sebagai Administrator Madrasah, Operator Madrasah, ataupun Admin Pusat. Hubungi panitia madrasah Anda untuk verifikasi hak akses.`,
-            'error'
-          );
-          return;
-        }
-
-        onLogin(cleanEmail, foundUser.role);
+      if (!authRes.success) {
+        setErrorMessage(authRes.message);
+        showAlert(
+          authRes.code === 'INVALID_PASSWORD' ? 'Kata Sandi Salah' : 'Gagal Masuk',
+          authRes.message,
+          'error'
+        );
+        return;
       }
-    }, 450);
+
+      const authenticatedUser = authRes.user!;
+      onLogin(authenticatedUser.email, authenticatedUser.role);
+    }, 350);
   };
 
   return (
@@ -235,7 +245,16 @@ export const LoginPage: React.FC<Props> = ({
             </div>
 
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Kata Sandi</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block font-semibold text-slate-700">Kata Sandi</label>
+                <button
+                  type="button"
+                  onClick={handleOpenForgot}
+                  className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
+                >
+                  Lupa Kata Sandi?
+                </button>
+              </div>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
                 <input
@@ -281,6 +300,142 @@ export const LoginPage: React.FC<Props> = ({
           </div>
         </div>
       </div>
+
+      {/* Modal Lupa / Reset Kata Sandi */}
+      {showForgotModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="bg-gradient-to-r from-emerald-600 to-teal-700 px-5 py-4 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <KeyRound className="w-5 h-5 text-emerald-200" />
+                <div>
+                  <h3 className="font-bold text-sm leading-tight">Reset Kata Sandi Akun</h3>
+                  <p className="text-[11px] text-emerald-100">Pemulihan akses portal PPDB Madrasah</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowForgotModal(false)}
+                className="p-1 rounded-lg text-emerald-100 hover:text-white hover:bg-white/15 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto space-y-4 text-xs">
+              {forgotStep === 'verify' && (
+                <form onSubmit={handleVerifyStudentReset} className="space-y-4">
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 leading-relaxed">
+                    Untuk keamanan akun Calon Murid, silakan masukkan <strong>Email atau No. Registrasi</strong> serta <strong>16 digit NIK Siswa</strong> yang terdaftar saat pendaftaran.
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Email / No. Registrasi</label>
+                    <input
+                      type="text"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      placeholder="contoh: user@gmail.com atau REG-2026-..."
+                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none font-medium"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">NIK Siswa (16 Digit)</label>
+                    <input
+                      type="text"
+                      value={forgotNik}
+                      onChange={(e) => setForgotNik(e.target.value)}
+                      placeholder="Masukkan 16 digit NIK sesuai KK/KTP..."
+                      maxLength={16}
+                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none font-medium"
+                      required
+                    />
+                  </div>
+
+                  <div className="pt-2 flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotModal(false)}
+                      className="px-4 py-2 border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl cursor-pointer"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5"
+                    >
+                      <span>Verifikasi Identitas</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-200 text-slate-500 text-[11px] leading-normal flex items-start gap-1.5">
+                    <HelpCircle className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                    <span>
+                      Untuk akun <strong>Admin Madrasah</strong> atau <strong>Operator</strong>, silakan hubungi Administrator Pusat PPDB Kementerian Agama untuk mengatur ulang kata sandi.
+                    </span>
+                  </div>
+                </form>
+              )}
+
+              {forgotStep === 'new_password' && (
+                <form onSubmit={handleSaveNewPassword} className="space-y-4">
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800">
+                    <p className="font-bold text-emerald-900 mb-0.5">Identitas Berhasil Diverifikasi!</p>
+                    <p className="text-[11px]">Akun: <strong>{verifiedUser?.name}</strong> ({verifiedUser?.email})</p>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Masukkan Kata Sandi Baru</label>
+                    <input
+                      type="password"
+                      value={forgotNewPassword}
+                      onChange={(e) => setForgotNewPassword(e.target.value)}
+                      placeholder="Minimal 6 karakter..."
+                      minLength={6}
+                      className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none font-medium"
+                      required
+                    />
+                  </div>
+
+                  <div className="pt-2 flex items-center justify-end gap-2">
+                    <button
+                      type="submit"
+                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Simpan & Terapkan Kata Sandi Baru</span>
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {forgotStep === 'success' && (
+                <div className="text-center py-4 space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+                    <CheckCircle2 className="w-7 h-7" />
+                  </div>
+                  <h4 className="font-bold text-base text-slate-800">Kata Sandi Berhasil Diperbarui</h4>
+                  <p className="text-slate-600 text-xs px-4">
+                    Kata sandi baru Anda telah aktif. Form login telah terisi otomatis dengan kata sandi baru Anda.
+                  </p>
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotModal(false)}
+                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl cursor-pointer"
+                    >
+                      Kembali & Masuk ke Portal
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

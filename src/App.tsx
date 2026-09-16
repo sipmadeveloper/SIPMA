@@ -242,7 +242,9 @@ export default function App() {
       const user = users.find((u) => u.email.toLowerCase() === email.toLowerCase());
 
       if (user) {
-        user.role = role;
+        if (!user.role) {
+          user.role = role;
+        }
         localStorage.setItem('sipma_users', JSON.stringify(users));
         setCurrentUser(user);
         storageService.setCurrentUser(user);
@@ -489,10 +491,6 @@ export default function App() {
           onNavigateHome={() => updateViewMode(currentUser ? 'app' : 'landing')}
           onOpenProfile={() => {
             setProfileModalTab('profile');
-            setIsProfileModalOpen(true);
-          }}
-          onResetPassword={() => {
-            setProfileModalTab('password');
             setIsProfileModalOpen(true);
           }}
         />
