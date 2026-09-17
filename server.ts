@@ -1,7 +1,6 @@
 import express, { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
-import { createServer as createViteServer } from 'vite';
 
 const app = express();
 const PORT = 3000;
@@ -2180,6 +2179,7 @@ app.post('/api/data/reset-password', async (req: Request, res: Response) => {
 async function startServer() {
   try {
     if (process.env.NODE_ENV !== 'production') {
+      const { createServer: createViteServer } = await import('vite');
       const vite = await createViteServer({
         server: { middlewareMode: true },
         appType: 'spa',
@@ -2189,13 +2189,33 @@ async function startServer() {
       const distPath = path.join(process.cwd(), 'dist');
       app.use(express.static(distPath));
       app.get('*', (req: Request, res: Response) => {
-        res.sendFile(path.join(distPath, 'index.html'));
+        const indexPath = path.join(distPath, 'index.html');
+        if (fs.existsSync(indexPath)) {
+          res.sendFile(indexPath);
+        } else {
+          res.status(200).send('SIPMA Server Ready');
+        }
       });
     }
 
-    app.listen(PORT, '0.0.0.0', () => {
+    const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`SIPMA Server running on http://0.0.0.0:${PORT}`);
     });
+
+    const shutdown = (signal: string) => {
+      console.log(`[SIPMA Server] Received ${signal}, gracefully shutting down...`);
+      server.close(() => {
+        console.log('[SIPMA Server] Closed HTTP server.');
+        process.exit(0);
+      });
+      setTimeout(() => {
+        console.error('[SIPMA Server] Forcing shutdown.');
+        process.exit(0);
+      }, 5000).unref();
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
   } catch (err) {
     console.error('[SIPMA Server] Critical failure starting server:', err);
   }

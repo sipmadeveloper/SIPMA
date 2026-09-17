@@ -1679,7 +1679,7 @@ function buildNotificationEmailHtml(params) {
     '  <meta name="viewport" content="width=device-width, initial-scale=1.0">' +
     '  <title>' + appName + ' - ' + statusBadge + '</title>' +
     '</head>' +
-    '<body style="margin:0;padding:0;background-color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;line-height:1.6;">' +
+    '<body style="margin:0;padding:0;background-color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1e293b;line-height:1.6;">' +
     '  <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color:#f1f5f9;padding:24px 12px;">' +
     '    <tr>' +
     '      <td align="center">' +
