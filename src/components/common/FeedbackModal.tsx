@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { CheckCircle2, AlertTriangle, AlertCircle, Info, X, HelpCircle, Sparkles } from 'lucide-react';
+import React from 'react';
+import { CheckCircle2, AlertTriangle, XCircle, Info, HelpCircle, Sparkles } from 'lucide-react';
 
 export type FeedbackType = 'success' | 'error' | 'warning' | 'info' | 'confirm';
 
@@ -53,7 +53,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ config, onClose })
         };
       case 'error':
         return {
-          icon: AlertCircle,
+          icon: XCircle,
           iconBg: 'bg-rose-50 text-rose-600 border-rose-200 ring-4 ring-rose-500/10',
           btnClass: 'bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-600/20',
           accentColor: 'text-rose-900',
@@ -103,16 +103,9 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ config, onClose })
         role="dialog"
         aria-modal="true"
       >
-        {/* Close icon on corner */}
-        <button
-          type="button"
-          onClick={handleCancel}
-          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        {/* Note: Tanpa tombol silang (X) di pojok sesuai instruksi */}
 
-        {/* Icon Header */}
+        {/* Icon Header: Green Check for success, Red Cross for error */}
         <div className="mx-auto w-16 h-16 rounded-2xl flex items-center justify-center mb-4">
           <div className={`w-14 h-14 rounded-2xl flex items-center justify-center border shadow-xs ${style.iconBg}`}>
             <Icon className="w-7 h-7" />
@@ -124,7 +117,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ config, onClose })
           {title}
         </h3>
 
-        {/* Message */}
+        {/* Message / Keterangan */}
         <div className="text-xs sm:text-sm text-slate-600 mt-2.5 font-normal leading-relaxed text-balance">
           {message}
         </div>
@@ -182,16 +175,16 @@ export const ToastContainer: React.FC<{
           btnBg: 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20',
           titleColor: 'text-emerald-950',
           progressBar: 'bg-emerald-500',
-          defaultTitle: 'Pemberitahuan Sukses',
+          defaultTitle: 'Berhasil',
         };
       case 'error':
         return {
-          icon: AlertCircle,
+          icon: XCircle,
           iconBg: 'bg-rose-50 text-rose-600 border-rose-200 ring-4 ring-rose-500/10',
           btnBg: 'bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-600/20',
           titleColor: 'text-rose-950',
           progressBar: 'bg-rose-500',
-          defaultTitle: 'Terjadi Kendala',
+          defaultTitle: 'Gagal',
         };
       case 'warning':
         return {
@@ -228,15 +221,7 @@ export const ToastContainer: React.FC<{
         className="bg-white rounded-3xl max-w-sm sm:max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200 text-center relative overflow-hidden animate-in zoom-in-95 duration-200"
         role="alertdialog"
       >
-        {/* Close Button Top Right */}
-        <button
-          type="button"
-          onClick={() => onDismiss(activeToast.id)}
-          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-          title="Tutup Notifikasi"
-        >
-          <X className="w-4 h-4" />
-        </button>
+        {/* Note: Tanpa tombol silang (X) di pojok sesuai instruksi */}
 
         {/* Queue badge if multiple toasts */}
         {totalQueued > 1 && (
@@ -246,7 +231,7 @@ export const ToastContainer: React.FC<{
           </div>
         )}
 
-        {/* Centered Icon Header */}
+        {/* Centered Icon Header: Green Check for success, Red Cross for error */}
         <div className="mx-auto w-16 h-16 rounded-2xl flex items-center justify-center mb-3.5">
           <div className={`w-14 h-14 rounded-2xl flex items-center justify-center border shadow-xs ${style.iconBg}`}>
             <Icon className="w-7 h-7" />
@@ -258,7 +243,7 @@ export const ToastContainer: React.FC<{
           {activeToast.title || style.defaultTitle}
         </h3>
 
-        {/* Message */}
+        {/* Message / Keterangan */}
         <p className="text-xs sm:text-sm text-slate-600 mt-2.5 font-normal leading-relaxed text-balance">
           {activeToast.message}
         </p>
