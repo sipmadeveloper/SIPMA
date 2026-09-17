@@ -1387,12 +1387,12 @@ class StorageService {
         const schoolCode = school?.school_code || 'SCH';
         savedUser = {
           user_id: `USR-ADM-${schoolCode}-${Date.now().toString(36).toUpperCase()}`,
-          name: userData.name.trim(),
+          name: String(userData.name || '').trim(),
           email: cleanEmail,
-          phone: userData.phone?.trim() || '',
+          phone: userData.phone ? String(userData.phone).trim() : '',
           school_id: userData.school_id,
-          nip: userData.nip?.trim() || '',
-          position: userData.position?.trim() || 'Panitia PPDB Madrasah',
+          nip: userData.nip ? String(userData.nip).trim() : '',
+          position: userData.position ? String(userData.position).trim() : 'Panitia PPDB Madrasah',
           role: 'admin_sekolah',
           status: userData.status || 'active',
           password_hash: generatedPass || 'admin123',
@@ -1412,12 +1412,12 @@ class StorageService {
         }
         savedUser = {
           ...users[index],
-          name: userData.name.trim(),
+          name: String(userData.name || '').trim(),
           email: cleanEmail,
-          phone: userData.phone?.trim() || users[index].phone,
+          phone: userData.phone !== undefined ? String(userData.phone).trim() : users[index].phone,
           school_id: userData.school_id,
-          nip: userData.nip !== undefined ? userData.nip.trim() : users[index].nip,
-          position: userData.position !== undefined ? userData.position.trim() : users[index].position,
+          nip: userData.nip !== undefined ? String(userData.nip).trim() : users[index].nip,
+          position: userData.position !== undefined ? String(userData.position).trim() : users[index].position,
           status: userData.status || users[index].status || 'active',
           updated_at: now,
         };
@@ -1590,12 +1590,12 @@ class StorageService {
       if (isNew) {
         savedUser = {
           user_id: `USR-OPR-${schoolCode}-${Date.now().toString(36).toUpperCase()}`,
-          name: userData.name.trim(),
+          name: String(userData.name || '').trim(),
           email: cleanEmail,
-          phone: userData.phone?.trim() || '',
+          phone: userData.phone ? String(userData.phone).trim() : '',
           school_id: userData.school_id,
-          nip: userData.nip?.trim() || '',
-          position: userData.position?.trim() || 'Operator Seleksi & Verifikasi PPDB',
+          nip: userData.nip ? String(userData.nip).trim() : '',
+          position: userData.position ? String(userData.position).trim() : 'Operator Seleksi & Verifikasi PPDB',
           role: 'operator_sekolah',
           status: userData.status || 'active',
           password_hash: generatedPass || 'operator123',
@@ -1615,12 +1615,12 @@ class StorageService {
         }
         savedUser = {
           ...users[index],
-          name: userData.name.trim(),
+          name: String(userData.name || '').trim(),
           email: cleanEmail,
-          phone: userData.phone?.trim() || users[index].phone,
+          phone: userData.phone !== undefined ? String(userData.phone).trim() : users[index].phone,
           school_id: userData.school_id,
-          nip: userData.nip !== undefined ? userData.nip.trim() : users[index].nip,
-          position: userData.position !== undefined ? userData.position.trim() : users[index].position,
+          nip: userData.nip !== undefined ? String(userData.nip).trim() : users[index].nip,
+          position: userData.position !== undefined ? String(userData.position).trim() : users[index].position,
           status: userData.status || users[index].status || 'active',
           updated_at: now,
         };

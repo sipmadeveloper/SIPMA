@@ -51,18 +51,20 @@ export const AdminProfileModal: React.FC<Props> = ({
   const [activeTab, setActiveTab] = useState<'profile' | 'password'>(initialTab);
 
   // Profile Form State
-  const [name, setName] = useState<string>(currentUser.name || '');
-  const [phone, setPhone] = useState<string>(currentUser.phone || '');
-  const [nip, setNip] = useState<string>(currentUser.nip || '');
+  const [name, setName] = useState<string>(String(currentUser.name || ''));
+  const [phone, setPhone] = useState<string>(String(currentUser.phone || ''));
+  const [nip, setNip] = useState<string>(String(currentUser.nip || ''));
   const [position, setPosition] = useState<string>(
-    currentUser.position ||
-      (currentUser.role === 'admin_pusat'
-        ? 'Koordinator PPDB Kanwil Kemenag'
-        : currentUser.role === 'admin_sekolah'
-        ? 'Ketua Panitia PPDB Madrasah'
-        : 'Calon Peserta Didik Baru')
+    String(
+      currentUser.position ||
+        (currentUser.role === 'admin_pusat'
+          ? 'Koordinator PPDB Kanwil Kemenag'
+          : currentUser.role === 'admin_sekolah'
+          ? 'Ketua Panitia PPDB Madrasah'
+          : 'Calon Peserta Didik Baru')
+    )
   );
-  const [photoUrl, setPhotoUrl] = useState<string>(currentUser.photo_url || '');
+  const [photoUrl, setPhotoUrl] = useState<string>(String(currentUser.photo_url || ''));
 
   // Password Form State
   const [oldPassword, setOldPassword] = useState<string>('');
@@ -144,11 +146,11 @@ export const AdminProfileModal: React.FC<Props> = ({
     }
 
     const res = storageService.updateUserProfile(currentUser.user_id, {
-      name: name.trim(),
-      phone: phone.trim(),
-      nip: nip.trim(),
-      position: position.trim(),
-      photo_url: finalPhotoUrl.trim() || undefined,
+      name: String(name || '').trim(),
+      phone: String(phone || '').trim(),
+      nip: String(nip || '').trim(),
+      position: String(position || '').trim(),
+      photo_url: String(finalPhotoUrl || '').trim() || undefined,
     });
     setIsSubmitting(false);
 
