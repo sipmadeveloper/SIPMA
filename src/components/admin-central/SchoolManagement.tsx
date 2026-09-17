@@ -12,7 +12,7 @@ interface Props {
 }
 
 export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDeleteSchool }) => {
-  const { showToast } = useFeedback();
+  const { showToast, showLoading, hideLoading } = useFeedback();
   const [editingSchool, setEditingSchool] = useState<School | null>(null);
   const [isNew, setIsNew] = useState<boolean>(false);
   const [search, setSearch] = useState<string>('');
@@ -23,7 +23,7 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
   const handleUploadLogo = async (file: File) => {
     if (!file || !editingSchool) return;
     setIsUploadingLogo(true);
-    showToast('Mengompres & mengunggah logo ke Google Drive...', 'info');
+    showLoading('Mengunggah logo madrasah ke Google Drive...', 'Sistem sedang mengompresi dan menyimpan logo madrasah ke cloud storage...', 'upload');
     try {
       const compressed = await compressAndResizeImage(file, 800, 800, 0.88);
       const res = await storageService.uploadSchoolLogo(
@@ -32,6 +32,7 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
         compressed.base64,
         compressed.fileName
       );
+      hideLoading();
       setIsUploadingLogo(false);
       if (res.success && res.logo_url) {
         setEditingSchool((prev) => (prev ? { ...prev, logo_url: res.logo_url } : null));
@@ -42,6 +43,7 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
         showToast('Logo disimpan sementara & akan disinkronkan ke Drive.', 'info');
       }
     } catch (err: any) {
+      hideLoading();
       setIsUploadingLogo(false);
       showToast('Gagal memproses gambar logo: ' + (err?.message || 'Format tidak didukung'), 'error');
     }

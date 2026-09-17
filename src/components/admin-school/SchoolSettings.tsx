@@ -12,7 +12,7 @@ interface Props {
 }
 
 export const SchoolSettings: React.FC<Props> = ({ school, onSave }) => {
-  const { showAlert, showToast } = useFeedback();
+  const { showAlert, showToast, showLoading, hideLoading } = useFeedback();
   const safeSchool: School = school || {
     school_id: 'SCH-MAN1',
     npsn: '20100001',
@@ -46,6 +46,7 @@ export const SchoolSettings: React.FC<Props> = ({ school, onSave }) => {
   const handleUploadSchoolLogo = async (file: File) => {
     if (!file) return;
     setIsUploadingLogo(true);
+    showLoading('Mengunggah logo madrasah ke Google Drive...', 'Sistem sedang mengompresi dan menyimpan logo ke Google Drive & Cloud Database...', 'upload');
     try {
       const compressed = await compressAndResizeImage(file, 800, 800, 0.88);
       const res = await storageService.uploadSchoolLogo(
@@ -54,6 +55,7 @@ export const SchoolSettings: React.FC<Props> = ({ school, onSave }) => {
         compressed.base64,
         compressed.fileName
       );
+      hideLoading();
       setIsUploadingLogo(false);
       if (res.success && res.logo_url) {
         const updated = { ...formData, logo_url: res.logo_url };
@@ -64,6 +66,7 @@ export const SchoolSettings: React.FC<Props> = ({ school, onSave }) => {
         showAlert('Gagal Unggah Logo', res.message || 'Terjadi kesalahan saat mengunggah.', 'error');
       }
     } catch (err: any) {
+      hideLoading();
       setIsUploadingLogo(false);
       showAlert('Gagal Memproses Gambar', err?.message || 'Format gambar tidak dapat diproses.', 'error');
     }
@@ -207,13 +210,19 @@ export const SchoolSettings: React.FC<Props> = ({ school, onSave }) => {
                     <button
                       type="button"
                       onClick={async () => {
-                        if (formData.school_id) {
-                          await storageService.deleteSchoolLogo(formData.school_id);
+                        showLoading('Menghapus logo madrasah...', 'Menghapus logo dari Google Drive dan database...', 'delete');
+                        try {
+                          if (formData.school_id) {
+                            await storageService.deleteSchoolLogo(formData.school_id);
+                          }
+                          const updated = { ...formData, logo_url: '' };
+                          setFormData(updated);
+                          onSave(updated);
+                          hideLoading();
+                          showToast('Logo madrasah berhasil dihapus dari Google Drive & database.', 'info');
+                        } catch {
+                          hideLoading();
                         }
-                        const updated = { ...formData, logo_url: '' };
-                        setFormData(updated);
-                        onSave(updated);
-                        showToast('Logo madrasah berhasil dihapus dari Google Drive & database.', 'info');
                       }}
                       title="Hapus Logo Madrasah"
                       className="absolute -top-2 -right-2 w-6 h-6 bg-rose-500 hover:bg-rose-600 text-white rounded-full flex items-center justify-center text-xs shadow-md cursor-pointer transition-transform hover:scale-110"

@@ -242,7 +242,7 @@ export const RegistrationWizard: React.FC<Props> = ({
 
   // Handle Target School Selection & Linking
   const handleSelectSchool = (schoolId: string) => {
-    showLoading('Menghubungkan ke madrasah tujuan...');
+    showLoading('Menghubungkan ke madrasah tujuan...', 'Menyimpan pilihan madrasah dan memperbarui nomor registrasi...', 'save');
     setTimeout(() => {
       try {
         const result = storageService.assignStudentTargetSchool(activeRegNumber, schoolId);
@@ -283,7 +283,7 @@ export const RegistrationWizard: React.FC<Props> = ({
       `Apakah Anda yakin ingin membatalkan pilihan madrasah ${effectiveSchool?.school_name || 'tujuan'}? Anda dapat memilih kembali madrasah lain setelahnya.`,
       () => {
         try {
-          showLoading('Membatalkan pilihan madrasah...');
+          showLoading('Membatalkan pilihan madrasah...', 'Menghapus keterikatan madrasah tujuan dari akun pendaftaran...', 'delete');
           const res = storageService.cancelStudentTargetSchool(activeRegNumber || registrationNumber);
           setSelectedSchool(null);
           setApplication(res.updatedApp);
@@ -440,7 +440,7 @@ export const RegistrationWizard: React.FC<Props> = ({
       return;
     }
 
-    showLoading(`Mengunggah "${file.name}" ke Google Drive...`);
+    showLoading(`Mengunggah "${file.name}" ke Google Drive...`, 'Mengompresi dokumen dan mengunggah ke Google Drive & Cloud Database...', 'upload');
 
     const processAndUpload = async (base64Data: string, originalSizeKb: number) => {
       try {
@@ -525,7 +525,7 @@ export const RegistrationWizard: React.FC<Props> = ({
 
   const handleDeleteDocument = (docId: string) => {
     showConfirm('Hapus Dokumen', 'Apakah Anda yakin ingin menghapus berkas dokumen ini dari Google Drive dan database?', async () => {
-      showLoading('Menghapus berkas dari Google Drive...');
+      showLoading('Menghapus berkas dari Google Drive...', 'Menghapus berkas dokumen dari Google Drive dan mencabut lampiran...', 'delete');
       try {
         const res = await storageService.deleteDocumentPermanently(docId);
         setDocuments(storageService.getDocumentsByRegistration(activeRegNumber || registrationNumber));
@@ -555,7 +555,11 @@ export const RegistrationWizard: React.FC<Props> = ({
     }
 
     setIsSubmitting(true);
-    showLoading('Memproses pengiriman pendaftaran final dan mengunci formulir secara permanen...');
+    showLoading(
+      'Memproses pengiriman pendaftaran final...',
+      'Mengunci formulir pendaftaran, menghasilkan bukti cetak resmi, dan menyinkronkan data pendaftar ke server...',
+      'save'
+    );
     setTimeout(() => {
       try {
         storageService.submitApplication(activeRegNumber || registrationNumber);

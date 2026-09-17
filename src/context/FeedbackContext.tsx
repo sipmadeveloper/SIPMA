@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import { FeedbackModal, ToastContainer, ModalConfig, ToastItem, FeedbackType } from '../components/common/FeedbackModal';
-import { GlobalLoadingOverlay } from '../components/common/LoadingScreen';
+import { GlobalLoadingOverlay, LoadingActionType } from '../components/common/LoadingScreen';
 
 interface ShowModalOptions {
   title: string;
@@ -17,6 +17,7 @@ interface LoadingConfig {
   isOpen: boolean;
   message: string;
   subMessage?: string;
+  actionType?: LoadingActionType;
 }
 
 interface FeedbackContextValue {
@@ -34,9 +35,9 @@ interface FeedbackContextValue {
     }
   ) => void;
   closeModal: () => void;
-  showLoading: (message?: string, subMessage?: string) => void;
+  showLoading: (message?: string, subMessage?: string, actionType?: LoadingActionType) => void;
   hideLoading: () => void;
-  withLoading: <T>(asyncFn: () => Promise<T>, message?: string, subMessage?: string) => Promise<T>;
+  withLoading: <T>(asyncFn: () => Promise<T>, message?: string, subMessage?: string, actionType?: LoadingActionType) => Promise<T>;
 }
 
 const FeedbackContext = createContext<FeedbackContextValue | null>(null);
@@ -47,6 +48,7 @@ export const FeedbackProvider: React.FC<{ children: ReactNode }> = ({ children }
   const [loadingConfig, setLoadingConfig] = useState<LoadingConfig>({
     isOpen: false,
     message: 'Memuat data...',
+    actionType: 'default',
   });
 
   const closeModal = useCallback(() => {
@@ -57,11 +59,12 @@ export const FeedbackProvider: React.FC<{ children: ReactNode }> = ({ children }
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const showLoading = useCallback((message = 'Memproses data...', subMessage?: string) => {
+  const showLoading = useCallback((message = 'Memproses data...', subMessage?: string, actionType: LoadingActionType = 'default') => {
     setLoadingConfig({
       isOpen: true,
       message,
       subMessage,
+      actionType,
     });
   }, []);
 
@@ -70,8 +73,8 @@ export const FeedbackProvider: React.FC<{ children: ReactNode }> = ({ children }
   }, []);
 
   const withLoading = useCallback(
-    async <T,>(asyncFn: () => Promise<T>, message = 'Memproses...', subMessage?: string): Promise<T> => {
-      showLoading(message, subMessage);
+    async <T,>(asyncFn: () => Promise<T>, message = 'Memproses...', subMessage?: string, actionType: LoadingActionType = 'default'): Promise<T> => {
+      showLoading(message, subMessage, actionType);
       try {
         const res = await asyncFn();
         return res;
@@ -164,6 +167,7 @@ export const FeedbackProvider: React.FC<{ children: ReactNode }> = ({ children }
         isOpen={loadingConfig.isOpen}
         message={loadingConfig.message}
         subMessage={loadingConfig.subMessage}
+        actionType={loadingConfig.actionType}
       />
     </FeedbackContext.Provider>
   );

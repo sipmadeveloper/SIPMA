@@ -34,7 +34,7 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
   currentUser,
   onRefreshData,
 }) => {
-  const { showToast, showAlert, showConfirm } = useFeedback();
+  const { showToast, showAlert, showConfirm, showLoading, hideLoading } = useFeedback();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
@@ -139,6 +139,12 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
       return;
     }
 
+    showLoading(
+      editingOperator ? 'Menyimpan data operator madrasah...' : 'Membuat akun operator baru...',
+      'Menyimpan data akun ke database server dan cloud...',
+      'save'
+    );
+
     const res = storageService.saveSchoolOperatorUser(
       {
         user_id: editingOperator ? editingOperator.user_id : undefined,
@@ -153,6 +159,8 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
       },
       currentUser?.name || 'Admin Madrasah'
     );
+
+    hideLoading();
 
     if (res.success && res.user) {
       setIsAddEditModalOpen(false);
@@ -175,7 +183,9 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
 
   // Toggle status
   const handleToggleStatus = (operator: UserType) => {
+    showLoading('Memperbarui status operator...', 'Menyimpan status aktif akun di database...', 'save');
     const res = storageService.toggleUserStatus(operator.user_id);
+    hideLoading();
     if (res.success) {
       showToast(res.message, 'info', 'Status Operator Diperbarui');
       if (onRefreshData) onRefreshData();
@@ -189,11 +199,15 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
     e.preventDefault();
     if (!resetModalOperator) return;
 
+    showLoading('Mereset kata sandi operator...', 'Menyimpan kredensial baru ke database...', 'save');
+
     const res = storageService.resetSchoolOperatorPassword(
       resetModalOperator.user_id,
       customNewPass.trim() || undefined,
       currentUser?.name || 'Admin Madrasah'
     );
+
+    hideLoading();
 
     if (res.success && res.user && res.newPassword) {
       setCredentialsModal({
@@ -215,7 +229,9 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
       'Hapus Akun Operator',
       `Apakah Anda yakin ingin menghapus akun operator "${operator.name}" (${operator.email})? Operator tidak akan dapat lagi masuk untuk membantu verifikasi dan seleksi pendaftar.`,
       () => {
+        showLoading('Menghapus akun operator...', 'Menghapus data akun dari database...', 'delete');
         const res = storageService.deleteUserAccount(operator.user_id);
+        hideLoading();
         if (res.success) {
           showToast(res.message, 'success', 'Akun Operator Dihapus');
           if (onRefreshData) onRefreshData();

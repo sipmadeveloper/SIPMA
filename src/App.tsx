@@ -326,7 +326,7 @@ export default function App() {
 
   // Verification from admin
   const handleVerify = (regNumber: string, status: VerificationStatus, notes: string) => {
-    showLoading('Menyimpan status verifikasi berkas...');
+    showLoading('Menyimpan status verifikasi berkas...', 'Memperbarui catatan dan hasil validasi dokumen ke database...', 'save');
     setTimeout(() => {
       if (status !== 'menunggu') {
         storageService.verifyApplication(regNumber, status, notes, currentUser?.email || 'admin@madrasah.sch.id');
@@ -339,7 +339,7 @@ export default function App() {
 
   // Selection update
   const handleUpdateSelection = (regNumber: string, status: 'lulus' | 'tidak_lulus' | 'menunggu') => {
-    showLoading('Memperbarui status seleksi akhir...');
+    showLoading('Memperbarui status seleksi akhir...', 'Menyimpan kelulusan pendaftar ke basis data madrasah...', 'save');
     setTimeout(() => {
       storageService.updateSelectionStatus(regNumber, status, currentUser?.email || 'admin@madrasah.sch.id');
       refreshData();
@@ -349,7 +349,11 @@ export default function App() {
   };
 
   const handleBulkSelection = (updates: { regNumber: string; status: 'lulus' | 'tidak_lulus' }[]) => {
-    showLoading(`Menyimpan kelulusan ${updates.length} calon murid...`);
+    showLoading(
+      `Menyimpan kelulusan ${updates.length} calon murid...`,
+      'Menyimpan keputusan seleksi masal ke database madrasah...',
+      'save'
+    );
     setTimeout(() => {
       updates.forEach((u) => {
         storageService.updateSelectionStatus(u.regNumber, u.status, currentUser?.email || 'admin@madrasah.sch.id');
@@ -362,7 +366,7 @@ export default function App() {
 
   // School profile update & delete
   const handleSaveSchool = (updatedSchool: School) => {
-    showLoading('Menyimpan data madrasah...');
+    showLoading('Menyimpan data madrasah...', 'Memperbarui informasi profil, lokasi koordinat, dan kuota zonasi...', 'save');
     setTimeout(() => {
       storageService.saveSchool(updatedSchool);
       refreshData();
@@ -372,7 +376,7 @@ export default function App() {
   };
 
   const handleDeleteSchool = (schoolId: string) => {
-    showLoading('Menghapus data madrasah...');
+    showLoading('Menghapus data madrasah...', 'Menghapus data satuan pendidikan dari database...', 'delete');
     setTimeout(() => {
       const res = storageService.deleteSchool(schoolId);
       refreshData();
@@ -387,7 +391,7 @@ export default function App() {
 
   // Applicant Deletion
   const handleDeleteApplicant = (regNumber: string) => {
-    showLoading('Menghapus data pendaftar...');
+    showLoading('Menghapus data pendaftar...', 'Menghapus berkas lampiran dan data pendaftar dari sistem...', 'delete');
     setTimeout(() => {
       const res = storageService.deleteApplication(regNumber);
       refreshData();
@@ -402,7 +406,7 @@ export default function App() {
 
   // Announcements
   const handleAddAnnouncement = (anc: Announcement) => {
-    showLoading('Menyimpan pengumuman...');
+    showLoading('Menyimpan pengumuman...', 'Mempublikasikan pengumuman resmi ke portal madrasah...', 'save');
     setTimeout(() => {
       storageService.saveAnnouncement(anc);
       refreshData();
@@ -412,7 +416,7 @@ export default function App() {
   };
 
   const handleDeleteAnnouncement = (id: string) => {
-    showLoading('Menghapus pengumuman...');
+    showLoading('Menghapus pengumuman...', 'Menghapus artikel pengumuman dari database...', 'delete');
     setTimeout(() => {
       storageService.deleteAnnouncement(id);
       refreshData();
@@ -423,7 +427,7 @@ export default function App() {
 
   // System settings
   const handleSaveSettings = (newSettings: SystemSettings) => {
-    showLoading('Menyimpan konfigurasi sistem...');
+    showLoading('Menyimpan konfigurasi sistem...', 'Menyimpan konfigurasi sistem ke basis data server...', 'save');
     setTimeout(() => {
       storageService.saveSettings(newSettings);
       setSettings(newSettings);

@@ -47,7 +47,7 @@ export const AdminProfileModal: React.FC<Props> = ({
   onClose,
   onProfileUpdated,
 }) => {
-  const { showAlert, showToast } = useFeedback();
+  const { showAlert, showToast, showLoading, hideLoading } = useFeedback();
   const [activeTab, setActiveTab] = useState<'profile' | 'password'>(initialTab);
 
   // Profile Form State
@@ -94,6 +94,7 @@ export const AdminProfileModal: React.FC<Props> = ({
     }
 
     setIsUploadingAvatar(true);
+    showLoading('Mengunggah foto profil ke Google Drive...', 'Sistem sedang mengompresi dan menyimpan foto profil ke cloud storage...', 'upload');
     try {
       // Auto compress and optimize avatar client-side
       const compressed = await compressAndResizeImage(file, 600, 600, 0.88);
@@ -106,14 +107,17 @@ export const AdminProfileModal: React.FC<Props> = ({
         compressed.base64
       );
 
+      hideLoading();
       setIsUploadingAvatar(false);
       if (uploadRes && uploadRes.photo_url) {
         setPhotoUrl(uploadRes.photo_url);
         showAlert('Foto Profil Tersimpan', 'Foto profil berhasil diunggah ke Google Drive & Cloud Database!', 'success');
       }
     } catch (err: any) {
+      hideLoading();
       setIsUploadingAvatar(false);
       console.warn('Avatar compression/upload error:', err);
+      showAlert('Gagal Mengunggah Foto', err?.message || 'Terjadi kesalahan saat mengunggah foto profil.', 'error');
     }
   };
 
@@ -125,6 +129,7 @@ export const AdminProfileModal: React.FC<Props> = ({
     }
 
     setIsSubmitting(true);
+    showLoading('Menyimpan perubahan profil...', 'Menyimpan data identitas akun ke database server dan cloud...', 'save');
     let finalPhotoUrl = photoUrl;
 
     // If new photo was picked as base64, push to Drive/Server proxy as 'user' avatar
@@ -152,6 +157,7 @@ export const AdminProfileModal: React.FC<Props> = ({
       position: String(position || '').trim(),
       photo_url: String(finalPhotoUrl || '').trim() || undefined,
     });
+    hideLoading();
     setIsSubmitting(false);
 
     if (res.success && res.user) {
@@ -176,7 +182,9 @@ export const AdminProfileModal: React.FC<Props> = ({
     }
 
     setIsSubmitting(true);
+    showLoading('Menyimpan kata sandi baru...', 'Memperbarui kredensial keamanan akun di database server...', 'save');
     const res = storageService.changeUserPassword(currentUser.user_id, oldPassword, newPassword);
+    hideLoading();
     setIsSubmitting(false);
 
     if (res.success) {
@@ -197,7 +205,9 @@ export const AdminProfileModal: React.FC<Props> = ({
     }
 
     setIsResettingOwnPassword(true);
+    showLoading('Mereset kata sandi akun...', 'Menghasilkan kata sandi baru terenkripsi di database...', 'save');
     const res = storageService.resetOwnPassword(currentUser.user_id);
+    hideLoading();
     setIsResettingOwnPassword(false);
 
     if (res.success && res.newPassword) {
@@ -374,11 +384,14 @@ export const AdminProfileModal: React.FC<Props> = ({
                       disabled={isUploadingAvatar}
                       onClick={async () => {
                         setIsUploadingAvatar(true);
+                        showLoading('Menghapus foto profil...', 'Menghapus berkas foto dari Google Drive & database...', 'delete');
                         try {
                           await storageService.deleteUserAvatar(currentUser.user_id);
                           setPhotoUrl('');
+                          hideLoading();
                           showToast('Foto profil berhasil dihapus dari Google Drive & akun.', 'info');
                         } catch {
+                          hideLoading();
                           setPhotoUrl('');
                         } finally {
                           setIsUploadingAvatar(false);

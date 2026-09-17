@@ -38,7 +38,7 @@ interface Props {
 }
 
 export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData }) => {
-  const { showAlert, showToast } = useFeedback();
+  const { showAlert, showToast, showLoading, hideLoading } = useFeedback();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [schoolFilter, setSchoolFilter] = useState('all');
@@ -158,6 +158,12 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
       return;
     }
 
+    showLoading(
+      editingAdmin ? 'Menyimpan perubahan akun admin madrasah...' : 'Membuat akun admin madrasah baru...',
+      'Menyimpan data akun ke database server dan cloud...',
+      'save'
+    );
+
     const res = storageService.saveSchoolAdminUser({
       user_id: editingAdmin ? editingAdmin.user_id : undefined,
       name: formData.name,
@@ -169,6 +175,8 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
       password: formData.password || undefined,
       status: formData.status,
     });
+
+    hideLoading();
 
     if (res.success) {
       setIsAddEditModalOpen(false);
@@ -190,7 +198,9 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
 
   // Toggle status
   const handleToggleStatus = (admin: UserType) => {
+    showLoading('Memperbarui status akses admin...', 'Menyimpan status aktif ke database...', 'save');
     const res = storageService.toggleUserStatus(admin.user_id);
+    hideLoading();
     if (res.success) {
       showToast(res.message, 'info', 'Status Akses Diperbarui');
       if (onRefreshData) onRefreshData();
@@ -204,11 +214,15 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
     e.preventDefault();
     if (!resetModalAdmin) return;
 
+    showLoading('Mereset kata sandi admin...', 'Menyimpan kata sandi baru ke database...', 'save');
+
     const res = storageService.resetSchoolAdminPassword(
       resetModalAdmin.user_id,
       customNewPass.trim() || undefined,
       'Admin Pusat'
     );
+
+    hideLoading();
 
     if (res.success && res.newPassword && res.user) {
       setResetResult({
@@ -226,7 +240,9 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
   // Delete admin
   const handleDeleteAdmin = () => {
     if (!adminToDelete) return;
+    showLoading('Menghapus akun admin...', 'Menghapus data akun dari database...', 'delete');
     const res = storageService.deleteUserAccount(adminToDelete.user_id);
+    hideLoading();
     if (res.success) {
       showToast(res.message, 'success', 'Akun Terhapus');
       setAdminToDelete(null);

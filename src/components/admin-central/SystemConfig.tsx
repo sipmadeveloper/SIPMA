@@ -66,7 +66,7 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
   const handleUploadAppLogo = async (file: File) => {
     if (!file) return;
     setIsUploadingLogo(true);
-    showLoading('Mengoptimalkan gambar & mengunggah logo ke Google Drive...');
+    showLoading('Mengunggah logo aplikasi...', 'Mengompresi dan menyimpan logo aplikasi ke Google Drive & database...', 'upload');
     try {
       // 1. Auto-optimize & compress client-side (no 2MB block, works on any device/camera)
       const compressed = await compressAndResizeImage(file, 800, 800, 0.88);
@@ -100,6 +100,7 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
   };
 
   const handleRemoveLogo = async () => {
+    showLoading('Menghapus logo aplikasi...', 'Menghapus berkas logo aplikasi dari Google Drive & sistem...', 'delete');
     try {
       await storageService.deleteAppLogo();
     } catch {}
@@ -108,6 +109,7 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
     const updated = { ...current, ...formData, app_logo: '' };
     storageService.saveSettings(updated);
     onSaveSettings(updated);
+    hideLoading();
     showToast('Logo aplikasi berhasil dihapus dari Google Drive & sistem.', 'info');
   };
 
@@ -166,7 +168,11 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
     }
 
     setIsInitializingDb(true);
-    showLoading('Menginisialisasi & membangun 11 tabel sheet database di Google Spreadsheet...');
+    showLoading(
+      'Menginisialisasi tabel database di Google Spreadsheet...',
+      'Membangun 11 tabel sheet database terformat dan menghubungkan skema ke Google Apps Script...',
+      'sync'
+    );
     const res = await storageService.initDatabaseGAS();
     setIsInitializingDb(false);
     hideLoading();
@@ -189,6 +195,7 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    showLoading('Menyimpan konfigurasi sistem...', 'Menyimpan konfigurasi aplikasi dan database ke server...', 'save');
     const current = storageService.getSettings();
     // ID Spreadsheet, Drive Folder, and GAS URL are permanent (paten) and cannot be changed through the app UI
     const updated: SystemSettings = {
@@ -200,6 +207,7 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
     };
     onSaveSettings(updated);
     storageService.saveSettings(updated);
+    hideLoading();
     setIsSaved(true);
     showToast('Konfigurasi umum sistem berhasil disimpan', 'success');
     setTimeout(() => setIsSaved(false), 3000);
@@ -234,7 +242,11 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
     }
 
     setIsSyncing(true);
-    showLoading('Mengirim seluruh data pendaftar dan berkas ke Google Sheets...');
+    showLoading(
+      'Mengirim data ke Google Sheets...',
+      'Menyinkronkan seluruh berkas dan data pendaftar madrasah ke Google Spreadsheet...',
+      'sync'
+    );
     const res = await storageService.syncAllToGAS();
     setIsSyncing(false);
     hideLoading();
@@ -257,7 +269,11 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
     }
 
     setIsPulling(true);
-    showLoading('Menarik data terbaru dari Google Sheets & Database Server...');
+    showLoading(
+      'Menarik data dari Google Sheets...',
+      'Mengambil update terbaru data pendaftar dan sekolah dari Google Spreadsheet...',
+      'sync'
+    );
     const res = await storageService.pullAllFromGAS();
     setIsPulling(false);
     hideLoading();
@@ -270,7 +286,11 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
   };
 
   const handleSyncDriveDocuments = async () => {
-    showLoading('Menyinkronkan semua berkas dokumen & pas foto ke Google Drive...');
+    showLoading(
+      'Menyinkronkan berkas ke Google Drive...',
+      'Mengunggah berkas dokumen, pas foto, dan lampiran pendaftar ke Google Drive...',
+      'sync'
+    );
     try {
       const result = await storageService.uploadAllPendingDocumentsToDrive();
       hideLoading();
@@ -1202,13 +1222,17 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
                       reader.onload = (event) => {
                         const content = event.target?.result as string;
                         if (content) {
-                          const res = storageService.importDatabaseBackup(content);
-                          if (res.success) {
-                            showAlert('Restore Sukses', res.message, 'success');
-                            window.location.reload();
-                          } else {
-                            showAlert('Restore Gagal', res.message, 'error');
-                          }
+                          showLoading('Memulihkan database...', 'Mengimpor berkas cadangan dan memulihkan seluruh tabel database...', 'sync');
+                          setTimeout(() => {
+                            const res = storageService.importDatabaseBackup(content);
+                            hideLoading();
+                            if (res.success) {
+                              showAlert('Restore Sukses', res.message, 'success');
+                              window.location.reload();
+                            } else {
+                              showAlert('Restore Gagal', res.message, 'error');
+                            }
+                          }, 500);
                         }
                       };
                       reader.readAsText(file);
