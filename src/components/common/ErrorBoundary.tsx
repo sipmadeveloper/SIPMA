@@ -33,7 +33,7 @@ export class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-          <div className="bg-white max-w-md w-full p-6 rounded-2xl border border-slate-200 shadow-xl text-center space-y-4">
+          <div className="bg-white max-w-lg w-full p-6 rounded-2xl border border-slate-200 shadow-xl text-center space-y-4">
             <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
               <AlertTriangle className="w-6 h-6" />
             </div>
@@ -43,6 +43,12 @@ export class ErrorBoundary extends Component<Props, State> {
                 Aplikasi mengalami kendala sementara saat merender tampilan. Silakan muat ulang halaman.
               </p>
             </div>
+            {this.state.error && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-left text-xs font-mono text-rose-800 overflow-x-auto max-h-48 whitespace-pre-wrap break-all">
+                <div className="font-bold text-rose-900 mb-1">{this.state.error.name}: {this.state.error.message}</div>
+                <div className="text-[10px] text-rose-700 opacity-80">{this.state.error.stack}</div>
+              </div>
+            )}
             <button
               type="button"
               onClick={this.handleReset}

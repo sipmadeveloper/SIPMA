@@ -61,7 +61,7 @@ export const SchoolSettings: React.FC<Props> = ({ school, onSave }) => {
         const updated = { ...formData, logo_url: res.logo_url };
         setFormData(updated);
         onSave(updated);
-        showToast('Logo madrasah berhasil diunggah & tersimpan langsung ke database!', 'success');
+        showAlert('Logo Madrasah Tersimpan', 'Logo madrasah berhasil diunggah & tersimpan langsung ke Google Drive dan database!', 'success');
       } else {
         showAlert('Gagal Unggah Logo', res.message || 'Terjadi kesalahan saat mengunggah.', 'error');
       }
@@ -76,7 +76,7 @@ export const SchoolSettings: React.FC<Props> = ({ school, onSave }) => {
     e.preventDefault();
     onSave(formData);
     setIsSaved(true);
-    showToast('Pengaturan madrasah berhasil disimpan', 'success');
+    showAlert('Pengaturan Tersimpan', 'Pengaturan madrasah dan kuota penerimaan berhasil disimpan.', 'success');
     setTimeout(() => setIsSaved(false), 3000);
   };
 

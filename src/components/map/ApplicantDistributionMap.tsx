@@ -23,6 +23,7 @@ import {
   RotateCcw,
   Sliders,
   ExternalLink,
+  Activity,
 } from 'lucide-react';
 
 interface Props {
@@ -331,9 +332,10 @@ export const ApplicantDistributionMap: React.FC<Props> = ({
   useEffect(() => {
     const map = mapInstanceRef.current;
     const markersGroup = markersGroupRef.current;
-    if (!map || !markersGroup) return;
+    if (!map) return;
 
-    // Clear previous markers
+    // Update Individual Markers
+    if (!markersGroup) return;
     markersGroup.clearLayers();
 
     const schoolLat = safeSchool.latitude || -6.2655;
@@ -343,129 +345,135 @@ export const ApplicantDistributionMap: React.FC<Props> = ({
     filteredApplicants.forEach((app) => {
       if (!app.latitude || !app.longitude) return;
 
-      bounds.extend([app.latitude, app.longitude]);
+        bounds.extend([app.latitude, app.longitude]);
 
-      const student = students[app.registration_number];
-      const isInsideZoning = (app.distance_km ?? 999) <= zoningRadiusKm;
+        const student = students[app.registration_number];
+        const isInsideZoning = (app.distance_km ?? 999) <= zoningRadiusKm;
 
-      // Color scheme based on pathway and zoning compliance
-      let badgeBg = 'bg-emerald-600';
-      let borderClr = 'border-white';
-      let pathwayCode = 'Z';
-      let pathwayLabel = 'Zonasi';
+        // Color scheme based on pathway and zoning compliance
+        let badgeBg = 'bg-emerald-600';
+        let borderClr = 'border-white';
+        let pathwayCode = 'Z';
+        let pathwayLabel = 'Zonasi';
 
-      if (app.pathway === 'afirmasi') {
-        badgeBg = 'bg-purple-600';
-        pathwayCode = 'A';
-        pathwayLabel = 'Afirmasi';
-      } else if (app.pathway === 'prestasi') {
-        badgeBg = 'bg-amber-600';
-        pathwayCode = 'P';
-        pathwayLabel = 'Prestasi';
-      } else if (app.pathway === 'mutasi') {
-        badgeBg = 'bg-blue-600';
-        pathwayCode = 'M';
-        pathwayLabel = 'Mutasi';
-      }
+        if (app.pathway === 'afirmasi') {
+          badgeBg = 'bg-purple-600';
+          pathwayCode = 'A';
+          pathwayLabel = 'Afirmasi';
+        } else if (app.pathway === 'prestasi') {
+          badgeBg = 'bg-amber-600';
+          pathwayCode = 'P';
+          pathwayLabel = 'Prestasi';
+        } else if (app.pathway === 'mutasi') {
+          badgeBg = 'bg-blue-600';
+          pathwayCode = 'M';
+          pathwayLabel = 'Mutasi';
+        }
 
-      // If out of zoning radius, highlight border with rose/red
-      if (!isInsideZoning) {
-        borderClr = 'border-rose-400 ring-2 ring-rose-500/40';
-      }
+        // If out of zoning radius, highlight border with rose/red
+        if (!isInsideZoning) {
+          borderClr = 'border-rose-400 ring-2 ring-rose-500/40';
+        }
 
-      const isSelected = activeApplicant?.registration_number === app.registration_number;
+        const isSelected = activeApplicant?.registration_number === app.registration_number;
 
-      const markerHtml = `
-        <div class="relative group cursor-pointer transition-transform hover:scale-125 ${isSelected ? 'scale-135 z-50' : ''}">
-          <div class="w-7 h-7 rounded-full ${badgeBg} ${borderClr} border-2 shadow-lg flex items-center justify-center text-white text-[10px] font-black tracking-tight">
-            ${pathwayCode}
-          </div>
-          ${
-            !isInsideZoning
-              ? '<span class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-rose-500 border border-white"></span>'
-              : ''
-          }
-        </div>
-      `;
-
-      const markerIcon = L.divIcon({
-        className: 'applicant-custom-marker',
-        html: markerHtml,
-        iconSize: [28, 28],
-        iconAnchor: [14, 14],
-      });
-
-      const marker = L.marker([app.latitude, app.longitude], {
-        icon: markerIcon,
-      }).addTo(markersGroup);
-
-      // Bind rich popup with complete details
-      const popupContent = `
-        <div class="p-1.5 min-w-[220px] font-sans">
-          <div class="flex items-center justify-between gap-2 mb-1.5">
-            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${
-              isInsideZoning ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-            }">
-              ${isInsideZoning ? '✓ Masuk Radius Zonasi' : '✕ Di Luar Radius'}
-            </span>
-            <span class="text-[10px] font-mono text-slate-500 font-semibold">${app.registration_number}</span>
-          </div>
-
-          <h4 class="font-extrabold text-sm text-slate-900 leading-snug">
-            ${student?.name || 'Calon Murid'}
-          </h4>
-
-          <div class="mt-2 space-y-1 text-xs text-slate-600 bg-slate-50 p-2 rounded-xl border border-slate-200">
-            <div class="flex justify-between">
-              <span class="text-slate-500">Jalur:</span>
-              <span class="font-bold text-slate-800 capitalize">${pathwayLabel}</span>
+        const markerHtml = `
+          <div class="relative group cursor-pointer transition-transform hover:scale-125 ${isSelected ? 'scale-135 z-50' : ''}">
+            <div class="w-7 h-7 rounded-full ${badgeBg} ${borderClr} border-2 shadow-lg flex items-center justify-center text-white text-[10px] font-black tracking-tight">
+              ${pathwayCode}
             </div>
-            <div class="flex justify-between">
-              <span class="text-slate-500">Jarak ke Madrasah:</span>
-              <span class="font-black ${isInsideZoning ? 'text-emerald-700' : 'text-rose-700'}">
-                ${formatDistanceIndonesian(app.distance_km)}
+            ${
+              !isInsideZoning
+                ? '<span class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-rose-500 border border-white"></span>'
+                : ''
+            }
+          </div>
+        `;
+
+        const markerIcon = L.divIcon({
+          className: 'applicant-custom-marker',
+          html: markerHtml,
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
+        });
+
+        const marker = L.marker([app.latitude, app.longitude], {
+          icon: markerIcon,
+        }).addTo(markersGroup);
+
+        // Bind rich popup with complete details
+        const popupContent = `
+          <div class="p-1.5 min-w-[220px] font-sans">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <span class="px-2 py-0.5 rounded text-[10px] font-bold ${
+                isInsideZoning ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+              }">
+                ${isInsideZoning ? '✓ Masuk Radius Zonasi' : '✕ Di Luar Radius'}
               </span>
+              <span class="text-[10px] font-mono text-slate-500 font-semibold">${app.registration_number}</span>
             </div>
-            <div class="flex justify-between">
-              <span class="text-slate-500">Verifikasi:</span>
-              <span class="font-semibold capitalize ${
-                app.verification_status === 'terverifikasi'
-                  ? 'text-emerald-700'
-                  : app.verification_status === 'ditolak'
-                  ? 'text-rose-700'
-                  : 'text-amber-700'
-              }">${app.verification_status || 'menunggu'}</span>
+
+            <h4 class="font-extrabold text-sm text-slate-900 leading-snug">
+              ${student?.name || 'Calon Murid'}
+            </h4>
+
+            <div class="mt-2 space-y-1 text-xs text-slate-600 bg-slate-50 p-2 rounded-xl border border-slate-200">
+              <div class="flex justify-between">
+                <span class="text-slate-500">Jalur:</span>
+                <span class="font-bold text-slate-800 capitalize">${pathwayLabel}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-500">Jarak ke Madrasah:</span>
+                <span class="font-black ${isInsideZoning ? 'text-emerald-700' : 'text-rose-700'}">
+                  ${formatDistanceIndonesian(app.distance_km)}
+                </span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-500">Verifikasi:</span>
+                <span class="font-semibold capitalize ${
+                  app.verification_status === 'terverifikasi'
+                    ? 'text-emerald-700'
+                    : app.verification_status === 'ditolak'
+                    ? 'text-rose-700'
+                    : 'text-amber-700'
+                }">${app.verification_status || 'menunggu'}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-slate-500">Hasil Seleksi:</span>
+                <span class="font-bold uppercase ${
+                  app.final_status === 'lulus'
+                    ? 'text-emerald-700'
+                    : app.final_status === 'tidak_lulus'
+                    ? 'text-rose-700'
+                    : 'text-slate-700'
+                }">${app.final_status || 'menunggu'}</span>
+              </div>
             </div>
-            <div class="flex justify-between">
-              <span class="text-slate-500">Hasil Seleksi:</span>
-              <span class="font-bold uppercase ${
-                app.final_status === 'lulus'
-                  ? 'text-emerald-700'
-                  : app.final_status === 'tidak_lulus'
-                  ? 'text-rose-700'
-                  : 'text-slate-700'
-              }">${app.final_status || 'menunggu'}</span>
+
+            <div class="mt-2 text-[10px] text-slate-400 font-mono">
+              Koordinat: ${formatCoordinates(app.latitude, app.longitude)}
             </div>
           </div>
+        `;
 
-          <div class="mt-2 text-[10px] text-slate-400 font-mono">
-            Koordinat: ${formatCoordinates(app.latitude, app.longitude)}
-          </div>
-        </div>
-      `;
+        marker.bindPopup(popupContent, { maxWidth: 290 });
 
-      marker.bindPopup(popupContent, { maxWidth: 290 });
-
-      marker.on('click', () => {
-        setActiveApplicant(app);
+        marker.on('click', () => {
+          setActiveApplicant(app);
+        });
       });
-    });
 
     // If we have applicants, smoothly fit bounds
     if (filteredApplicants.length > 0) {
       map.fitBounds(bounds.pad(0.15));
     }
-  }, [filteredApplicants, students, zoningRadiusKm, safeSchool, activeApplicant]);
+  }, [
+    filteredApplicants,
+    students,
+    zoningRadiusKm,
+    safeSchool,
+    activeApplicant,
+  ]);
 
   // Toggle zoning circle visibility
   useEffect(() => {

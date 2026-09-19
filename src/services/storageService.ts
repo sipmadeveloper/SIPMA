@@ -22,6 +22,11 @@ import {
 import { updateAppFavicon } from '../utils/favicon';
 import { extractDriveFileId, clearImageUrlCache } from '../utils/imageUrl';
 import {
+  normalizeDocumentType,
+  getDocumentUniqueKey,
+  deduplicateDocuments,
+} from '../utils/fileDownload';
+import {
   INITIAL_SCHOOLS,
   INITIAL_USERS,
   INITIAL_STUDENTS,
@@ -49,6 +54,52 @@ const STORAGE_KEYS = {
   AUDIT_LOGS: 'sipma_audit_logs',
   CURRENT_USER: 'sipma_current_user',
 };
+
+// Safe JSON parser to prevent SyntaxError: Unexpected token '<' on HTML responses
+async function safeParseJsonResponse<T = any>(
+  res: Response
+): Promise<{ isJson: boolean; data: T | null; isHtml: boolean; rawText: string }> {
+  try {
+    const text = await res.text();
+    const trimmed = text.trim();
+    const isHtml = trimmed.startsWith('<') || trimmed.includes('<!DOCTYPE') || trimmed.includes('<html');
+    if (isHtml) {
+      return { isJson: false, data: null, isHtml: true, rawText: text };
+    }
+    const data = JSON.parse(text);
+    return { isJson: true, data, isHtml: false, rawText: text };
+  } catch {
+    return { isJson: false, data: null, isHtml: false, rawText: '' };
+  }
+}
+
+// Safe localStorage wrapper to prevent QuotaExceededError when storing documents or images
+function safeSetItem(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch (err: any) {
+    console.warn(`[Storage] QuotaExceeded or error saving ${key}:`, err);
+    try {
+      if (key === STORAGE_KEYS.DOCUMENTS) {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) {
+          // Strip heavy base64 data for docs that already have drive_url or local_url
+          const cleaned = parsed.map((d: any) => ({
+            ...d,
+            file_data_base64: d.drive_url || d.local_url ? undefined : (d.file_data_base64 && d.file_data_base64.length > 500 ? undefined : d.file_data_base64),
+          }));
+          localStorage.setItem(key, JSON.stringify(cleaned));
+          return;
+        }
+      }
+      // If still fails, clear non-critical items
+      localStorage.removeItem(STORAGE_KEYS.AUDIT_LOGS);
+      localStorage.setItem(key, value);
+    } catch (e2) {
+      console.warn(`[Storage] Fallback save failed for ${key}:`, e2);
+    }
+  }
+}
 
 class StorageService {
   private initialized = false;
@@ -500,7 +551,9 @@ class StorageService {
         this.serverETag = etagHeader;
       }
 
-      const dataJson = await dataRes.json();
+      const parsed = await safeParseJsonResponse(dataRes);
+      if (!parsed.isJson || !parsed.data) return false;
+      const dataJson = parsed.data;
       if (!dataJson.success || !dataJson.data) return false;
 
       const d = dataJson.data;
@@ -2141,8 +2194,9 @@ class StorageService {
           drive_root_folder_id: settings.drive_root_folder_id,
         }),
       });
-      if (res.ok) {
-        const json = await res.json();
+      const parsed = await safeParseJsonResponse(res);
+      if (parsed.isJson && parsed.data) {
+        const json = parsed.data;
         if (json.success && json.logo_url) {
           clearImageUrlCache(oldDriveFileId);
           if (logoType === 'user') {
@@ -2156,7 +2210,7 @@ class StorageService {
             if (uIdx >= 0) {
               users[uIdx].photo_url = json.logo_url;
               this.memCache.users = users;
-              localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+              safeSetItem(STORAGE_KEYS.USERS, JSON.stringify(users));
             }
             this.notifySubscribers('user_updated');
           }
@@ -2192,12 +2246,14 @@ class StorageService {
           drive_root_folder_id: settings.drive_root_folder_id,
         }),
       });
-      if (res.ok) {
-        const json = await res.json();
+      const parsed = await safeParseJsonResponse(res);
+      if (parsed.isJson && parsed.data) {
+        const json = parsed.data;
         if (json.success && json.logo_url) {
           clearImageUrlCache(oldDriveFileId);
           const updatedSettings = { ...this.getSettings(), app_logo: json.logo_url };
-          localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updatedSettings));
+          this.memCache.settings = updatedSettings;
+          safeSetItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updatedSettings));
           updateAppFavicon(json.logo_url);
           this.notifySubscribers('settings_updated', updatedSettings);
           this.triggerAutoSync(true);
@@ -2213,7 +2269,8 @@ class StorageService {
     }
     // Fallback: still save base64 locally and trigger background sync
     const fallbackSettings = { ...this.getSettings(), app_logo: base64Data };
-    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(fallbackSettings));
+    this.memCache.settings = fallbackSettings;
+    safeSetItem(STORAGE_KEYS.SETTINGS, JSON.stringify(fallbackSettings));
     updateAppFavicon(base64Data);
     this.notifySubscribers('settings_updated', fallbackSettings);
     return { success: true, logo_url: base64Data, message: 'Logo disimpan lokal & siap disinkronkan.' };
@@ -2242,15 +2299,17 @@ class StorageService {
           drive_root_folder_id: settings.drive_root_folder_id,
         }),
       });
-      if (res.ok) {
-        const json = await res.json();
+      const parsed = await safeParseJsonResponse(res);
+      if (parsed.isJson && parsed.data) {
+        const json = parsed.data;
         if (json.success && json.logo_url) {
           clearImageUrlCache(oldDriveFileId);
           const schools = this.getSchools();
           const idx = schools.findIndex((s) => s.school_id === schoolId);
           if (idx >= 0) {
             schools[idx].logo_url = json.logo_url;
-            localStorage.setItem(STORAGE_KEYS.SCHOOLS, JSON.stringify(schools));
+            this.memCache.schools = schools;
+            safeSetItem(STORAGE_KEYS.SCHOOLS, JSON.stringify(schools));
             this.notifySubscribers('data_mutated');
             this.triggerAutoSync(true);
           }
@@ -2286,16 +2345,17 @@ class StorageService {
           drive_root_folder_id: settings.drive_root_folder_id,
         }),
       });
-      if (res.ok) {
-        const json = await res.json();
+      const parsed = await safeParseJsonResponse(res);
+      if (parsed.isJson && parsed.data) {
+        const json = parsed.data;
         if (json.success && json.logo_url) {
           clearImageUrlCache(oldDriveFileId);
           const users = this.getUsers();
           const idx = users.findIndex((u) => u.user_id === userId || u.email === userId);
           if (idx >= 0) {
             users[idx].photo_url = json.logo_url;
-            localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
             this.memCache.users = users;
+            safeSetItem(STORAGE_KEYS.USERS, JSON.stringify(users));
             const cur = this.getCurrentUser();
             if (cur && (cur.user_id === userId || cur.email === userId)) {
               this.setCurrentUser({ ...cur, photo_url: json.logo_url });
@@ -2862,6 +2922,7 @@ class StorageService {
 
       // 1. Remove application
       const filteredApps = apps.filter((a) => a.registration_number !== registrationNumber);
+      this.memCache.applications = filteredApps;
       localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(filteredApps));
 
       // 2. Remove student & linked parent/origins/addresses
@@ -2869,6 +2930,7 @@ class StorageService {
       const studentId = students[registrationNumber]?.student_id || targetApp.student_id;
       if (students[registrationNumber]) {
         delete students[registrationNumber];
+        this.memCache.students = students;
         localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
       }
 
@@ -2876,18 +2938,21 @@ class StorageService {
         const parents = this.getParentsMap();
         if (parents[studentId]) {
           delete parents[studentId];
+          this.memCache.parents = parents;
           localStorage.setItem(STORAGE_KEYS.PARENTS, JSON.stringify(parents));
         }
 
         const origins = this.getSchoolOriginsMap();
         if (origins[studentId]) {
           delete origins[studentId];
+          this.memCache.school_origins = origins;
           localStorage.setItem(STORAGE_KEYS.SCHOOL_ORIGINS, JSON.stringify(origins));
         }
 
         const addresses = this.getAddressesMap();
         if (addresses[studentId]) {
           delete addresses[studentId];
+          this.memCache.addresses = addresses;
           localStorage.setItem(STORAGE_KEYS.ADDRESSES, JSON.stringify(addresses));
         }
       }
@@ -2900,11 +2965,13 @@ class StorageService {
         .filter((id): id is string => !!id && id.length > 5);
 
       const filteredDocs = docs.filter((d) => d.registration_number !== registrationNumber);
+      this.memCache.documents = filteredDocs;
       localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(filteredDocs));
 
       // 4. Remove user account if tied to this registration
       const users = this.getUsers();
       const filteredUsers = users.filter((u) => u.registration_number !== registrationNumber);
+      this.memCache.users = filteredUsers;
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(filteredUsers));
 
       // 5. Handle current user session if it was the deleted user
@@ -2952,8 +3019,9 @@ class StorageService {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.DOCUMENTS);
       const parsed = data ? JSON.parse(data) : [...INITIAL_DOCUMENTS];
-      this.memCache.documents = parsed;
-      return parsed;
+      const deduplicated = deduplicateDocuments(parsed);
+      this.memCache.documents = deduplicated;
+      return deduplicated;
     } catch {
       return [...INITIAL_DOCUMENTS];
     }
@@ -2965,34 +3033,33 @@ class StorageService {
 
   saveDocument(doc: DocumentItem, studentName?: string, schoolName?: string): void {
     try {
+      const normType = normalizeDocumentType(doc.document_type);
+      doc.document_type = normType;
+      const targetKey = getDocumentUniqueKey(doc);
       const docs = this.getDocuments();
       const index = docs.findIndex(
         (d) =>
+          getDocumentUniqueKey(d) === targetKey ||
           d.document_id === doc.document_id ||
-          (d.registration_number === doc.registration_number && d.document_type === doc.document_type)
+          (d.registration_number === doc.registration_number && normalizeDocumentType(d.document_type) === normType)
       );
       if (index >= 0) {
         const prev = docs[index];
-        if (!doc.document_id) doc.document_id = prev.document_id;
-        if (!doc.old_drive_file_id && prev.drive_file_id) {
-          doc.old_drive_file_id = prev.drive_file_id;
+        doc.document_id = prev.document_id;
+        if (!doc.old_drive_file_id && (prev.drive_file_id || prev.drive_url)) {
+          doc.old_drive_file_id = prev.drive_file_id || extractDriveFileId(prev.drive_url);
         }
-        docs[index] = { ...prev, ...doc };
+        docs[index] = { ...prev, ...doc, document_type: normType };
       } else {
         docs.push(doc);
       }
-      this.memCache.documents = docs;
-      localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(docs));
+      const deduplicated = deduplicateDocuments(docs);
+      this.memCache.documents = deduplicated;
+      safeSetItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(deduplicated));
     } catch {
       // ignore
     }
     this.addAuditLog('UPLOAD_DOCUMENT', doc.registration_number, `Unggah berkas: ${doc.document_title} (${doc.file_name})`);
-    
-    // Asynchronously push file directly to Google Drive via server proxy
-    if (doc.file_data_base64) {
-      this.uploadDocumentToDrive(doc, studentName, schoolName).catch(() => {});
-    }
-
     this.notifySubscribers('data_mutated');
     this.triggerAutoSync();
   }
@@ -3001,7 +3068,10 @@ class StorageService {
     const settings = this.getSettings();
     let resultJson: any = null;
 
-    const isAccount = options?.isAccount || doc.document_type === 'foto_profil' || doc.document_type === 'avatar' || doc.document_type === 'dokumen_akun';
+    const normType = normalizeDocumentType(doc.document_type);
+    doc.document_type = normType;
+
+    const isAccount = options?.isAccount || normType === 'foto_profil' || normType === 'avatar' || normType === 'dokumen_akun';
     const appYear = settings.academic_year_label || settings.application_year || '2026/2027';
 
     // Auto-detect old Drive file id if replacing an existing document of same type or same document_id
@@ -3011,7 +3081,7 @@ class StorageService {
       const matchDoc = allDocs.find(
         (d) =>
           d.registration_number === doc.registration_number &&
-          d.document_type === doc.document_type
+          normalizeDocumentType(d.document_type) === normType
       );
       if (matchDoc) {
         effectiveOldDriveId = matchDoc.drive_file_id || extractDriveFileId(matchDoc.drive_url) || '';
@@ -3043,8 +3113,9 @@ class StorageService {
         }),
       });
 
-      if (res.ok) {
-        resultJson = await res.json();
+      const parsed = await safeParseJsonResponse(res);
+      if (parsed.isJson && parsed.data) {
+        resultJson = parsed.data;
       }
     } catch (err: any) {
       console.warn('Server upload proxy failed, trying direct GAS fallback...', err);
@@ -3066,7 +3137,7 @@ class StorageService {
               school_name: schoolName || 'Madrasah',
               school_id: options?.schoolId,
               application_year: appYear,
-              document_type: doc.document_type,
+              document_type: normType,
               document_title: doc.document_title,
               file_name: doc.file_name,
               file_size_kb: doc.file_size_kb,
@@ -3080,8 +3151,9 @@ class StorageService {
             },
           }),
         });
-        if (directRes.ok) {
-          resultJson = await directRes.json();
+        const directParsed = await safeParseJsonResponse(directRes);
+        if (directParsed.isJson && directParsed.data) {
+          resultJson = directParsed.data;
         }
       } catch (directErr) {
         console.warn('Direct GAS upload fallback warning:', directErr);
@@ -3091,7 +3163,13 @@ class StorageService {
     if (resultJson && (resultJson.success || resultJson.file)) {
       const fileInfo = resultJson.file || resultJson.data || {};
       const docs = this.getDocuments();
-      const idx = docs.findIndex((d) => d.document_id === doc.document_id);
+      const targetKey = getDocumentUniqueKey(doc);
+      const idx = docs.findIndex(
+        (d) =>
+          getDocumentUniqueKey(d) === targetKey ||
+          d.document_id === doc.document_id ||
+          (d.registration_number === doc.registration_number && normalizeDocumentType(d.document_type) === normType)
+      );
       const driveFileId = fileInfo.drive_file_id || '';
       const cdnUrl = fileInfo.thumbnail_url || (driveFileId ? `https://lh3.googleusercontent.com/d/${driveFileId}` : '') || fileInfo.drive_url || fileInfo.view_url || '';
 
@@ -3099,13 +3177,30 @@ class StorageService {
         if (driveFileId) docs[idx].drive_file_id = driveFileId;
         if (cdnUrl) docs[idx].drive_url = cdnUrl;
         if (fileInfo.file_name) docs[idx].file_name = fileInfo.file_name;
-        this.memCache.documents = docs;
-        localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(docs));
-        this.notifySubscribers('data_mutated');
+        if (fileInfo.local_url) docs[idx].local_url = fileInfo.local_url;
+        docs[idx].document_type = normType;
+        // Purge memory/storage base64 once stored on server/drive
+        if (cdnUrl || fileInfo.local_url) {
+          delete docs[idx].file_data_base64;
+        }
+      } else {
+        docs.push({
+          ...doc,
+          document_type: normType,
+          drive_file_id: driveFileId,
+          drive_url: cdnUrl,
+          file_name: fileInfo.file_name || doc.file_name,
+          local_url: fileInfo.local_url,
+        });
       }
 
+      const deduplicated = deduplicateDocuments(docs);
+      this.memCache.documents = deduplicated;
+      safeSetItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(deduplicated));
+      this.notifySubscribers('data_mutated');
+
       // Also update student photo and user profile if it was a photo document
-      const isPhoto = doc.document_type === 'foto' || doc.document_type === 'pas_foto' || doc.document_type === 'foto_profil' || isAccount;
+      const isPhoto = normType === 'foto' || normType === 'pas_foto' || normType === 'foto_profil' || isAccount;
       if (isPhoto && cdnUrl) {
         const reg = doc.registration_number || options?.accountId;
         if (reg) {
@@ -3121,7 +3216,20 @@ class StorageService {
         }
       }
 
-      return resultJson;
+      return {
+        success: true,
+        gas_synced: !!resultJson.gas_synced,
+        message: resultJson.message || 'Berkas berhasil disimpan ke Google Drive dan server.',
+        file: {
+          document_id: (idx >= 0 ? docs[idx].document_id : doc.document_id),
+          file_name: fileInfo.file_name || doc.file_name,
+          drive_file_id: driveFileId,
+          drive_url: cdnUrl,
+          thumbnail_url: cdnUrl,
+          local_url: fileInfo.local_url,
+          view_url: fileInfo.view_url || cdnUrl,
+        }
+      };
     }
 
     return { success: true, message: 'Berkas tersimpan di database lokal/cloud.' };
@@ -3153,10 +3261,23 @@ class StorageService {
     try {
       const allDocs = this.getDocuments();
       const targetDoc = allDocs.find((d) => d.document_id === documentId);
-      const remainingDocs = allDocs.filter((d) => d.document_id !== documentId);
+      const targetNormType = targetDoc ? normalizeDocumentType(targetDoc.document_type) : '';
+      const remainingDocs = allDocs.filter((d) => {
+        if (d.document_id === documentId) return false;
+        if (
+          targetDoc &&
+          targetDoc.registration_number &&
+          d.registration_number === targetDoc.registration_number &&
+          normalizeDocumentType(d.document_type) === targetNormType
+        ) {
+          return false;
+        }
+        return true;
+      });
 
-      this.memCache.documents = remainingDocs;
-      localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(remainingDocs));
+      const deduplicated = deduplicateDocuments(remainingDocs);
+      this.memCache.documents = deduplicated;
+      safeSetItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(deduplicated));
 
       if (targetDoc) {
         // If deleted file is student/user photo, clear photo_url in profiles
@@ -4166,9 +4287,9 @@ class StorageService {
         const proxyRes = await fetch(
           `/api/gas/test-connection?gas_url=${encodeURIComponent(settings.gas_web_app_url)}&spreadsheet_id=${encodeURIComponent(targetId)}`
         );
-        if (proxyRes.ok) {
-          const json = await proxyRes.json();
-          return json;
+        const parsedProxy = await safeParseJsonResponse(proxyRes);
+        if (parsedProxy.isJson && parsedProxy.data) {
+          return parsedProxy.data;
         }
       } catch {
         // fallback
@@ -4176,8 +4297,14 @@ class StorageService {
 
       try {
         const res = await fetch(`${settings.gas_web_app_url}?action=testSheets&spreadsheet_id=${encodeURIComponent(targetId)}`);
-        const json = await res.json();
-        return json;
+        const parsed = await safeParseJsonResponse(res);
+        if (parsed.isJson && parsed.data) {
+          return parsed.data;
+        }
+        return {
+          success: false,
+          message: parsed.isHtml ? 'Google Apps Script merespons halaman HTML (diperlukan otorisasi/login). Pastikan Web App di-Deploy dengan "Who has access: Anyone".' : 'Respons tidak valid dari Google Apps Script.',
+        };
       } catch (err: any) {
         return {
           success: false,
@@ -4210,9 +4337,9 @@ class StorageService {
         const proxyRes = await fetch(
           `/api/gas/test-connection?gas_url=${encodeURIComponent(settings.gas_web_app_url)}&drive_id=${encodeURIComponent(targetId)}`
         );
-        if (proxyRes.ok) {
-          const json = await proxyRes.json();
-          return json;
+        const parsedProxy = await safeParseJsonResponse(proxyRes);
+        if (parsedProxy.isJson && parsedProxy.data) {
+          return parsedProxy.data;
         }
       } catch {
         // fallback
@@ -4220,8 +4347,14 @@ class StorageService {
 
       try {
         const res = await fetch(`${settings.gas_web_app_url}?action=testDrive&folder_id=${encodeURIComponent(targetId)}`);
-        const json = await res.json();
-        return json;
+        const parsed = await safeParseJsonResponse(res);
+        if (parsed.isJson && parsed.data) {
+          return parsed.data;
+        }
+        return {
+          success: false,
+          message: parsed.isHtml ? 'Google Apps Script merespons halaman HTML (diperlukan otorisasi/login). Pastikan Web App di-Deploy dengan "Who has access: Anyone".' : 'Respons tidak valid dari Google Apps Script.',
+        };
       } catch (err: any) {
         return {
           success: false,
@@ -4368,13 +4501,11 @@ class StorageService {
         body: JSON.stringify(payload),
       });
 
-      if (serverRes.ok) {
-        const result = await serverRes.json();
-        if (result.success) {
-          await this.syncAllToGAS();
-          this.addAuditLog('INIT_DATABASE_GAS', 'Google Sheets', 'Inisialisasi otomatis seluruh tabel database di Google Sheets berhasil dilakukan via Server Proxy.');
-          return result;
-        }
+      const parsedServer = await safeParseJsonResponse(serverRes);
+      if (parsedServer.isJson && parsedServer.data && parsedServer.data.success) {
+        await this.syncAllToGAS();
+        this.addAuditLog('INIT_DATABASE_GAS', 'Google Sheets', 'Inisialisasi otomatis seluruh tabel database di Google Sheets berhasil dilakukan via Server Proxy.');
+        return parsedServer.data;
       }
     } catch {
       // fallback
@@ -4388,12 +4519,18 @@ class StorageService {
         body: JSON.stringify(payload),
       });
 
-      const result = await response.json();
-      if (result.success) {
-        await this.syncAllToGAS();
-        this.addAuditLog('INIT_DATABASE_GAS', 'Google Sheets', 'Inisialisasi otomatis seluruh tabel database di Google Sheets berhasil dilakukan.');
+      const parsed = await safeParseJsonResponse(response);
+      if (parsed.isJson && parsed.data) {
+        if (parsed.data.success) {
+          await this.syncAllToGAS();
+          this.addAuditLog('INIT_DATABASE_GAS', 'Google Sheets', 'Inisialisasi otomatis seluruh tabel database di Google Sheets berhasil dilakukan.');
+        }
+        return parsed.data;
       }
-      return result;
+      return {
+        success: false,
+        message: parsed.isHtml ? 'Google Apps Script merespons halaman HTML (login/otorisasi diperlukan). Pastikan Web App di-Deploy dengan opsi "Who has access: Anyone".' : 'Respons tidak valid dari Google Apps Script.',
+      };
     } catch (err: any) {
       return {
         success: false,
@@ -4453,15 +4590,13 @@ class StorageService {
         body: JSON.stringify(payload),
       });
 
-      if (serverRes.ok) {
-        const result = await serverRes.json();
-        if (result.success) {
-          settings.last_synced_at = new Date().toISOString();
-          localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
-          this.notifySubscribers('settings_updated', settings);
-          this.addAuditLog('CLOUD_SYNC_PUSH', 'Google Apps Script', 'Sinkronisasi seluruh data ke Google Sheets berhasil.');
-          return result;
-        }
+      const parsedServer = await safeParseJsonResponse(serverRes);
+      if (parsedServer.isJson && parsedServer.data && parsedServer.data.success) {
+        settings.last_synced_at = new Date().toISOString();
+        localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+        this.notifySubscribers('settings_updated', settings);
+        this.addAuditLog('CLOUD_SYNC_PUSH', 'Google Apps Script', 'Sinkronisasi seluruh data ke Google Sheets berhasil.');
+        return parsedServer.data;
       }
     } catch {
       // fallback
@@ -4475,14 +4610,20 @@ class StorageService {
         body: JSON.stringify(payload),
       });
 
-      const result = await response.json();
-      if (result.success) {
-        settings.last_synced_at = new Date().toISOString();
-        localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
-        this.notifySubscribers('settings_updated', settings);
-        this.addAuditLog('CLOUD_SYNC_PUSH', 'Google Apps Script', 'Sinkronisasi seluruh data ke Google Sheets berhasil.');
+      const parsed = await safeParseJsonResponse(response);
+      if (parsed.isJson && parsed.data) {
+        if (parsed.data.success) {
+          settings.last_synced_at = new Date().toISOString();
+          localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+          this.notifySubscribers('settings_updated', settings);
+          this.addAuditLog('CLOUD_SYNC_PUSH', 'Google Apps Script', 'Sinkronisasi seluruh data ke Google Sheets berhasil.');
+        }
+        return parsed.data;
       }
-      return result;
+      return {
+        success: false,
+        message: parsed.isHtml ? 'Google Apps Script merespons halaman HTML (login/otorisasi diperlukan). Pastikan Web App di-Deploy dengan "Who has access: Anyone".' : 'Respons tidak valid dari Google Apps Script.',
+      };
     } catch (err: any) {
       return {
         success: false,
@@ -4512,8 +4653,9 @@ class StorageService {
           spreadsheet_id: settings.spreadsheet_id,
         }),
       });
-      if (serverRes.ok) {
-        result = await serverRes.json();
+      const parsedPullNow = await safeParseJsonResponse(serverRes);
+      if (parsedPullNow.isJson && parsedPullNow.data) {
+        result = parsedPullNow.data;
       }
     } catch {
       // fallback
@@ -4531,8 +4673,9 @@ class StorageService {
             spreadsheet_id: settings.spreadsheet_id,
           }),
         });
-        if (proxyRes.ok) {
-          result = await proxyRes.json();
+        const parsedProxy = await safeParseJsonResponse(proxyRes);
+        if (parsedProxy.isJson && parsedProxy.data) {
+          result = parsedProxy.data;
         }
       } catch {
         // fallback
@@ -4543,7 +4686,15 @@ class StorageService {
     if (!result || !result.success || !result.data) {
       try {
         const response = await fetch(`${settings.gas_web_app_url}?action=pullAllData&spreadsheet_id=${encodeURIComponent(settings.spreadsheet_id)}`);
-        result = await response.json();
+        const parsedDirect = await safeParseJsonResponse(response);
+        if (parsedDirect.isJson && parsedDirect.data) {
+          result = parsedDirect.data;
+        } else {
+          return {
+            success: false,
+            message: parsedDirect.isHtml ? 'Google Apps Script merespons halaman login HTML. Pastikan opsi "Who has access: Anyone" aktif di Deploy Web App.' : 'Google Apps Script merespons data non-JSON.',
+          };
+        }
       } catch (err: any) {
         return {
           success: false,
@@ -4642,15 +4793,17 @@ class StorageService {
         const localDocs = this.getDocuments();
         const docMap = new Map<string, DocumentItem>();
         for (const loc of localDocs) {
-          const key = loc.document_id || `${loc.registration_number}_${loc.document_type}`;
-          docMap.set(key, loc);
+          const key = getDocumentUniqueKey(loc);
+          docMap.set(key, { ...loc, document_type: normalizeDocumentType(loc.document_type) });
         }
         for (const rem of d.documents) {
-          const key = rem.document_id || `${rem.registration_number}_${rem.document_type}`;
+          const key = getDocumentUniqueKey(rem);
           const loc = docMap.get(key);
           docMap.set(key, {
             ...loc,
             ...rem,
+            document_type: normalizeDocumentType(rem.document_type || loc?.document_type || ''),
+            document_id: loc?.document_id || rem.document_id,
             file_data_base64: loc?.file_data_base64 || rem.file_data_base64 || '',
             local_url: loc?.local_url || rem.local_url || '',
             drive_file_id: rem.drive_file_id || loc?.drive_file_id || '',
@@ -4658,8 +4811,9 @@ class StorageService {
             view_url: rem.drive_url || loc?.drive_url || loc?.local_url || rem.local_url || '',
           });
         }
-        const mergedDocs = Array.from(docMap.values());
-        localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(mergedDocs));
+        const mergedDocs = deduplicateDocuments(Array.from(docMap.values()));
+        this.memCache.documents = mergedDocs;
+        safeSetItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(mergedDocs));
       }
 
       // 8. Schools
@@ -4693,6 +4847,7 @@ class StorageService {
         }
       }
 
+      this.memCache = {};
       settings.last_synced_at = new Date().toISOString();
       localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
       this.notifySubscribers('settings_updated', settings);

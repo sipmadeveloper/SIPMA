@@ -212,6 +212,102 @@ Dokumen ini tersimpan secara digital dan terverifikasi pada sistem SIPMA.
 }
 
 /**
+ * Normalize document type strings to canonical standards:
+ * Prevents duplicate rows when matching documents (e.g. 'kk' vs 'kartu_keluarga', 'pas_foto' vs 'foto').
+ */
+export function normalizeDocumentType(type: string): string {
+  if (!type) return 'dokumen';
+  const t = String(type).toLowerCase().trim().replace(/[\s-]+/g, '_');
+  if (t === 'kk' || t === 'kartu_keluarga') return 'kartu_keluarga';
+  if (t === 'akta' || t === 'akta_kelahiran' || t === 'akta_lahir') return 'akta_kelahiran';
+  if (t === 'ijazah' || t === 'skl' || t === 'ijazah_skl') return 'ijazah_skl';
+  if (t === 'foto' || t === 'pas_foto' || t === 'foto_murid' || t === 'pas_foto_3x4') return 'foto';
+  if (t === 'kip' || t === 'pkh' || t === 'kks' || t === 'kartu_afirmasi' || t === 'afirmasi') return 'kartu_afirmasi';
+  if (t === 'dispensasi' || t === 'surat_dispensasi') return 'surat_dispensasi';
+  if (t === 'prestasi' || t === 'sertifikat' || t === 'sertifikat_prestasi' || t === 'piagam') return 'sertifikat_prestasi';
+  if (t === 'mutasi' || t === 'surat_mutasi' || t === 'penugasan') return 'surat_mutasi';
+  if (t === 'avatar' || t === 'foto_profil') return 'foto_profil';
+  if (t === 'logo_sekolah' || t === 'school_logo') return 'logo_sekolah';
+  if (t === 'logo_aplikasi' || t === 'app_logo') return 'logo_aplikasi';
+  return t;
+}
+
+/**
+ * Generate a unique deduplication key for a document item
+ */
+export function getDocumentUniqueKey(doc: {
+  registration_number?: string;
+  document_type?: string;
+  document_id?: string;
+  school_id?: string;
+  user_id?: string;
+  account_id?: string;
+}): string {
+  if (!doc) return '';
+  const normType = normalizeDocumentType(doc.document_type || '');
+  const reg = String(doc.registration_number || '').trim();
+
+  if (normType === 'logo_aplikasi') return 'logo_aplikasi';
+  if (normType === 'logo_sekolah') return `logo_sekolah_${String(doc.school_id || reg || 'default').trim()}`;
+  if (normType === 'foto_profil' && !reg.startsWith('REG-')) {
+    const acc = String(doc.account_id || doc.user_id || reg || 'user').trim();
+    return `foto_profil_${acc}`;
+  }
+
+  if (reg) {
+    return `${reg}__${normType}`;
+  }
+
+  return doc.document_id ? `doc__${doc.document_id}` : `doc__${Math.random()}`;
+}
+
+/**
+ * Filter out duplicate documents, merging the most up-to-date metadata
+ * and preserving existing document IDs and drive IDs.
+ */
+export function deduplicateDocuments<T extends { registration_number?: string; document_type?: string; document_id?: string; upload_time?: string; drive_file_id?: string; drive_url?: string; local_url?: string; file_name?: string }>(
+  docs: T[]
+): T[] {
+  if (!Array.isArray(docs)) return [];
+  const map = new Map<string, T>();
+
+  for (const doc of docs) {
+    if (!doc) continue;
+    const key = getDocumentUniqueKey(doc);
+    const existing = map.get(key);
+
+    const normalizedDoc: T = {
+      ...doc,
+      document_type: normalizeDocumentType(doc.document_type || ''),
+    };
+
+    if (!existing) {
+      map.set(key, normalizedDoc);
+    } else {
+      const existingTime = existing.upload_time ? new Date(existing.upload_time).getTime() : 0;
+      const docTime = doc.upload_time ? new Date(doc.upload_time).getTime() : 0;
+
+      const merged: T = {
+        ...existing,
+        ...normalizedDoc,
+        document_id: existing.document_id || normalizedDoc.document_id,
+        drive_file_id: normalizedDoc.drive_file_id || existing.drive_file_id || '',
+        drive_url: normalizedDoc.drive_url || existing.drive_url || '',
+        local_url: normalizedDoc.local_url || existing.local_url || '',
+        file_name: normalizedDoc.file_name || existing.file_name || '',
+      };
+
+      if (docTime >= existingTime) {
+        map.set(key, merged);
+      } else {
+        map.set(key, { ...merged, ...existing });
+      }
+    }
+  }
+  return Array.from(map.values());
+}
+
+/**
  * Download all student documents in batch without loading Google Drive UI
  */
 export function downloadAllStudentDocuments(docs: DocumentItem[], accountName?: string): void {

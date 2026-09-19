@@ -1,10 +1,14 @@
 import express, { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 
 const app = express();
 const PORT = 3000;
-const DATA_DIR = path.join(process.cwd(), 'data');
+
+// Determine environment
+const isVercel = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NOW_REGION);
+const DATA_DIR = isVercel ? path.join(os.tmpdir(), 'sipma_data') : path.join(process.cwd(), 'data');
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const DB_FILE = path.join(DATA_DIR, 'server_db.json');
 
@@ -21,11 +25,15 @@ app.use(express.json({ limit: '30mb' }));
 app.use(express.urlencoded({ extended: true, limit: '30mb' }));
 
 // Ensure data & upload directories exist
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+try {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(UPLOAD_DIR)) {
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+  }
+} catch (dirErr) {
+  console.warn('[SIPMA Server] Directory creation notice:', dirErr);
 }
 
 // Serve static uploads with aggressive HTTP cache (max-age 1 year, immutable)
@@ -67,15 +75,17 @@ interface ServerDbState {
 }
 
 function loadInitialServerDb(): ServerDbState {
-  if (fs.existsSync(DB_FILE)) {
+  const bundledDb = path.join(process.cwd(), 'data', 'server_db.json');
+  const targetFile = fs.existsSync(DB_FILE) ? DB_FILE : (fs.existsSync(bundledDb) ? bundledDb : null);
+  if (targetFile) {
     try {
-      const raw = fs.readFileSync(DB_FILE, 'utf-8');
+      const raw = fs.readFileSync(targetFile, 'utf-8');
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
         return parsed;
       }
     } catch (err) {
-      console.error('Error loading server_db.json:', err);
+      console.error('Error loading initial server_db.json:', err);
     }
   }
 
@@ -171,6 +181,21 @@ function persistServerDb() {
   }
 }
 
+// Safe JSON parser for responses from Google Apps Script to prevent SyntaxError on HTML responses
+async function parseGasJsonResponse(response: any): Promise<{ isJson: boolean; data: any; rawText: string; isHtml: boolean }> {
+  try {
+    const text = await response.text();
+    const isHtml = text.trim().startsWith('<') || text.includes('<!DOCTYPE') || text.includes('<html');
+    if (isHtml) {
+      return { isJson: false, data: null, rawText: text, isHtml: true };
+    }
+    const json = JSON.parse(text);
+    return { isJson: true, data: json, rawText: text, isHtml: false };
+  } catch {
+    return { isJson: false, data: null, rawText: '', isHtml: false };
+  }
+}
+
 // Helper function to pull full database directly from Google Apps Script
 async function pullDataFromGasDirectly(gasUrl: string, spreadsheetId: string): Promise<{ success: boolean; data?: any; message?: string }> {
   if (!gasUrl || !gasUrl.startsWith('http')) {
@@ -194,9 +219,9 @@ async function pullDataFromGasDirectly(gasUrl: string, spreadsheetId: string): P
     clearTimeout(timeoutId);
 
     if (postRes.ok) {
-      const json = await postRes.json();
-      if (json && json.success && json.data) {
-        return { success: true, data: json.data, message: json.message };
+      const parsed = await parseGasJsonResponse(postRes);
+      if (parsed.isJson && parsed.data && parsed.data.success && parsed.data.data) {
+        return { success: true, data: parsed.data.data, message: parsed.data.message };
       }
     }
 
@@ -204,13 +229,13 @@ async function pullDataFromGasDirectly(gasUrl: string, spreadsheetId: string): P
     const getUrl = `${gasUrl}?action=pullAllData&spreadsheet_id=${encodeURIComponent(spreadsheetId)}`;
     const getRes = await fetch(getUrl, { signal: AbortSignal.timeout(15000) });
     if (getRes.ok) {
-      const json = await getRes.json();
-      if (json && json.success && json.data) {
-        return { success: true, data: json.data, message: json.message };
+      const parsed = await parseGasJsonResponse(getRes);
+      if (parsed.isJson && parsed.data && parsed.data.success && parsed.data.data) {
+        return { success: true, data: parsed.data.data, message: parsed.data.message };
       }
     }
 
-    return { success: false, message: 'Google Apps Script tidak mengembalikan data valid.' };
+    return { success: false, message: 'Google Apps Script tidak mengembalikan data valid (kemungkinan respons HTML/izin akses).' };
   } catch (err: any) {
     return { success: false, message: `Gagal menarik data dari GAS: ${err?.message || 'Timeout / Network Error'}` };
   }
@@ -221,8 +246,7 @@ const DEMO_REG_PREFIX = 'SIPMA-MAN01-00000';
 
 function isDemoStudentRecord(regOrKey: string, stdId?: string): boolean {
   if (regOrKey && typeof regOrKey === 'string' && regOrKey.startsWith(DEMO_REG_PREFIX)) return true;
-  if (stdId && DEMO_STUDENT_IDS.has(stdId)) return true;
-  if (regOrKey && DEMO_STUDENT_IDS.has(regOrKey)) return true;
+  if (stdId && DEMO_STUDENT_IDS.has(stdId) && (!regOrKey || regOrKey.startsWith(DEMO_REG_PREFIX))) return true;
   return false;
 }
 
@@ -429,8 +453,14 @@ async function forwardSyncAllToGas(): Promise<{ success: boolean; message?: stri
       body: JSON.stringify(gasPayload),
     });
 
-    const gasResult = await gasRes.json();
-    return gasResult;
+    const parsed = await parseGasJsonResponse(gasRes);
+    if (!parsed.isJson) {
+      return {
+        success: false,
+        message: 'Google Apps Script mengembalikan respons HTML/non-JSON. Pastikan Web App di-Deploy dengan opsi "Who has access: Anyone".',
+      };
+    }
+    return parsed.data;
   } catch (gasErr: any) {
     console.warn('forwardSyncAllToGas warning:', gasErr?.message);
     return { success: false, message: gasErr?.message };
@@ -472,24 +502,25 @@ async function checkAndAutoPullFromGas(force = false): Promise<boolean> {
   return false;
 }
 
-// Async boot hydration from Google Apps Script if URL configured
-setTimeout(async () => {
-  const gasUrl = serverDb.settings?.gas_web_app_url;
-  const ssId = serverDb.settings?.spreadsheet_id;
-  if (gasUrl && gasUrl.startsWith('http') && ssId && !ssId.includes('SampleID')) {
-    console.log('⚡ Menginisialisasi sinkronisasi awal server dengan Google Apps Script...');
-    const res = await pullDataFromGasDirectly(gasUrl, ssId);
-    if (res.success && res.data) {
-      const changed = mergeGasDataIntoServerDb(res.data);
-      console.log(`✓ Sinkronisasi awal GAS berhasil! Status perubahan data: ${changed}`);
+// Standalone server timers (Google Apps Script periodic sync)
+if (!isVercel) {
+  setTimeout(async () => {
+    const gasUrl = serverDb.settings?.gas_web_app_url;
+    const ssId = serverDb.settings?.spreadsheet_id;
+    if (gasUrl && gasUrl.startsWith('http') && ssId && !ssId.includes('SampleID')) {
+      console.log('⚡ Menginisialisasi sinkronisasi awal server dengan Google Apps Script...');
+      const res = await pullDataFromGasDirectly(gasUrl, ssId);
+      if (res.success && res.data) {
+        const changed = mergeGasDataIntoServerDb(res.data);
+        console.log(`✓ Sinkronisasi awal GAS berhasil! Status perubahan data: ${changed}`);
+      }
     }
-  }
-}, 2000);
+  }, 2000);
 
-// Background periodic pull from GAS every 30s so serverDb stays in sync without blocking any device
-setInterval(async () => {
-  await checkAndAutoPullFromGas(true);
-}, 30000);
+  setInterval(async () => {
+    await checkAndAutoPullFromGas(true);
+  }, 30000);
+}
 
 // ================= API ROUTES =================
 
@@ -758,10 +789,36 @@ app.post('/api/gas/proxy', async (req: Request, res: Response) => {
       body: JSON.stringify(payload),
     });
 
-    const result = await response.json();
-    res.json(result);
+    const parsed = await parseGasJsonResponse(response);
+
+    if (!parsed.isJson) {
+      let msg = 'Google Apps Script mengembalikan respons non-JSON.';
+      let hint = 'Pastikan Google Apps Script telah di-Deploy sebagai Web App dengan opsi: "Execute as: Me" dan "Who has access: Anyone".';
+
+      if (parsed.isHtml) {
+        if (parsed.rawText.includes('accounts.google.com') || parsed.rawText.includes('ServiceLogin') || parsed.rawText.includes('Sign in')) {
+          msg = 'Akses Google Apps Script memerlukan otorisasi (halaman Login Google dikembalikan).';
+          hint = 'Pastikan saat Deploy Web App, opsi "Who has access" dipilih "Anyone" (Bukan "Only myself"). Jika sudah diubah, lakukan Deploy versi baru (New Version).';
+        } else if (parsed.rawText.includes('Script error') || parsed.rawText.includes('Exception')) {
+          msg = 'Terjadi kesalahan pada eksekusi kode Google Apps Script.';
+          hint = 'Periksa tab "Executions" di editor Google Apps Script untuk melihat pesan error detail.';
+        } else {
+          msg = 'Google Apps Script mengembalikan halaman HTML alih-alih data JSON.';
+          hint = 'Pastikan URL berakhiran "/exec" (bukan "/edit") dan opsi "Who has access: Anyone" telah dipilih.';
+        }
+      }
+
+      console.warn('GAS Proxy Warning (Non-JSON Response):', msg);
+      return res.status(502).json({
+        success: false,
+        message: msg,
+        hint,
+      });
+    }
+
+    res.json(parsed.data);
   } catch (err: any) {
-    console.error('GAS Proxy Error:', err);
+    console.warn('GAS Proxy Network Error:', err?.message || err);
     res.status(502).json({
       success: false,
       message: `Gagal berkomunikasi dengan Google Apps Script: ${err?.message || 'Koneksi ditolak atau URL salah'}`,
@@ -923,8 +980,8 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
     if (doc.file_data_base64) {
       try {
         const raw = String(doc.file_data_base64);
-        const matches = raw.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-        let base64Data = matches ? matches[2] : raw.includes(',') ? raw.split(',')[1] : raw;
+        const commaIdx = raw.indexOf(',');
+        let base64Data = commaIdx >= 0 ? raw.slice(commaIdx + 1) : raw;
         base64Data = base64Data.replace(/\s/g, '').replace(/ /g, '+');
         const pad = base64Data.length % 4;
         if (pad === 2) base64Data += '==';
@@ -1243,9 +1300,9 @@ app.post('/api/gas/upload-logo', async (req: Request, res: Response) => {
     const safeLogoName = `logo_${logo_type || 'custom'}_${(id || 'sys').replace(/[^a-zA-Z0-9_-]/g, '_')}_${Date.now()}_${(file_name || 'logo.png').replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
     try {
-      const raw = base64_data;
-      const matches = raw.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-      const dataContent = matches ? matches[2] : raw.includes(',') ? raw.split(',')[1] : raw;
+      const raw = String(base64_data);
+      const commaIdx = raw.indexOf(',');
+      const dataContent = commaIdx >= 0 ? raw.slice(commaIdx + 1) : raw;
       const buffer = Buffer.from(dataContent, 'base64');
       const filePath = path.join(UPLOAD_DIR, safeLogoName);
       fs.writeFileSync(filePath, buffer);
@@ -1530,12 +1587,12 @@ app.post('/api/notifications/send-status-email', async (req: Request, res: Respo
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify(emailPayload),
         });
-        const gasJson = await gasRes.json();
-        if (gasJson && gasJson.success) {
+        const parsed = await parseGasJsonResponse(gasRes);
+        if (parsed.isJson && parsed.data && parsed.data.success) {
           gasSent = true;
-          gasMessage = gasJson.message || 'Email notifikasi berhasil dikirim via Google Apps Script.';
+          gasMessage = parsed.data.message || 'Email notifikasi berhasil dikirim via Google Apps Script.';
         } else {
-          gasMessage = gasJson?.message || 'Gagal mengirim email via Google Apps Script.';
+          gasMessage = parsed.data?.message || (parsed.isHtml ? 'Google Apps Script merespons HTML/memerlukan otorisasi.' : 'Gagal mengirim email via Google Apps Script.');
         }
       } catch (gasErr: any) {
         console.warn('Gagal memanggil GAS sendNotificationEmail:', gasErr?.message);
@@ -1752,8 +1809,17 @@ app.get('/api/gas/test-connection', async (req: Request, res: Response) => {
   try {
     const testUrl = `${gasUrl}?action=testSheets&spreadsheet_id=${encodeURIComponent(ssId)}&folder_id=${encodeURIComponent(driveId)}`;
     const response = await fetch(testUrl);
-    const result = await response.json();
-    res.json(result);
+    const parsed = await parseGasJsonResponse(response);
+    if (!parsed.isJson) {
+      return res.status(502).json({
+        success: false,
+        message: parsed.isHtml
+          ? 'Google Apps Script mengembalikan halaman HTML (otorisasi ditolak/Login Google). Pastikan Web App di-Deploy dengan opsi "Who has access: Anyone".'
+          : 'Google Apps Script mengembalikan respons non-JSON.',
+        hint: 'Pastikan Anda telah menyalin dan men-Deploy seluruh kode Google Apps Script dari tab "Kode Script Google (Code.gs)" di menu Konfigurasi dengan opsi "Who has access: Anyone".',
+      });
+    }
+    res.json(parsed.data);
   } catch (err: any) {
     res.status(502).json({
       success: false,
@@ -1892,7 +1958,8 @@ app.post('/api/gas/delete-file', async (req: Request, res: Response) => {
             },
           }),
         });
-        gasResult = await gasRes.json();
+        const parsed = await parseGasJsonResponse(gasRes);
+        gasResult = parsed.data;
       } catch (gasErr) {
         console.warn('Gagal menghapus file di GAS Drive:', gasErr);
       }
@@ -1984,7 +2051,8 @@ app.post('/api/data/delete-application', async (req: Request, res: Response) => 
             },
           }),
         });
-        gasResult = await gasRes.json();
+        const parsed = await parseGasJsonResponse(gasRes);
+        gasResult = parsed.data;
       } catch (gasErr: any) {
         console.warn('Gagal menghapus aplikasi di GAS:', gasErr?.message);
       }
@@ -2221,4 +2289,10 @@ async function startServer() {
   }
 }
 
-startServer();
+// In production on Vercel/serverless, startServer() is skipped because Vercel invokes the exported app handler directly
+if (!isVercel) {
+  startServer();
+}
+
+export { app };
+export default app;

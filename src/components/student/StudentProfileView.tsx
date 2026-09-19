@@ -199,11 +199,10 @@ export const StudentProfileView: React.FC<Props> = ({
         }
       }
 
-      setSuccessMsg('Profil dan foto berhasil disimpan ke database & Google Drive!');
-      setTimeout(() => setSuccessMsg(null), 3000);
+      showAlert('Perubahan Profil Tersimpan', 'Data profil dan foto calon murid berhasil disimpan ke database dan Google Drive!', 'success');
       onRefresh();
     } catch (err: any) {
-      setErrorMsg(err.message || 'Gagal menyimpan perubahan profil.');
+      showAlert('Gagal Menyimpan Profil', err.message || 'Terjadi kesalahan saat menyimpan perubahan profil.', 'error');
     } finally {
       setIsSaving(false);
     }

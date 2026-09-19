@@ -460,7 +460,7 @@ export const RegistrationWizard: React.FC<Props> = ({
         const newDoc: DocumentItem = {
           document_id: prevDoc ? prevDoc.document_id : `DOC-${Date.now()}`,
           registration_number: effectiveRegNumber,
-          student_id: student?.student_id || prevDoc?.student_id || 'STD-001',
+          student_id: student?.student_id || prevDoc?.student_id || (effectiveRegNumber ? `STD-${effectiveRegNumber.replace(/[^a-zA-Z0-9]/g, '')}` : `STD-${Date.now()}`),
           document_type: docType,
           document_title: docTitle,
           file_name: standardFileName,
@@ -489,15 +489,16 @@ export const RegistrationWizard: React.FC<Props> = ({
         }
 
         hideLoading();
-        showToast(
+        showAlert(
+          'Berkas Berhasil Disimpan',
           uploadRes?.gas_synced
-            ? `Berkas "${standardFileName}" berhasil diunggah & tersimpan di Google Drive!`
-            : `Berkas "${standardFileName}" berhasil disimpan di sistem.`,
+            ? `Berkas "${standardFileName}" berhasil diunggah & tersimpan aman di Google Drive dan database cloud!`
+            : `Berkas "${standardFileName}" berhasil disimpan ke sistem dan database cloud.`,
           'success'
         );
       } catch (err: any) {
         hideLoading();
-        showToast(`Berkas "${file.name}" tersimpan di database lokal/cloud.`, 'info');
+        showAlert('Gagal Menyimpan Berkas', `Berkas "${file.name}" tidak dapat disimpan. Silakan periksa kembali berkas Anda.`, 'error');
       }
     };
 
@@ -967,7 +968,7 @@ export const RegistrationWizard: React.FC<Props> = ({
                           const photoDoc: DocumentItem = {
                             document_id: prevPhotoDoc ? prevPhotoDoc.document_id : `DOC-FOTO-${Date.now()}`,
                             registration_number: effectiveReg,
-                            student_id: student?.student_id || prevPhotoDoc?.student_id || 'STD-001',
+                            student_id: student?.student_id || prevPhotoDoc?.student_id || (effectiveReg ? `STD-${effectiveReg.replace(/[^a-zA-Z0-9]/g, '')}` : `STD-${Date.now()}`),
                             document_type: 'foto',
                             document_title: 'Pas Foto 3x4 Calon Murid',
                             file_name: file.name,
@@ -991,15 +992,16 @@ export const RegistrationWizard: React.FC<Props> = ({
                           storageService.saveStudentProfile(updated);
 
                           hideLoading();
-                          showToast(
+                          showAlert(
+                            'Pas Foto Berhasil Disimpan',
                             uploadRes?.gas_synced
-                              ? 'Pas foto berhasil diunggah & tersimpan aman di Google Drive!'
-                              : 'Pas foto profil berhasil diunggah.',
+                              ? 'Pas foto calon murid berhasil diunggah & tersimpan aman di Google Drive!'
+                              : 'Pas foto profil berhasil disimpan ke sistem dan database cloud.',
                             'success'
                           );
                         } catch {
                           hideLoading();
-                          showToast('Pas foto berhasil disimpan.', 'success');
+                          showAlert('Gagal Menyimpan Foto', 'Terjadi kesalahan saat menyimpan pas foto calon murid.', 'error');
                         }
                       };
                       reader.onerror = () => {

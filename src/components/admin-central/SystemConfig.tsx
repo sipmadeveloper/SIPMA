@@ -77,7 +77,7 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
       if (res.success && res.logo_url) {
         setFormData((prev) => ({ ...prev, app_logo: res.logo_url }));
         onSaveSettings({ ...formData, app_logo: res.logo_url });
-        showToast('Logo aplikasi berhasil diunggah & tersimpan langsung di cloud database!', 'success');
+        showAlert('Logo Aplikasi Tersimpan', 'Logo aplikasi berhasil diunggah dan tersimpan ke Google Drive & Cloud Database!', 'success');
       } else {
         showAlert('Gagal Unggah Logo', res.message || 'Terjadi kesalahan saat mengunggah logo.', 'error');
       }
