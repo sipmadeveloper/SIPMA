@@ -630,8 +630,13 @@ class StorageService {
           ...d.settings,
         };
 
-        // Always protect app_logo if remote doesn't provide one
-        if (localSettings.app_logo && !d.settings.app_logo) {
+        const DEPRECATED_OLD_LOGO = 'https://cdn.phototourl.com/free/2026-09-01-6c787787-6585-4830-b0a6-9bfab3f1dba4.png';
+        if (localSettings.app_logo === DEPRECATED_OLD_LOGO) {
+          localSettings.app_logo = '';
+        }
+        if (d.settings.app_logo !== undefined) {
+          merged.app_logo = d.settings.app_logo === DEPRECATED_OLD_LOGO ? '' : d.settings.app_logo;
+        } else if (localSettings.app_logo) {
           merged.app_logo = localSettings.app_logo;
         }
 
@@ -885,6 +890,11 @@ class StorageService {
         return INITIAL_SETTINGS;
       }
       const parsed = JSON.parse(data);
+      // Automatically purge deprecated hardcoded demo logo if present
+      if (parsed.app_logo === 'https://cdn.phototourl.com/free/2026-09-01-6c787787-6585-4830-b0a6-9bfab3f1dba4.png') {
+        parsed.app_logo = '';
+        localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(parsed));
+      }
       if (!parsed.app_tagline || parsed.app_tagline === 'PPDB Madrasah Digital' || parsed.app_tagline === 'Madrasah Digital') {
         parsed.app_tagline = 'Sistem Penerimaan Murid Madrasah';
       }
@@ -5069,10 +5079,10 @@ class StorageService {
 
       // 10. Settings from Google Sheets
       if (d.settings && typeof d.settings === 'object' && Object.keys(d.settings).length > 0) {
-        const currentAppLogo = settings.app_logo;
+        const DEPRECATED_OLD_LOGO = 'https://cdn.phototourl.com/free/2026-09-01-6c787787-6585-4830-b0a6-9bfab3f1dba4.png';
         Object.assign(settings, d.settings);
-        if (currentAppLogo && !d.settings.app_logo) {
-          settings.app_logo = currentAppLogo;
+        if (settings.app_logo === DEPRECATED_OLD_LOGO) {
+          settings.app_logo = '';
         }
       }
 

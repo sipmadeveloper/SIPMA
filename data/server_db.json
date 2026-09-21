@@ -33,8 +33,8 @@
       "role": "admin_pusat",
       "school_id": "",
       "status": "active",
-      "created_at": "https://lh3.googleusercontent.com/d/1x9oeWwzzPKmESO-hggvY4PAoLs6DmdyT",
-      "updated_at": "2026-09-18T10:24:00.691Z",
+      "created_at": "",
+      "updated_at": "2026-09-20T22:46:46.671Z",
       "photo_url": ""
     },
     {
@@ -50,20 +50,76 @@
       "school_id": "SCH-NEW-1787905953621",
       "status": "active",
       "created_at": "",
-      "updated_at": "2026-09-18T10:24:00.692Z",
+      "updated_at": "2026-09-20T22:46:46.679Z",
       "photo_url": ""
     }
   ],
-  "students": {},
+  "students": {
+    "REG-2027-9929": {
+      "student_id": "STU-SIM-1789944334323",
+      "user_id": "USR-SIM-1789944334323",
+      "registration_number": "REG-2027-9929",
+      "name": "Muhammad Haidar Ali",
+      "nik": "3329884432134467",
+      "nisn": 70529484,
+      "gender": "P",
+      "birth_place": "Brebes",
+      "birth_date": "2015-06-15T00:00:00Z",
+      "religion": "Islam",
+      "family_card_number": "3329469705473842",
+      "child_order": 1,
+      "total_siblings": 2,
+      "family_status": "Anak Kandung",
+      "hobby": "",
+      "living_status": "orang_tua_kandung",
+      "phone": 81234567890,
+      "email": "muhammad.haidar.ali@gmail.com",
+      "photo_url": ""
+    }
+  },
   "parents": {},
   "school_origins": {},
   "addresses": {},
-  "applications": [],
+  "applications": [
+    {
+      "application_id": "APP-SIM-1789944334323",
+      "registration_number": "REG-2027-9929",
+      "user_id": "USR-SIM-1789944334323",
+      "student_id": "STU-SIM-1789944334323",
+      "school_id": "SCH-NEW-1787905953621",
+      "admission_year": 2027,
+      "pathway": "afirmasi",
+      "submission_date": "2026-09-20T22:45:34.323Z",
+      "latitude": -6.969385237591064,
+      "longitude": 109.05293388933588,
+      "distance_km": 1.49,
+      "max_distance_km": 5,
+      "zoning_status": "memenuhi",
+      "verification_status": "ditolak",
+      "selection_status": "menunggu",
+      "final_status": "ditolak",
+      "verification_notes": "",
+      "score": 0,
+      "afirmasi_category": "",
+      "dispensation_reason": "",
+      "achievement_type": "",
+      "achievement_name": "",
+      "achievement_level": "",
+      "achievement_rank": "",
+      "mutation_parent_instansi": "",
+      "mutation_letter_number": "",
+      "mutation_letter_date": "",
+      "step_completed": 5,
+      "is_locked": false,
+      "created_at": "2026-09-20T22:45:34.323Z",
+      "updated_at": "2026-09-20T22:46:44.892Z"
+    }
+  ],
   "documents": [
     {
       "document_id": "DOC-TEST-1789726494998",
       "registration_number": "REG-TEST-001",
-      "document_type": "kk",
+      "document_type": "kartu_keluarga",
       "file_name": "Budi_Santoso_REG-TEST-001_Kartu_Keluarga_KK.png",
       "file_size_kb": 0,
       "drive_file_id": "1RnhwtCONkhN82w4mG4Kv9hHFYRMssOji",
@@ -132,16 +188,16 @@
       "document_id": "DOC-TEST-123",
       "registration_number": "REG-TEST-001",
       "document_type": "kartu_keluarga",
-      "file_name": "Ahmad_Fauzi_REG-TEST-001_Kartu_Keluarga_KK.pdf",
-      "file_size_kb": 1,
-      "drive_file_id": "1IWCC0h_ovnmchXGy7jJsuGZahcgARuuv",
-      "drive_url": "https://lh3.googleusercontent.com/d/1IWCC0h_ovnmchXGy7jJsuGZahcgARuuv",
-      "upload_time": "2026-09-07T16:14:23.733Z",
+      "file_name": "Budi_Santoso_REG-TEST-001_Kartu_Keluarga_KK.png",
+      "file_size_kb": 0,
+      "drive_file_id": "1RnhwtCONkhN82w4mG4Kv9hHFYRMssOji",
+      "drive_url": "https://lh3.googleusercontent.com/d/1RnhwtCONkhN82w4mG4Kv9hHFYRMssOji",
+      "upload_time": "2026-09-18T10:15:00.582Z",
       "verification_status": "menunggu",
       "notes": "",
       "local_url": "",
       "file_data_base64": "",
-      "view_url": "https://lh3.googleusercontent.com/d/1IWCC0h_ovnmchXGy7jJsuGZahcgARuuv"
+      "view_url": "https://lh3.googleusercontent.com/d/1RnhwtCONkhN82w4mG4Kv9hHFYRMssOji"
     }
   ],
   "schools": [
@@ -242,5 +298,5 @@
       "status": "queued"
     }
   ],
-  "last_updated": "2026-09-20T19:01:48.020Z"
+  "last_updated": "2026-09-21T12:20:29.995Z"
 }

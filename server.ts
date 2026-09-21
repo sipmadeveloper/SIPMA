@@ -82,6 +82,9 @@ function loadInitialServerDb(): ServerDbState {
       const raw = fs.readFileSync(targetFile, 'utf-8');
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') {
+        if (parsed.settings?.app_logo === 'https://cdn.phototourl.com/free/2026-09-01-6c787787-6585-4830-b0a6-9bfab3f1dba4.png') {
+          parsed.settings.app_logo = '';
+        }
         return parsed;
       }
     } catch (err) {
@@ -104,7 +107,7 @@ function loadInitialServerDb(): ServerDbState {
     academic_year_label: '2027/2028',
     app_name: 'SIPMA',
     app_tagline: 'Sistem Penerimaan Murid Madrasah',
-    app_logo: 'https://cdn.phototourl.com/free/2026-09-01-6c787787-6585-4830-b0a6-9bfab3f1dba4.png',
+    app_logo: '',
     default_school_id: 'SCH-NEW-1787905953621',
     max_file_size_mb: 2,
     registration_open: true,
@@ -426,11 +429,19 @@ function mergeGasDataIntoServerDb(gasData: any): boolean {
   }
   if (gasData.settings && typeof gasData.settings === 'object' && Object.keys(gasData.settings).length > 0) {
     const existingAppLogo = serverDb.settings?.app_logo || '';
+    const incomingAppLogo = gasData.settings.app_logo;
+    const DEPRECATED_OLD_LOGO = 'https://cdn.phototourl.com/free/2026-09-01-6c787787-6585-4830-b0a6-9bfab3f1dba4.png';
+    let finalLogo = existingAppLogo;
+    if (incomingAppLogo !== undefined) {
+      finalLogo = incomingAppLogo;
+    }
+    if (finalLogo === DEPRECATED_OLD_LOGO) {
+      finalLogo = '';
+    }
     serverDb.settings = { 
       ...serverDb.settings, 
       ...gasData.settings,
-      // Protect app_logo if incoming is empty/missing
-      app_logo: gasData.settings.app_logo || existingAppLogo,
+      app_logo: finalLogo,
     };
     mutated = true;
   }

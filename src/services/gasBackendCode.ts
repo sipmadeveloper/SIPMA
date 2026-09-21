@@ -1509,7 +1509,7 @@ function handleSendNotificationEmail(data, targetSpreadsheetId) {
   var notes = data.notes || "";
   var pathway = data.pathway || "";
   var appName = data.app_name || "SIPMA PPDB Madrasah";
-  var appLogoUrl = data.app_logo_url || "https://cdn.phototourl.com/free/2026-09-01-6c787787-6585-4830-b0a6-9bfab3f1dba4.png";
+  var appLogoUrl = (data.app_logo_url && data.app_logo_url.indexOf("6c787787-6585-4830-b0a6-9bfab3f1dba4") === -1) ? data.app_logo_url : "";
 
   // Validasi email penerima
   if (!email || email.indexOf("@") === -1 || email.indexOf(".") === -1) {
@@ -1745,7 +1745,7 @@ function handleSendNotificationEmail(data, targetSpreadsheetId) {
  */
 function buildNotificationEmailHtml(params) {
   var appName = params.appName || "SIPMA";
-  var appLogoUrl = params.appLogoUrl || "https://cdn.phototourl.com/free/2026-09-01-6c787787-6585-4830-b0a6-9bfab3f1dba4.png";
+  var appLogoUrl = (params.appLogoUrl && params.appLogoUrl.indexOf("6c787787-6585-4830-b0a6-9bfab3f1dba4") === -1) ? params.appLogoUrl : "";
   var schoolName = params.schoolName || "Madrasah";
   var schoolEmail = params.schoolEmail || "";
   var schoolPhone = params.schoolPhone || "";
@@ -1759,6 +1759,10 @@ function buildNotificationEmailHtml(params) {
   var detailHtml = params.detailHtml || "";
 
   var pathwayLabel = pathway ? (pathway === 'zonasi' ? 'Zonasi' : pathway === 'afirmasi' ? 'Afirmasi' : pathway === 'prestasi' ? 'Prestasi' : pathway === 'mutasi' ? 'Perpindahan Orang Tua' : pathway) : '-';
+
+  var logoCellHtml = appLogoUrl ?
+    '<td width="56" valign="middle" style="padding-right:16px;"><img src="' + appLogoUrl + '" alt="' + appName + '" width="52" height="52" style="display:block;width:52px;height:52px;border-radius:12px;background-color:#ffffff;padding:2px;box-shadow:0 2px 6px rgba(0,0,0,0.2);object-fit:contain;" /></td>' :
+    '<td width="56" valign="middle" style="padding-right:16px;"><div style="width:48px;height:48px;border-radius:12px;background-color:#047857;border:2px solid #10b981;color:#ffffff;font-size:22px;font-weight:800;text-align:center;line-height:48px;">' + (appName.charAt(0) || 'S') + '</div></td>';
 
   return '<!DOCTYPE html>' +
     '<html lang="id">' +
@@ -1779,9 +1783,7 @@ function buildNotificationEmailHtml(params) {
     '            <td style="background-color:#065f46;padding:24px 28px;text-align:left;border-bottom:3px solid #047857;">' +
     '              <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">' +
     '                <tr>' +
-    '                  <td width="56" valign="middle" style="padding-right:16px;">' +
-    '                    <img src="' + appLogoUrl + '" alt="' + appName + '" width="52" height="52" style="display:block;width:52px;height:52px;border-radius:12px;background-color:#ffffff;padding:2px;box-shadow:0 2px 6px rgba(0,0,0,0.2);object-fit:contain;" />' +
-    '                  </td>' +
+    logoCellHtml +
     '                  <td valign="middle">' +
     '                    <h1 style="margin:0;font-size:22px;font-weight:800;color:#ffffff;letter-spacing:0.5px;line-height:1.2;">' + appName + '</h1>' +
     '                    <p style="margin:3px 0 0 0;font-size:12px;color:#a7f3d0;font-weight:500;letter-spacing:0.3px;">Sistem Informasi Penerimaan Murid Baru Madrasah</p>' +

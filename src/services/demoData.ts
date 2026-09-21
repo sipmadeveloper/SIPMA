@@ -131,7 +131,7 @@ export const INITIAL_SETTINGS: SystemSettings = {
   academic_year_label: '2027/2028',
   app_name: 'SIPMA',
   app_tagline: 'Sistem Penerimaan Murid Madrasah',
-  app_logo: 'https://cdn.phototourl.com/free/2026-09-01-6c787787-6585-4830-b0a6-9bfab3f1dba4.png',
+  app_logo: '',
   default_school_id: 'SCH-NEW-1787905953621',
   max_file_size_mb: 2,
   registration_open: true,
