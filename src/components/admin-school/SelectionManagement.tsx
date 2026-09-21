@@ -13,7 +13,7 @@ import {
   FileSpreadsheet,
 } from 'lucide-react';
 import { Application, StudentProfile, School, SchoolOrigin } from '../../types/sipma';
-import { formatDistanceIndonesian } from '../../utils/geo';
+import { formatDistanceIndonesian, checkZoningCompliance } from '../../utils/geo';
 import { exportSelectionResultsToExcel } from '../../utils/excelExport';
 import { useFeedback } from '../../context/FeedbackContext';
 
@@ -107,10 +107,11 @@ export const SelectionManagement: React.FC<Props> = ({
           const updates: { regNumber: string; status: 'lulus' | 'tidak_lulus' }[] = [];
 
           pathwayApps.forEach((app, idx) => {
+            const isZoningCompliant = checkZoningCompliance(app.distance_km, school.zoning_radius_km || app.max_distance_km) && app.zoning_status === 'memenuhi';
             // Must be verified and within zonasi for zonasi pathway
             const isEligible =
               app.verification_status === 'terverifikasi' &&
-              (selectedPathway !== 'zonasi' || app.zoning_status === 'memenuhi');
+              (selectedPathway !== 'zonasi' || isZoningCompliant);
             if (isEligible && idx < quota) {
               updates.push({ regNumber: app.registration_number, status: 'lulus' });
             } else {
@@ -365,6 +366,19 @@ export const SelectionManagement: React.FC<Props> = ({
                       </td>
                       <td className="py-3.5 px-4 font-bold text-slate-800">
                         <div>{formatDistanceIndonesian(app.distance_km)}</div>
+                        {selectedPathway === 'zonasi' && (
+                          <span
+                            className={`inline-block text-[10px] font-bold mt-0.5 px-1.5 py-0.2 rounded ${
+                              checkZoningCompliance(app.distance_km, school.zoning_radius_km || app.max_distance_km) && app.zoning_status === 'memenuhi'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-rose-100 text-rose-800'
+                            }`}
+                          >
+                            {checkZoningCompliance(app.distance_km, school.zoning_radius_km || app.max_distance_km) && app.zoning_status === 'memenuhi'
+                              ? '✓ Dalam Zona'
+                              : '✕ Luar Zona'}
+                          </span>
+                        )}
                         {app.score ? <div className="text-[10px] text-emerald-700">Nilai: {app.score}</div> : null}
                       </td>
                       <td className="py-3.5 px-4">

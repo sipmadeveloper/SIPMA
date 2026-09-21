@@ -43,7 +43,7 @@ import {
 import { storageService } from '../../services/storageService';
 import { useFeedback } from '../../context/FeedbackContext';
 import { InteractiveLocationPicker } from '../map/InteractiveLocationPicker';
-import { formatDistanceIndonesian, formatCoordinates } from '../../utils/geo';
+import { formatDistanceIndonesian, formatCoordinates, checkZoningCompliance, evaluateApplicationZoning } from '../../utils/geo';
 import { DispensationLetterModal } from './DispensationLetterModal';
 import { downloadDocumentFile, formatStandardDocumentFileName } from '../../utils/fileDownload';
 import { compressAndResizeImage } from '../../utils/imageUrl';
@@ -178,24 +178,30 @@ export const RegistrationWizard: React.FC<Props> = ({
     const existing = storageService.getApplication(registrationNumber);
     if (existing) return existing;
     const currentUser = storageService.getCurrentUser();
+    const allSchools = storageService.getSchools();
+    const defaultSch = allSchools[0];
+    const initialLat = defaultSch ? defaultSch.latitude - 0.002 : -6.9641;
+    const initialLng = defaultSch ? defaultSch.longitude + 0.002 : 109.0566;
+    const evaluated = evaluateApplicationZoning({ latitude: initialLat, longitude: initialLng }, defaultSch);
+
     return {
       application_id: `APP-${Date.now()}`,
       registration_number: registrationNumber,
       user_id: currentUser?.user_id || '',
       student_id: `STD-${Date.now()}`,
-      school_id: '',
+      school_id: defaultSch?.school_id || '',
       admission_year: '2026',
       pathway: 'zonasi',
-      distance_km: 1.25,
-      max_distance_km: 5.0,
-      zoning_status: 'memenuhi',
+      distance_km: evaluated.distance_km,
+      max_distance_km: evaluated.max_distance_km,
+      zoning_status: evaluated.zoning_status,
       verification_status: 'menunggu',
       selection_status: 'menunggu',
       final_status: 'draft',
       step_completed: 1,
       is_locked: false,
-      latitude: -6.238271,
-      longitude: 106.802315,
+      latitude: initialLat,
+      longitude: initialLng,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -2260,11 +2266,17 @@ export const RegistrationWizard: React.FC<Props> = ({
                   </div>
                   <div className="flex justify-between text-slate-600">
                     <span>Jarak Rumah Anda:</span>
-                    <strong className={application.zoning_status === 'memenuhi' ? 'text-emerald-700' : 'text-rose-600'}>
-                      {formatDistanceIndonesian(application.distance_km)} ({application.zoning_status === 'memenuhi' ? 'Memenuhi' : 'Luar Radius'})
+                    <strong className={checkZoningCompliance(application.distance_km, effectiveSchool.zoning_radius_km) ? 'text-emerald-700' : 'text-rose-600'}>
+                      {formatDistanceIndonesian(application.distance_km)} ({checkZoningCompliance(application.distance_km, effectiveSchool.zoning_radius_km) ? 'Memenuhi' : 'Luar Radius'})
                     </strong>
                   </div>
                 </div>
+
+                {!checkZoningCompliance(application.distance_km, effectiveSchool.zoning_radius_km) && (
+                  <div className="mt-3 p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-[11px] text-rose-800 leading-tight">
+                    ⚠️ <strong>Perhatian:</strong> Lokasi rumah Anda berada di luar lingkar radius zonasi madrasah ({effectiveSchool.zoning_radius_km} km). Berkas pendaftaran untuk Jalur Zonasi berisiko tidak lulus verifikasi.
+                  </div>
+                )}
               </div>
 
               {/* Card 2: Jalur Afirmasi */}
@@ -3127,8 +3139,17 @@ export const RegistrationWizard: React.FC<Props> = ({
                   </div>
                   <div>
                     <span className="text-slate-500">Jarak Zonasi:</span>
-                    <div className="font-bold text-slate-900">
-                      {formatDistanceIndonesian(application.distance_km)} (Status: {application.zoning_status ? application.zoning_status.toUpperCase() : 'TERHITUNG'})
+                    <div className="font-bold text-slate-900 flex items-center gap-1.5 mt-0.5">
+                      <span>{formatDistanceIndonesian(application.distance_km)}</span>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                        checkZoningCompliance(application.distance_km, effectiveSchool.zoning_radius_km) && application.zoning_status === 'memenuhi'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-rose-100 text-rose-800'
+                      }`}>
+                        {checkZoningCompliance(application.distance_km, effectiveSchool.zoning_radius_km) && application.zoning_status === 'memenuhi'
+                          ? '✓ Memenuhi Zona'
+                          : '✕ Luar Lingkar Zona'}
+                      </span>
                     </div>
                   </div>
                 </div>

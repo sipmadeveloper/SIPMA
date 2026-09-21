@@ -92,6 +92,18 @@ export const InteractiveLocationPicker: React.FC<Props> = ({
     });
   };
 
+  // Sync state if initial coordinates change
+  useEffect(() => {
+    if (initialLat && initialLat !== 0 && initialLng && initialLng !== 0) {
+      setCurrentLat(initialLat);
+      setCurrentLng(initialLng);
+      const dist = calculateHaversineDistance(initialLat, initialLng, safeSchool.latitude, safeSchool.longitude);
+      const compliant = checkZoningCompliance(dist, safeSchool.zoning_radius_km);
+      setDistanceKm(dist);
+      setIsCompliant(compliant);
+    }
+  }, [initialLat, initialLng, safeSchool.latitude, safeSchool.longitude, safeSchool.zoning_radius_km]);
+
   // Update distance, compliance and notify parent
   const updatePosition = async (lat: number, lng: number, updateMap = false) => {
     setCurrentLat(lat);
@@ -124,12 +136,21 @@ export const InteractiveLocationPicker: React.FC<Props> = ({
       mapInstanceRef.current.panTo([lat, lng]);
     }
 
-    // Reverse geocode
-    const addr = await reverseGeocode(lat, lng);
-    setDetectedAddress(addr);
-
+    // Immediately notify parent with calculated distance & compliance (do not block on reverse geocode)
+    const fallbackAddr = detectedAddress || formatCoordinates(lat, lng);
     if (onLocationChange) {
-      onLocationChange(lat, lng, dist, compliant, addr);
+      onLocationChange(lat, lng, dist, compliant, fallbackAddr);
+    }
+
+    // Asynchronous reverse geocode in background
+    try {
+      const addr = await reverseGeocode(lat, lng);
+      setDetectedAddress(addr);
+      if (onLocationChange) {
+        onLocationChange(lat, lng, dist, compliant, addr);
+      }
+    } catch {
+      // ignore
     }
   };
 
@@ -244,12 +265,19 @@ export const InteractiveLocationPicker: React.FC<Props> = ({
 
     mapInstanceRef.current = map;
 
-    // Initial reverse geocode
+    // Immediate synchronous notification on mount
+    if (onLocationChange) {
+      onLocationChange(defaultLat, defaultLng, initDist, initCompliant, detectedAddress || formatCoordinates(defaultLat, defaultLng));
+    }
+
+    // Initial reverse geocode in background
     reverseGeocode(defaultLat, defaultLng).then((addr) => {
       setDetectedAddress(addr);
       if (onLocationChange) {
         onLocationChange(defaultLat, defaultLng, initDist, initCompliant, addr);
       }
+    }).catch(() => {
+      // ignore
     });
 
     // Fit bounds to show both school and student
@@ -270,7 +298,7 @@ export const InteractiveLocationPicker: React.FC<Props> = ({
         delete (container as any)._leaflet_id;
       }
     };
-  }, [safeSchool.school_id]);
+  }, [safeSchool.school_id, safeSchool.latitude, safeSchool.longitude, safeSchool.zoning_radius_km]);
 
   // Handle Search Location
   const handleSearch = async (e: React.FormEvent) => {

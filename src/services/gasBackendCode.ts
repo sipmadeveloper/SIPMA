@@ -443,10 +443,21 @@ function seedInitialDataIfEmpty(ss) {
  * 2. AUTO-UPDATE SINKRONISASI MASSAL (PUSH SYNC DARI FRONTEND KE GOOGLE SHEETS)
  */
 function handleSyncAllData(payload) {
-  var targetSpreadsheetId = payload.spreadsheet_id || SPREADSHEET_ID;
-  var ss = SpreadsheetApp.openById(targetSpreadsheetId);
-  ensureAllSheetsExist(ss);
-  var data = payload.data || {};
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+  } catch (lockErr) {
+    return {
+      success: false,
+      message: "Server Google Apps Script sedang sibuk memproses antrean sinkronisasi lain. Silakan coba beberapa saat lagi."
+    };
+  }
+
+  try {
+    var targetSpreadsheetId = payload.spreadsheet_id || SPREADSHEET_ID;
+    var ss = SpreadsheetApp.openById(targetSpreadsheetId);
+    ensureAllSheetsExist(ss);
+    var data = payload.data || {};
 
   // 1. Sinkronkan Users
   if (data.users && Array.isArray(data.users)) {
@@ -597,6 +608,11 @@ function handleSyncAllData(payload) {
     message: "Sinkronisasi realtime seluruh database (termasuk penghapusan & penambahan) berhasil!",
     syncedAt: new Date().toISOString()
   };
+  } finally {
+    try {
+      lock.releaseLock();
+    } catch(e) {}
+  }
 }
 
 /**
@@ -648,6 +664,15 @@ function overwriteSheetData(sheet, headers, rows) {
     sheet.getRange(2, 1, lastRow - 1, maxCols).clearContent();
   }
   if (rows && rows.length > 0) {
+    var neededRows = rows.length + 1;
+    var currentMaxRows = sheet.getMaxRows();
+    if (neededRows > currentMaxRows) {
+      sheet.insertRowsAfter(currentMaxRows, neededRows - currentMaxRows);
+    }
+    var currentMaxCols = sheet.getMaxColumns();
+    if (headers.length > currentMaxCols) {
+      sheet.insertColumnsAfter(currentMaxCols, headers.length - currentMaxCols);
+    }
     sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
   }
 }
@@ -723,7 +748,7 @@ function extractDriveIdFromAnyUrl(url) {
  */
 function normalizeDocumentTypeGAS(type) {
   if (!type) return "dokumen";
-  var t = String(type).toLowerCase().trim().replace(/[\s-]+/g, "_");
+  var t = String(type).toLowerCase().trim().replace(/[\\s-]+/g, "_");
   if (t === "kk" || t === "kartu_keluarga") return "kartu_keluarga";
   if (t === "akta" || t === "akta_kelahiran" || t === "akta_lahir") return "akta_kelahiran";
   if (t === "ijazah" || t === "skl" || t === "ijazah_skl") return "ijazah_skl";
@@ -1635,18 +1660,18 @@ function handleSendNotificationEmail(data, targetSpreadsheetId) {
   });
 
   // Plain-text alternative (Anti-Spam standard: avoids MIME_HTML_ONLY penalty)
-  var plainTextBody = (appName || "SIPMA PPDB Madrasah") + "\n" +
-    "Panitia PPDB: " + schoolName + "\n\n" +
-    "Yth. " + studentName + " (No. Reg: " + regNumber + ")\n" +
-    "Status: " + statusBadge + "\n\n" +
-    headline + "\n\n" +
-    (notes ? ("Catatan Panitia: " + notes + "\n\n") : "") +
-    "Untuk informasi selengkapnya, silakan kunjungi portal SIPMA.\n\n" +
-    "Panitia Penerimaan Peserta Didik Baru (PPDB)\n" +
-    schoolName + "\n" +
-    (schoolAddress ? ("Alamat: " + schoolAddress + "\n") : "") +
-    (schoolEmail ? ("Email: " + schoolEmail + "\n") : "") +
-    (schoolPhone ? ("Telp/WA: " + schoolPhone + "\n") : "");
+  var plainTextBody = (appName || "SIPMA PPDB Madrasah") + "\\n" +
+    "Panitia PPDB: " + schoolName + "\\n\\n" +
+    "Yth. " + studentName + " (No. Reg: " + regNumber + ")\\n" +
+    "Status: " + statusBadge + "\\n\\n" +
+    headline + "\\n\\n" +
+    (notes ? ("Catatan Panitia: " + notes + "\\n\\n") : "") +
+    "Untuk informasi selengkapnya, silakan kunjungi portal SIPMA.\\n\\n" +
+    "Panitia Penerimaan Peserta Didik Baru (PPDB)\\n" +
+    schoolName + "\\n" +
+    (schoolAddress ? ("Alamat: " + schoolAddress + "\\n") : "") +
+    (schoolEmail ? ("Email: " + schoolEmail + "\\n") : "") +
+    (schoolPhone ? ("Telp/WA: " + schoolPhone + "\\n") : "");
 
   // Konfigurasi pengirim email:
   // Nama Pengirim: Panitia PPDB [Nama Madrasah]

@@ -18,6 +18,7 @@ import {
   calculateHaversineDistance,
   checkZoningCompliance,
   formatDistanceIndonesian,
+  evaluateApplicationZoning,
 } from '../utils/geo';
 import { updateAppFavicon } from '../utils/favicon';
 import { extractDriveFileId, clearImageUrlCache } from '../utils/imageUrl';
@@ -112,6 +113,8 @@ class StorageService {
   private lastAutoSyncStatus: { success: boolean; message: string; timestamp: string } | null = null;
   private serverETag: string = '';
   private sseConnection: EventSource | null = null;
+  public isSseConnected: boolean = false;
+  private sseReconnectTimer: any = null;
 
   // High-speed in-memory cache for instant (<0.0001s) data reads and zero parsing lag
   private memCache: {
@@ -155,11 +158,18 @@ class StorageService {
     const settings = this.getSettings();
     return {
       isAutoSyncing: this.isAutoSyncing,
+      isSyncing: this.isAutoSyncing,
       lastSyncedAt: settings.last_synced_at || null,
       autoSyncEnabled: settings.realtime_sync_enabled !== false,
       hasGasConfigured: !!(settings.gas_web_app_url && settings.gas_web_app_url.startsWith('http')),
+      isSseConnected: this.isSseConnected,
+      isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
       lastStatus: this.lastAutoSyncStatus,
     };
+  }
+
+  getAutoSyncStatus() {
+    return this.getAutoSyncState();
   }
 
   triggerAutoSync(isSettingsUpdate: boolean = false): void {
@@ -185,46 +195,24 @@ class StorageService {
       audit_logs: this.getAuditLogs(),
       settings: this.getSettings(),
       is_settings_update: isSettingsUpdate,
+      forwardToGas: true,
+      waitGas: false, // Non-blocking server-side debounced queue
     };
 
     fetch('/api/data/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(dataPayload),
-    }).catch(() => {});
-
-    // 2. Push to Google Apps Script Web App
-    const settings = this.getSettings();
-    if (!settings.gas_web_app_url || !settings.gas_web_app_url.startsWith('http') || settings.realtime_sync_enabled === false) {
-      return;
-    }
-
-    if (this.autoSyncTimeout) {
-      clearTimeout(this.autoSyncTimeout);
-    }
-
-    this.autoSyncTimeout = setTimeout(async () => {
-      this.isAutoSyncing = true;
-      this.notifySubscribers('sync_started');
-      try {
-        const res = await this.syncAllToGAS();
-        this.isAutoSyncing = false;
-        this.lastAutoSyncStatus = {
-          success: res.success,
-          message: res.message,
-          timestamp: new Date().toISOString(),
-        };
-        this.notifySubscribers('sync_completed', res);
-      } catch (err: any) {
-        this.isAutoSyncing = false;
-        this.lastAutoSyncStatus = {
-          success: false,
-          message: err?.message || 'Gagal sinkronisasi otomatis ke Google Sheets',
-          timestamp: new Date().toISOString(),
-        };
-        this.notifySubscribers('sync_error', err);
+    }).catch(() => {
+      // Fallback: If centralized server is unavailable or offline, attempt direct client push to GAS
+      const settings = this.getSettings();
+      if (settings.gas_web_app_url && settings.gas_web_app_url.startsWith('http') && settings.realtime_sync_enabled !== false) {
+        if (this.autoSyncTimeout) clearTimeout(this.autoSyncTimeout);
+        this.autoSyncTimeout = setTimeout(() => {
+          this.syncAllToGAS().catch(() => {});
+        }, 1500);
       }
-    }, 400);
+    });
   }
 
   private initRealtimeEvents(): void {
@@ -235,15 +223,24 @@ class StorageService {
         this.sseConnection.close();
         this.sseConnection = null;
       }
+      if (this.sseReconnectTimer) {
+        clearTimeout(this.sseReconnectTimer);
+        this.sseReconnectTimer = null;
+      }
 
       const es = new EventSource('/api/data/events');
       this.sseConnection = es;
+
+      es.onopen = () => {
+        this.isSseConnected = true;
+        this.notifySubscribers('realtime_status', { connected: true, isOnline: true });
+      };
 
       es.onmessage = (event) => {
         try {
           if (!event.data) return;
           const payload = JSON.parse(event.data);
-          if (payload.type === 'mutation') {
+          if (payload.type === 'mutation' || payload.type === 'gas_synced') {
             // Immediate real-time sync with centralized server (< 50ms)
             this.syncWithServer(false).catch(() => {});
           }
@@ -251,7 +248,16 @@ class StorageService {
       };
 
       es.onerror = () => {
-        // EventSource will automatically attempt reconnection
+        this.isSseConnected = false;
+        this.notifySubscribers('realtime_status', { connected: false });
+        if (es.readyState === EventSource.CLOSED) {
+          if (this.sseReconnectTimer) clearTimeout(this.sseReconnectTimer);
+          this.sseReconnectTimer = setTimeout(() => {
+            if (!this.isSseConnected) {
+              this.initRealtimeEvents();
+            }
+          }, 3500);
+        }
       };
     } catch (err) {
       console.warn('[Storage] SSE connection initialization error:', err);
@@ -271,20 +277,20 @@ class StorageService {
       clearInterval(this.serverSyncTimer);
     }
 
-    // Real-time server sync: Poll centralized server every 8 seconds as robust fallback
+    // Real-time server sync: Poll centralized server every 6 seconds as robust fallback
     this.serverSyncTimer = setInterval(() => {
       if (!document.hidden) {
         this.syncWithServer(false).catch(() => {});
       }
-    }, 8000);
+    }, 6000);
 
-    // Auto-pull from GAS every 30 seconds in background if configured
+    // Auto-pull from GAS every 25 seconds in background if configured
     this.autoPullTimer = setInterval(() => {
       const s = this.getSettings();
       if (s.gas_web_app_url && s.gas_web_app_url.startsWith('http') && s.realtime_sync_enabled !== false && !document.hidden) {
         this.pullAllFromGAS().catch(() => {});
       }
-    }, 30000);
+    }, 25000);
 
     // Instant sync on window focus and tab visibility change
     const handleVisibility = () => {
@@ -297,10 +303,32 @@ class StorageService {
       }
     };
 
+    // Instant reconnect and sync when device regains internet connection
+    const handleOnline = () => {
+      console.log('[Storage] Jaringan online terdeteksi, memulihkan koneksi realtime...');
+      this.initRealtimeEvents();
+      this.syncWithServer(false).catch(() => {});
+      const s = this.getSettings();
+      if (s.gas_web_app_url && s.gas_web_app_url.startsWith('http') && s.realtime_sync_enabled !== false) {
+        this.pullAllFromGAS().catch(() => {});
+      }
+      this.notifySubscribers('network_status', { isOnline: true });
+    };
+
+    const handleOffline = () => {
+      this.isSseConnected = false;
+      this.notifySubscribers('network_status', { isOnline: false });
+      this.notifySubscribers('realtime_status', { connected: false });
+    };
+
     window.removeEventListener('focus', handleVisibility);
     window.addEventListener('focus', handleVisibility);
     document.removeEventListener('visibilitychange', handleVisibility);
     document.addEventListener('visibilitychange', handleVisibility);
+    window.removeEventListener('online', handleOnline);
+    window.addEventListener('online', handleOnline);
+    window.removeEventListener('offline', handleOffline);
+    window.addEventListener('offline', handleOffline);
   }
 
   private init() {
@@ -1859,6 +1887,13 @@ class StorageService {
     // Initialize Application record (unbound to school until student chooses in wizard)
     const apps = this.getApplications();
     const defaultSchool = targetSchoolId ? this.getSchoolById(targetSchoolId) : null;
+    const initialLat = defaultSchool ? defaultSchool.latitude - 0.002 : -6.9641;
+    const initialLng = defaultSchool ? defaultSchool.longitude + 0.002 : 109.0566;
+    const evalResult = evaluateApplicationZoning(
+      { latitude: initialLat, longitude: initialLng },
+      defaultSchool
+    );
+
     const newApp: Application = {
       application_id: `APP-${Date.now().toString(36)}`,
       registration_number: regNum,
@@ -1867,11 +1902,11 @@ class StorageService {
       school_id: targetSchoolId,
       admission_year: year,
       pathway: 'zonasi',
-      latitude: defaultSchool ? defaultSchool.latitude - 0.005 : -6.24,
-      longitude: defaultSchool ? defaultSchool.longitude - 0.005 : 106.80,
-      distance_km: defaultSchool ? 0.85 : 0,
-      max_distance_km: defaultSchool ? defaultSchool.zoning_radius_km : 5.0,
-      zoning_status: 'memenuhi',
+      latitude: initialLat,
+      longitude: initialLng,
+      distance_km: evalResult.distance_km,
+      max_distance_km: evalResult.max_distance_km,
+      zoning_status: evalResult.zoning_status,
       verification_status: 'menunggu',
       selection_status: 'menunggu',
       final_status: 'draft',
@@ -1965,6 +2000,13 @@ class StorageService {
 
     if (appIndex < 0) {
       // Create new application if none existed
+      const initialLat = school.latitude - 0.002;
+      const initialLng = school.longitude + 0.002;
+      const evalInitial = evaluateApplicationZoning(
+        { latitude: initialLat, longitude: initialLng },
+        school
+      );
+
       const newApp: Application = {
         application_id: `APP-${Date.now().toString(36)}`,
         registration_number: currentRegNum || `SIPMA-CALON-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
@@ -1973,11 +2015,11 @@ class StorageService {
         school_id: newSchoolId,
         admission_year: '2026',
         pathway: 'zonasi',
-        latitude: school.latitude - 0.005,
-        longitude: school.longitude - 0.005,
-        distance_km: 0.85,
-        max_distance_km: school.zoning_radius_km,
-        zoning_status: 'memenuhi',
+        latitude: initialLat,
+        longitude: initialLng,
+        distance_km: evalInitial.distance_km,
+        max_distance_km: evalInitial.max_distance_km,
+        zoning_status: evalInitial.zoning_status,
         verification_status: 'menunggu',
         selection_status: 'menunggu',
         final_status: 'draft',
@@ -2005,10 +2047,13 @@ class StorageService {
       newRegNum = this.generateRegistrationNumber(newSchoolId);
     }
 
-    // Update application
+    // Update application and recompute accurate distance & zoning status against new school
     app.registration_number = newRegNum;
     app.school_id = newSchoolId;
-    app.max_distance_km = school.zoning_radius_km;
+    const evaluated = evaluateApplicationZoning(app, school);
+    app.distance_km = evaluated.distance_km;
+    app.max_distance_km = evaluated.max_distance_km;
+    app.zoning_status = evaluated.zoning_status;
     app.updated_at = new Date().toISOString();
     apps[appIndex] = app;
     localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(apps));
@@ -2914,13 +2959,35 @@ class StorageService {
   }
 
   // ================= APPLICATIONS =================
+  normalizeApplicationZoning(app: Application): Application {
+    if (!app) return app;
+    const school = app.school_id ? this.getSchoolById(app.school_id) : this.getSchools()[0];
+    const evaluated = evaluateApplicationZoning(app, school);
+    app.distance_km = evaluated.distance_km;
+    app.max_distance_km = evaluated.max_distance_km;
+    app.zoning_status = evaluated.zoning_status;
+    return app;
+  }
+
   getApplications(): Application[] {
     if (this.memCache.applications) {
       return this.memCache.applications;
     }
     try {
       const data = localStorage.getItem(STORAGE_KEYS.APPLICATIONS);
-      const parsed = data ? JSON.parse(data) : [...INITIAL_APPLICATIONS];
+      const parsed: Application[] = data ? JSON.parse(data) : [...INITIAL_APPLICATIONS];
+      let needsSync = false;
+      parsed.forEach((app) => {
+        const prevStatus = app.zoning_status;
+        const prevDist = app.distance_km;
+        this.normalizeApplicationZoning(app);
+        if (app.zoning_status !== prevStatus || app.distance_km !== prevDist) {
+          needsSync = true;
+        }
+      });
+      if (needsSync) {
+        localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(parsed));
+      }
       this.memCache.applications = parsed;
       return parsed;
     } catch {
@@ -2930,11 +2997,13 @@ class StorageService {
 
   getApplication(registrationNumber: string): Application | null {
     const apps = this.getApplications();
-    return apps.find((a) => a.registration_number === registrationNumber) || null;
+    const app = apps.find((a) => a.registration_number === registrationNumber) || null;
+    return app ? this.normalizeApplicationZoning(app) : null;
   }
 
   saveApplication(app: Application): void {
     try {
+      this.normalizeApplicationZoning(app);
       const apps = this.getApplications();
       const index = apps.findIndex((a) => a.registration_number === app.registration_number);
       app.updated_at = new Date().toISOString();
@@ -2955,6 +3024,7 @@ class StorageService {
   submitApplication(registrationNumber: string): void {
     const app = this.getApplication(registrationNumber);
     if (!app) throw new Error('Aplikasi tidak ditemukan.');
+    this.normalizeApplicationZoning(app);
     const wasNeedFix = app.verification_status === 'perlu_perbaikan' || app.final_status === 'perlu_perbaikan';
     app.final_status = 'submitted';
     app.verification_status = 'menunggu';
@@ -3002,6 +3072,10 @@ class StorageService {
     const pathways: ('zonasi' | 'afirmasi' | 'prestasi' | 'mutasi')[] = ['zonasi', 'afirmasi', 'prestasi', 'mutasi'];
     const randomPathway = pathways[Math.floor(Math.random() * pathways.length)];
 
+    const simLat = targetSchool ? targetSchool.latitude + (Math.random() - 0.5) * 0.02 : -6.9;
+    const simLng = targetSchool ? targetSchool.longitude + (Math.random() - 0.5) * 0.02 : 109.0;
+    const simEval = evaluateApplicationZoning({ latitude: simLat, longitude: simLng }, targetSchool);
+
     const mockApp: Application = {
       application_id: `APP-SIM-${Date.now()}`,
       registration_number: randomReg,
@@ -3011,11 +3085,11 @@ class StorageService {
       admission_year: '2027',
       pathway: randomPathway,
       submission_date: new Date().toISOString(),
-      latitude: targetSchool ? targetSchool.latitude + (Math.random() - 0.5) * 0.02 : -6.9,
-      longitude: targetSchool ? targetSchool.longitude + (Math.random() - 0.5) * 0.02 : 109.0,
-      distance_km: Number((0.35 + Math.random() * 2.2).toFixed(2)),
-      max_distance_km: 5.0,
-      zoning_status: 'memenuhi',
+      latitude: simLat,
+      longitude: simLng,
+      distance_km: simEval.distance_km,
+      max_distance_km: simEval.max_distance_km,
+      zoning_status: simEval.zoning_status,
       verification_status: 'menunggu',
       selection_status: 'menunggu',
       final_status: 'submitted',

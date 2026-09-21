@@ -528,7 +528,7 @@ function deduplicateDocs(docs: any[]): any[] {
 }
 
 // Global Reusable Forwarder: Pushes all serverDb data to Google Apps Script & Google Sheets
-async function forwardSyncAllToGas(): Promise<{ success: boolean; message?: string }> {
+async function forwardSyncAllToGas(retryCount = 1): Promise<{ success: boolean; message?: string }> {
   const gasUrl = serverDb.settings?.gas_web_app_url;
   const ssId = serverDb.settings?.spreadsheet_id;
   const driveId = serverDb.settings?.drive_root_folder_id;
@@ -581,6 +581,10 @@ async function forwardSyncAllToGas(): Promise<{ success: boolean; message?: stri
 
     const parsed = await parseGasJsonResponse(gasRes);
     if (!parsed.isJson) {
+      if (retryCount > 0) {
+        await new Promise((r) => setTimeout(r, 2000));
+        return forwardSyncAllToGas(retryCount - 1);
+      }
       return {
         success: false,
         message: 'Google Apps Script mengembalikan respons HTML/non-JSON. Pastikan Web App di-Deploy dengan opsi "Who has access: Anyone".',
@@ -588,9 +592,48 @@ async function forwardSyncAllToGas(): Promise<{ success: boolean; message?: stri
     }
     return parsed.data;
   } catch (gasErr: any) {
+    if (retryCount > 0) {
+      await new Promise((r) => setTimeout(r, 2000));
+      return forwardSyncAllToGas(retryCount - 1);
+    }
     console.warn('forwardSyncAllToGas warning:', gasErr?.message);
     return { success: false, message: gasErr?.message };
   }
+}
+
+// Background Coalesced GAS Push Queue
+let gasSyncDebounceTimer: NodeJS.Timeout | null = null;
+let isForwardingToGas = false;
+let pendingGasSync = false;
+
+export function triggerServerGasSyncDebounced(delayMs = 1200) {
+  if (gasSyncDebounceTimer) {
+    clearTimeout(gasSyncDebounceTimer);
+  }
+  gasSyncDebounceTimer = setTimeout(async () => {
+    if (isForwardingToGas) {
+      pendingGasSync = true;
+      return;
+    }
+    isForwardingToGas = true;
+    try {
+      const res = await forwardSyncAllToGas();
+      if (res?.success) {
+        if (!serverDb.settings) serverDb.settings = {} as any;
+        serverDb.settings.last_synced_at = new Date().toISOString();
+        persistServerDb(true);
+        broadcastServerDbChange('gas_synced');
+      }
+    } catch (err: any) {
+      console.warn('Background forwardSyncAllToGas error:', err?.message);
+    } finally {
+      isForwardingToGas = false;
+      if (pendingGasSync) {
+        pendingGasSync = false;
+        triggerServerGasSyncDebounced(1000);
+      }
+    }
+  }, delayMs);
 }
 
 let lastGasPullTimestamp = 0;
@@ -900,22 +943,42 @@ app.post('/api/data/sync', async (req: Request, res: Response) => {
 
     persistServerDb();
 
-    // Auto-forward to Google Apps Script if URL is configured
-    let gasResult = null;
+    // Auto-forward to Google Apps Script
+    let gasResult: { success: boolean; message?: string } | null = null;
     if (payload.forwardToGas !== false) {
-      gasResult = await forwardSyncAllToGas();
+      if (payload.waitGas === true) {
+        gasResult = await forwardSyncAllToGas();
+        if (gasResult?.success) {
+          if (!serverDb.settings) serverDb.settings = {} as any;
+          serverDb.settings.last_synced_at = new Date().toISOString();
+          persistServerDb(false);
+        }
+      } else {
+        triggerServerGasSyncDebounced(1000);
+      }
     }
 
     res.json({
       success: true,
-      message: 'Data berhasil disinkronkan ke server dan disimpan permanen.',
-      gas_synced: !!gasResult?.success,
-      gas_message: gasResult?.message,
+      message: 'Data berhasil disinkronkan ke server dan disiarkan secara realtime.',
+      gas_synced: gasResult ? !!gasResult.success : undefined,
+      gas_message: gasResult ? gasResult.message : 'Sinkronisasi Google Sheets dijadwalkan di latar belakang.',
       last_updated: serverDb.last_updated,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err?.message || 'Sync failed.' });
   }
+});
+
+// Endpoint untuk memantau status kesehatan & sinkronisasi Google Sheets
+app.get('/api/data/gas-sync-status', (req: Request, res: Response) => {
+  res.json({
+    success: true,
+    last_synced_at: serverDb.settings?.last_synced_at || null,
+    is_syncing: isForwardingToGas,
+    pending_sync: pendingGasSync,
+    gas_configured: !!(serverDb.settings?.gas_web_app_url && serverDb.settings?.gas_web_app_url.startsWith('http')),
+  });
 });
 
 // 4. Server-Side Google Apps Script Proxy (Bypasses Browser CORS completely & handles 302 redirects)

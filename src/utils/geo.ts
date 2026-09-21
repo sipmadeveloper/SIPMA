@@ -44,10 +44,75 @@ export function calculateHaversineDistance(
  * Checks if candidate distance is within school zoning radius
  */
 export function checkZoningCompliance(
-  distanceKm: number,
-  maxRadiusKm: number
+  distanceKm?: number | null,
+  maxRadiusKm?: number | null
 ): boolean {
-  return distanceKm <= maxRadiusKm;
+  if (distanceKm === undefined || distanceKm === null || isNaN(distanceKm)) {
+    return false;
+  }
+  const radius =
+    typeof maxRadiusKm === 'number' && !isNaN(maxRadiusKm) && maxRadiusKm > 0
+      ? maxRadiusKm
+      : 5.0;
+  // Safe comparison with micro-epsilon to prevent floating point inaccuracies
+  return Number(distanceKm) <= radius + 0.0001;
+}
+
+/**
+ * Evaluates application zoning parameters against school coordinates and radius.
+ * Returns consistent distance, max radius, and zoning status.
+ */
+export function evaluateApplicationZoning(
+  app: {
+    latitude?: number | null;
+    longitude?: number | null;
+    distance_km?: number | null;
+    max_distance_km?: number | null;
+    zoning_status?: 'memenuhi' | 'tidak_memenuhi';
+  },
+  school?: {
+    latitude?: number | null;
+    longitude?: number | null;
+    zoning_radius_km?: number | null;
+  } | null
+): {
+  distance_km: number;
+  max_distance_km: number;
+  isCompliant: boolean;
+  zoning_status: 'memenuhi' | 'tidak_memenuhi';
+} {
+  const maxRadius =
+    typeof school?.zoning_radius_km === 'number' && !isNaN(school.zoning_radius_km) && school.zoning_radius_km > 0
+      ? school.zoning_radius_km
+      : typeof app.max_distance_km === 'number' && !isNaN(app.max_distance_km) && app.max_distance_km > 0
+      ? app.max_distance_km
+      : 5.0;
+
+  let dist =
+    typeof app.distance_km === 'number' && !isNaN(app.distance_km) ? app.distance_km : 0;
+
+  // If both student and school have valid non-zero coordinates, calculate real-time Haversine distance
+  if (
+    typeof app.latitude === 'number' &&
+    typeof app.longitude === 'number' &&
+    app.latitude !== 0 &&
+    app.longitude !== 0 &&
+    school &&
+    typeof school.latitude === 'number' &&
+    typeof school.longitude === 'number' &&
+    school.latitude !== 0 &&
+    school.longitude !== 0
+  ) {
+    dist = calculateHaversineDistance(app.latitude, app.longitude, school.latitude, school.longitude);
+  }
+
+  const isCompliant = checkZoningCompliance(dist, maxRadius);
+  return {
+    distance_km: dist,
+    max_distance_km: maxRadius,
+    isCompliant,
+    zoning_status: isCompliant ? 'memenuhi' : 'tidak_memenuhi',
+  };
 }
 
 /**

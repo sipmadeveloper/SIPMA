@@ -27,7 +27,7 @@ import {
   PathwayType,
   VerificationStatus,
 } from '../../types/sipma';
-import { formatDistanceIndonesian, formatCoordinates } from '../../utils/geo';
+import { formatDistanceIndonesian, formatCoordinates, checkZoningCompliance } from '../../utils/geo';
 import { VerificationModal } from './VerificationModal';
 import { ResetPasswordModal } from '../common/ResetPasswordModal';
 import { exportApplicantsToExcel } from '../../utils/excelExport';
@@ -405,7 +405,8 @@ export const ApplicantList: React.FC<Props> = ({
               ) : (
                 filteredApps.map((app, index) => {
                   const student = students[app.registration_number];
-                  const isZonasiCompliant = app.zoning_status === 'memenuhi';
+                  const effectiveRadius = school?.zoning_radius_km || app.max_distance_km || 5.0;
+                  const isZonasiCompliant = checkZoningCompliance(app.distance_km, effectiveRadius) && app.zoning_status === 'memenuhi';
                   const isHighlighted = highlightRegNumber === app.registration_number;
 
                   return (
@@ -492,9 +493,12 @@ export const ApplicantList: React.FC<Props> = ({
                       </td>
                       <td className="py-3.5 px-4">
                         <span
-                          className={`inline-flex items-center gap-1 text-[11px] font-bold ${
-                            isZonasiCompliant ? 'text-emerald-700' : 'text-rose-600'
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                            isZonasiCompliant
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-rose-50 text-rose-700 border-rose-200'
                           }`}
+                          title={`Jarak: ${formatDistanceIndonesian(app.distance_km)} | Batas Radius: ${effectiveRadius} km`}
                         >
                           {isZonasiCompliant ? '✓ Memenuhi' : '✕ Luar Radius'}
                         </span>

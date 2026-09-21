@@ -24,7 +24,7 @@ import {
   DocumentItem,
   School,
 } from '../../types/sipma';
-import { formatDistanceIndonesian, formatCoordinates } from '../../utils/geo';
+import { formatDistanceIndonesian, formatCoordinates, checkZoningCompliance } from '../../utils/geo';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { InteractiveLocationPicker } from '../map/InteractiveLocationPicker';
 import { useFeedback } from '../../context/FeedbackContext';
@@ -345,6 +345,34 @@ export const VerificationModal: React.FC<Props> = ({
 
           {activeTab === 'location' && (
             <div className="space-y-4">
+              {(() => {
+                const isCompliant = checkZoningCompliance(application.distance_km, school.zoning_radius_km);
+                return (
+                  <div
+                    className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                      isCompliant
+                        ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
+                        : 'bg-rose-50/80 border-rose-200 text-rose-950'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 text-xs font-semibold">
+                      <MapPin className={`w-4 h-4 shrink-0 ${isCompliant ? 'text-emerald-700' : 'text-rose-600'}`} />
+                      <span>
+                        Jarak Rumah ke Madrasah: <strong>{formatDistanceIndonesian(application.distance_km)}</strong> (Batas Maksimal Radius Zonasi: {school.zoning_radius_km} km)
+                      </span>
+                    </div>
+                    <span
+                      className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold uppercase shrink-0 ${
+                        isCompliant
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-rose-600 text-white'
+                      }`}
+                    >
+                      {isCompliant ? '✓ Memenuhi Lingkar Zona' : '✕ Di Luar Lingkar Zona'}
+                    </span>
+                  </div>
+                );
+              })()}
               <InteractiveLocationPicker
                 school={school}
                 initialLat={application.latitude}
