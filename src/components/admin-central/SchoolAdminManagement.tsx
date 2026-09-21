@@ -604,6 +604,9 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
                     </option>
                   ))}
                 </select>
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Pilih madrasah yang dinaungi admin ini. Jika madrasah baru belum terdaftar, tambahkan terlebih dahulu melalui <strong>Tab 'Madrasah' &gt; Tambah Madrasah Baru</strong>.
+                </p>
               </div>
 
               <div>

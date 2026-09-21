@@ -328,15 +328,27 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
 
             <form onSubmit={handleSave} className="space-y-4 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="sm:col-span-2">
-                  <label className="block font-semibold text-slate-700 mb-1">Nama Madrasah *</label>
+                <div className="sm:col-span-2 bg-emerald-50/50 p-3.5 rounded-xl border border-emerald-200/80">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                      <SchoolIcon className="w-4 h-4 text-emerald-700" />
+                      <span>Nama Resmi Madrasah Terdaftar <span className="text-rose-600 font-black">*</span></span>
+                    </label>
+                    <span className="text-[10px] text-emerald-800 font-semibold bg-emerald-100/70 px-2 py-0.5 rounded-md border border-emerald-300/60">
+                      Wajib Diisi
+                    </span>
+                  </div>
                   <input
                     type="text"
                     value={editingSchool.school_name}
                     onChange={(e) => setEditingSchool({ ...editingSchool, school_name: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                    placeholder="Contoh: MAN 1 Kota Jakarta / MTsN 2 Sleman / MI Al-Hikmah"
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg font-semibold text-slate-900 placeholder:text-slate-400 placeholder:font-normal focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-xs shadow-2xs"
                     required
                   />
+                  <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+                    Nama resmi ini akan langsung tampil pada daftar madrasah di landing page, formulir pendaftaran murid, kop surat bukti kelulusan, dan portal panitia PPDB.
+                  </p>
                 </div>
 
                 <div>
@@ -405,6 +417,29 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
                     type="text"
                     value={editingSchool.address}
                     onChange={(e) => setEditingSchool({ ...editingSchool, address: e.target.value })}
+                    placeholder="Contoh: Jl. Madrasah No. 1, Kelurahan..."
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Nama Kepala Madrasah</label>
+                  <input
+                    type="text"
+                    value={editingSchool.principal_name || ''}
+                    onChange={(e) => setEditingSchool({ ...editingSchool, principal_name: e.target.value })}
+                    placeholder="Nama beserta gelar Kepala Madrasah"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">No. Kontak / Telepon Madrasah</label>
+                  <input
+                    type="text"
+                    value={editingSchool.contact_phone || ''}
+                    onChange={(e) => setEditingSchool({ ...editingSchool, contact_phone: e.target.value })}
+                    placeholder="Contoh: 021-1234567 atau 08123456789"
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
                   />
                 </div>
