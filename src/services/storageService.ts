@@ -111,6 +111,7 @@ class StorageService {
   private isAutoSyncing: boolean = false;
   private lastAutoSyncStatus: { success: boolean; message: string; timestamp: string } | null = null;
   private serverETag: string = '';
+  private sseConnection: EventSource | null = null;
 
   // High-speed in-memory cache for instant (<0.0001s) data reads and zero parsing lag
   private memCache: {
@@ -226,8 +227,42 @@ class StorageService {
     }, 400);
   }
 
+  private initRealtimeEvents(): void {
+    if (typeof window === 'undefined' || typeof EventSource === 'undefined') return;
+
+    try {
+      if (this.sseConnection) {
+        this.sseConnection.close();
+        this.sseConnection = null;
+      }
+
+      const es = new EventSource('/api/data/events');
+      this.sseConnection = es;
+
+      es.onmessage = (event) => {
+        try {
+          if (!event.data) return;
+          const payload = JSON.parse(event.data);
+          if (payload.type === 'mutation') {
+            // Immediate real-time sync with centralized server (< 50ms)
+            this.syncWithServer(false).catch(() => {});
+          }
+        } catch {}
+      };
+
+      es.onerror = () => {
+        // EventSource will automatically attempt reconnection
+      };
+    } catch (err) {
+      console.warn('[Storage] SSE connection initialization error:', err);
+    }
+  }
+
   private startBackgroundSync(): void {
     if (typeof window === 'undefined') return;
+
+    // Connect to Server-Sent Events for instant sub-second database mutation broadcasts
+    this.initRealtimeEvents();
 
     if (this.autoPullTimer) {
       clearInterval(this.autoPullTimer);
@@ -236,20 +271,20 @@ class StorageService {
       clearInterval(this.serverSyncTimer);
     }
 
-    // Real-time server sync: Poll centralized server every 12 seconds so all devices get instant updates
+    // Real-time server sync: Poll centralized server every 8 seconds as robust fallback
     this.serverSyncTimer = setInterval(() => {
       if (!document.hidden) {
         this.syncWithServer(false).catch(() => {});
       }
-    }, 12000);
+    }, 8000);
 
-    // Auto-pull from GAS every 45 seconds in background if configured
+    // Auto-pull from GAS every 30 seconds in background if configured
     this.autoPullTimer = setInterval(() => {
       const s = this.getSettings();
       if (s.gas_web_app_url && s.gas_web_app_url.startsWith('http') && s.realtime_sync_enabled !== false && !document.hidden) {
         this.pullAllFromGAS().catch(() => {});
       }
-    }, 45000);
+    }, 30000);
 
     // Instant sync on window focus and tab visibility change
     const handleVisibility = () => {
@@ -693,12 +728,28 @@ class StorageService {
 
       // 7. Applications
       if (d.applications && Array.isArray(d.applications)) {
+        const localApps = this.getApplications();
+        const existingRegs = new Set(localApps.map((a: any) => a.registration_number));
+        const newApps = d.applications.filter((a: any) => !existingRegs.has(a.registration_number));
+
         const prevStr = localStorage.getItem(STORAGE_KEYS.APPLICATIONS);
         const newStr = JSON.stringify(d.applications);
         this.memCache.applications = d.applications;
         if (prevStr !== newStr) {
           localStorage.setItem(STORAGE_KEYS.APPLICATIONS, newStr);
           changed = true;
+        }
+
+        // Broadcast real-time event for newly arrived applicants to notify admins
+        if (this.hasSyncedWithServer && newApps.length > 0) {
+          for (const newApp of newApps) {
+            const stu = d.students?.[newApp.registration_number] || this.getStudent(newApp.registration_number);
+            this.notifySubscribers('new_applicant_arrived', {
+              registrationNumber: newApp.registration_number,
+              application: newApp,
+              student: stu,
+            });
+          }
         }
       }
 
@@ -2688,6 +2739,10 @@ class StorageService {
     return found || null;
   }
 
+  getStudent(registrationNumber: string): StudentProfile | null {
+    return this.getStudentProfile(registrationNumber);
+  }
+
   saveStudentProfile(profile: StudentProfile): void {
     try {
       const map = this.getStudentsMap();
@@ -2900,16 +2955,114 @@ class StorageService {
   submitApplication(registrationNumber: string): void {
     const app = this.getApplication(registrationNumber);
     if (!app) throw new Error('Aplikasi tidak ditemukan.');
+    const wasNeedFix = app.verification_status === 'perlu_perbaikan' || app.final_status === 'perlu_perbaikan';
     app.final_status = 'submitted';
+    app.verification_status = 'menunggu';
     app.submission_date = new Date().toISOString();
     app.is_locked = true;
     this.saveApplication(app);
-    this.addAuditLog('SUBMIT_APPLICATION', registrationNumber, `Formulir pendaftaran nomor ${registrationNumber} resmi disubmit.`);
+    this.addAuditLog('SUBMIT_APPLICATION', registrationNumber, wasNeedFix ? `Formulir perbaikan berkas nomor ${registrationNumber} resmi diserahkan.` : `Formulir pendaftaran nomor ${registrationNumber} resmi disubmit.`);
     this.notifySubscribers('data_mutated');
     this.triggerAutoSync();
 
-    // Notifikasi otomatis ke email pendaftar: Pendaftaran Berhasil Diajukan
-    this.notifyStudentRegistrationEvent(registrationNumber, 'registration_submitted', 'terdaftar');
+    // Notifikasi otomatis ke email pendaftar: Pendaftaran Berhasil Diajukan / Perbaikan Berhasil Diserahkan
+    if (wasNeedFix) {
+      this.notifyStudentRegistrationEvent(registrationNumber, 'revision_submitted', 'perbaikan_diajukan', {
+        notes: 'Perbaikan berkas dan kelengkapan data pendaftaran Anda telah berhasil diserahkan ke panitia PPDB dan siap diverifikasi ulang.'
+      });
+    } else {
+      this.notifyStudentRegistrationEvent(registrationNumber, 'registration_submitted', 'terdaftar');
+      // Broadcast real-time event for new applicant arrival to notify school admins immediately
+      const student = this.getStudent(registrationNumber);
+      this.notifySubscribers('new_applicant_arrived', {
+        registrationNumber,
+        application: app,
+        student,
+      });
+    }
+  }
+
+  /**
+   * Simulasi notifikasi pendaftar baru masuk untuk pengujian instan bagi admin sekolah
+   */
+  simulateNewApplicantNotification(schoolId?: string): { success: boolean; applicant: any } {
+    const schools = this.getSchools();
+    const targetSchool = schoolId ? schools.find((s) => s.school_id === schoolId) || schools[0] : schools[0];
+    const mockNames = [
+      'Ahmad Fathan Al-Ghifari',
+      'Nurul Aisyah Zahra',
+      'Muhammad Haidar Ali',
+      'Fathimah Az-Zahra',
+      'Rizky Pratama Ramadhan',
+      'Siti Khadijah Azzahra',
+      'Zaidan Arsyad Billah',
+    ];
+    const randomName = mockNames[Math.floor(Math.random() * mockNames.length)];
+    const randomReg = `REG-2027-${Math.floor(1000 + Math.random() * 9000)}`;
+    const pathways: ('zonasi' | 'afirmasi' | 'prestasi' | 'mutasi')[] = ['zonasi', 'afirmasi', 'prestasi', 'mutasi'];
+    const randomPathway = pathways[Math.floor(Math.random() * pathways.length)];
+
+    const mockApp: Application = {
+      application_id: `APP-SIM-${Date.now()}`,
+      registration_number: randomReg,
+      user_id: `USR-SIM-${Date.now()}`,
+      student_id: `STU-SIM-${Date.now()}`,
+      school_id: targetSchool?.school_id || 'SCH-MAN1',
+      admission_year: '2027',
+      pathway: randomPathway,
+      submission_date: new Date().toISOString(),
+      latitude: targetSchool ? targetSchool.latitude + (Math.random() - 0.5) * 0.02 : -6.9,
+      longitude: targetSchool ? targetSchool.longitude + (Math.random() - 0.5) * 0.02 : 109.0,
+      distance_km: Number((0.35 + Math.random() * 2.2).toFixed(2)),
+      max_distance_km: 5.0,
+      zoning_status: 'memenuhi',
+      verification_status: 'menunggu',
+      selection_status: 'menunggu',
+      final_status: 'submitted',
+      step_completed: 5,
+      is_locked: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const mockStudent: StudentProfile = {
+      student_id: mockApp.student_id,
+      user_id: mockApp.user_id,
+      registration_number: randomReg,
+      name: randomName,
+      nik: `3329${Math.floor(100000000000 + Math.random() * 900000000000)}`,
+      nisn: `00${Math.floor(10000000 + Math.random() * 90000000)}`,
+      gender: Math.random() > 0.5 ? 'L' : 'P',
+      birth_place: 'Brebes',
+      birth_date: '2015-06-15',
+      religion: 'Islam',
+      family_card_number: `3329${Math.floor(100000000000 + Math.random() * 900000000000)}`,
+      child_order: 1,
+      total_siblings: 2,
+      family_status: 'Anak Kandung',
+      phone: '081234567890',
+      email: `${randomName.toLowerCase().replace(/[^a-z0-9]/g, '.')}@gmail.com`,
+    };
+
+    // Save student profile to localStorage
+    const studentsMap = this.getStudentsMap();
+    studentsMap[randomReg] = mockStudent;
+    try {
+      localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(studentsMap));
+      this.memCache.students = studentsMap;
+    } catch {}
+
+    // Save application to state
+    this.saveApplication(mockApp);
+
+    // Notify subscribers
+    this.notifySubscribers('new_applicant_arrived', {
+      registrationNumber: randomReg,
+      application: mockApp,
+      student: mockStudent,
+    });
+
+    return { success: true, applicant: { ...mockApp, student: mockStudent } };
   }
 
   deleteApplication(registrationNumber: string): { success: boolean; message: string } {
@@ -3018,8 +3171,8 @@ class StorageService {
     }
     try {
       const data = localStorage.getItem(STORAGE_KEYS.DOCUMENTS);
-      const parsed = data ? JSON.parse(data) : [...INITIAL_DOCUMENTS];
-      const deduplicated = deduplicateDocuments(parsed);
+      const parsed: DocumentItem[] = data ? JSON.parse(data) : [...INITIAL_DOCUMENTS];
+      const deduplicated: DocumentItem[] = deduplicateDocuments(parsed);
       this.memCache.documents = deduplicated;
       return deduplicated;
     } catch {
@@ -3434,11 +3587,15 @@ class StorageService {
       }
     }
     if (!schoolEmail) {
-      schoolEmail = 'panitia.ppdb@madrasah.sch.id';
+      if (school?.school_code === 'MI02' || school?.school_name?.includes("ASY-SYAFI'IYYAH 02")) {
+        schoolEmail = 'mi02jatibarang.brebes@gmail.com';
+      } else {
+        schoolEmail = 'mi02jatibarang.brebes@gmail.com';
+      }
     }
 
-    const schoolPhone = school?.contact_phone || '-';
-    const schoolAddress = school?.address || '-';
+    const schoolPhone = (school?.contact_phone && school.contact_phone !== '-') ? school.contact_phone : '08988857555';
+    const schoolAddress = (school?.address && school.address !== '-') ? school.address : 'Brebes, Jawa Tengah';
     const pathway = app?.pathway || '';
 
     return {
@@ -3461,7 +3618,7 @@ class StorageService {
     school_email?: string;
     school_phone?: string;
     school_address?: string;
-    event_type: 'registration_submitted' | 'verification' | 'selection' | 'announcement' | 'transfer';
+    event_type: 'registration_submitted' | 'revision_submitted' | 'verification' | 'selection' | 'announcement' | 'transfer';
     new_status: string;
     notes?: string;
     pathway?: string;
@@ -3496,7 +3653,7 @@ class StorageService {
    */
   notifyStudentRegistrationEvent(
     registrationNumber: string,
-    eventType: 'registration_submitted' | 'verification' | 'selection' | 'announcement' | 'transfer',
+    eventType: 'registration_submitted' | 'revision_submitted' | 'verification' | 'selection' | 'announcement' | 'transfer',
     newStatus: string,
     options?: {
       notes?: string;
@@ -3886,10 +4043,8 @@ class StorageService {
       );
     }
 
-    // Automatic email notification on graduation status change (lulus / tidak_lulus) from chosen madrasah
-    if (status === 'lulus' || status === 'tidak_lulus') {
-      this.notifyStudentRegistrationEvent(registrationNumber, 'selection', status);
-    }
+    // Automatic email notification on graduation status change (lulus, tidak_lulus, cadangan, menunggu) from chosen madrasah
+    this.notifyStudentRegistrationEvent(registrationNumber, 'selection', status);
 
     return { rerouteResult };
   }

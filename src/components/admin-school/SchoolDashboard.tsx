@@ -68,6 +68,8 @@ interface Props {
   onRefreshData?: () => void;
   activeTab?: SchoolTab;
   onTabChange?: (tab: SchoolTab) => void;
+  highlightRegNumber?: string | null;
+  onClearHighlight?: () => void;
 }
 
 export const SchoolDashboard: React.FC<Props> = ({
@@ -91,6 +93,8 @@ export const SchoolDashboard: React.FC<Props> = ({
   onRefreshData,
   activeTab: controlledTab,
   onTabChange,
+  highlightRegNumber,
+  onClearHighlight,
 }) => {
   const [internalTab, setInternalTab] = useState<SchoolTab>('overview');
   const activeTab = controlledTab !== undefined ? controlledTab : internalTab;
@@ -410,6 +414,8 @@ export const SchoolDashboard: React.FC<Props> = ({
           onExportCsv={onExportCsv}
           onExportExcel={onExportExcel}
           onDeleteApplicant={onDeleteApplicant}
+          highlightRegNumber={highlightRegNumber}
+          onClearHighlight={onClearHighlight}
         />
       )}
 

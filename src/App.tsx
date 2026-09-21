@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   User as UserType,
   StudentProfile,
@@ -30,6 +30,11 @@ import { CentralDashboard } from './components/admin-central/CentralDashboard';
 import { PrintBuktiPendaftaran } from './components/student/PrintBuktiPendaftaran';
 import { AdminProfileModal } from './components/common/AdminProfileModal';
 import { AppSplashScreen } from './components/common/LoadingScreen';
+import {
+  NewApplicantNotificationBanner,
+  NewApplicantItem,
+  playApplicantArrivalChime,
+} from './components/common/NewApplicantNotificationBanner';
 import { CheckCircle2, Clock, XCircle, Search, X, Printer, MapPin, School as SchoolIcon, ShieldAlert, Sparkles, ArrowRight } from 'lucide-react';
 import { formatDistanceIndonesian } from './utils/geo';
 import { exportApplicantsToExcel } from './utils/excelExport';
@@ -153,6 +158,62 @@ export default function App() {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
   const [profileModalTab, setProfileModalTab] = useState<'profile' | 'password'>('profile');
 
+  // Real-time New Applicant Toast / Banner Queue & Notification History
+  const [applicantNotificationQueue, setApplicantNotificationQueue] = useState<NewApplicantItem[]>([]);
+  const [applicantNotificationHistory, setApplicantNotificationHistory] = useState<NewApplicantItem[]>([]);
+  const [highlightApplicantRegNumber, setHighlightApplicantRegNumber] = useState<string | null>(null);
+
+  // Set of known registration numbers to avoid false notifications on initial mount
+  const knownRegNumbersRef = useRef<Set<string>>(new Set());
+  const isInitialSyncDoneRef = useRef<boolean>(false);
+
+  // Helper to handle incoming applicant notification
+  const handleNewApplicantIncoming = useCallback(
+    (app: Application, stu?: StudentProfile | null) => {
+      const activeUser = storageService.getCurrentUser() || currentUser;
+      if (!activeUser || activeUser.role === 'calon_murid') return;
+
+      // Filter by school if admin_sekolah or operator_sekolah
+      if (activeUser.role === 'admin_sekolah' || activeUser.role === 'operator_sekolah') {
+        const userSchoolId = activeUser.school_id;
+        if (userSchoolId && app.school_id && app.school_id !== userSchoolId) {
+          return; // Belongs to another school
+        }
+      }
+
+      const allSchools = storageService.getSchools();
+      const targetSchool = allSchools.find((s) => s.school_id === app.school_id);
+      const studentProfile = stu || storageService.getStudent(app.registration_number);
+
+      const newItem: NewApplicantItem = {
+        id: `notif_${app.registration_number}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        registrationNumber: app.registration_number,
+        application: app,
+        student: studentProfile,
+        schoolName: targetSchool?.school_name,
+        timestamp: Date.now(),
+      };
+
+      // Add to floating banner queue (avoid duplicates of same registration number in active queue)
+      setApplicantNotificationQueue((prev) => {
+        if (prev.some((p) => p.registrationNumber === app.registration_number)) {
+          return prev;
+        }
+        return [newItem, ...prev];
+      });
+
+      // Add to history (max 30 items)
+      setApplicantNotificationHistory((prev) => {
+        const filtered = prev.filter((p) => p.registrationNumber !== app.registration_number);
+        return [newItem, ...filtered].slice(0, 30);
+      });
+
+      // Play soft pleasant chime
+      playApplicantArrivalChime();
+    },
+    [currentUser]
+  );
+
   // Load all initial data from storageService
   const refreshData = useCallback(() => {
     const schList = storageService.getSchools();
@@ -166,6 +227,18 @@ export default function App() {
     const ancList = storageService.getAnnouncements();
     const setObj = storageService.getSettings();
 
+    // Check if new applicants arrived that weren't in known set
+    if (isInitialSyncDoneRef.current) {
+      for (const app of appList) {
+        if (!knownRegNumbersRef.current.has(app.registration_number)) {
+          knownRegNumbersRef.current.add(app.registration_number);
+          handleNewApplicantIncoming(app, stuMap[app.registration_number]);
+        }
+      }
+    } else {
+      appList.forEach((a) => knownRegNumbersRef.current.add(a.registration_number));
+    }
+
     setSchools(schList);
     setApplications(appList);
     setStudents(stuMap);
@@ -176,7 +249,7 @@ export default function App() {
     setAuditLogs(logList);
     setAnnouncements(ancList);
     setSettings(setObj);
-  }, []);
+  }, [handleNewApplicantIncoming]);
 
   useEffect(() => {
     let isMounted = true;
@@ -184,11 +257,16 @@ export default function App() {
     // Fast background sync: doesn't block UI rendering, keeps all devices up to date
     const performBootSync = async () => {
       try {
+        const initialApps = storageService.getApplications();
+        initialApps.forEach((a) => knownRegNumbersRef.current.add(a.registration_number));
         await storageService.syncWithServer(false);
       } catch (err) {
         console.warn('Initial server sync warning:', err);
       } finally {
         if (isMounted) {
+          const freshApps = storageService.getApplications();
+          freshApps.forEach((a) => knownRegNumbersRef.current.add(a.registration_number));
+          isInitialSyncDoneRef.current = true;
           refreshData();
           const user = storageService.getCurrentUser();
           if (user) {
@@ -200,17 +278,24 @@ export default function App() {
 
     performBootSync();
 
-    const unsubscribe = storageService.subscribe(() => {
-      if (isMounted) {
-        refreshData();
+    const unsubscribe = storageService.subscribe((event, data) => {
+      if (!isMounted) return;
+
+      if (event === 'new_applicant_arrived' || event === 'new_applicant_submitted') {
+        if (data?.application) {
+          knownRegNumbersRef.current.add(data.application.registration_number);
+          handleNewApplicantIncoming(data.application, data.student);
+        }
       }
+
+      refreshData();
     });
 
     return () => {
       isMounted = false;
       unsubscribe();
     };
-  }, [refreshData]);
+  }, [refreshData, handleNewApplicantIncoming]);
 
   // Preload all critical images (app logo, school logos) for instantaneous rendering (<0.1s)
   useEffect(() => {
@@ -472,6 +557,42 @@ export default function App() {
     navigate({ viewMode: 'print_preview', printRegNumber: regNumber });
   };
 
+  // Real-time Notification Actions for School Admins & Central Admins
+  const handleOpenApplicantFromNotification = (regNumber: string) => {
+    setHighlightApplicantRegNumber(regNumber);
+    // Dismiss from floating queue
+    setApplicantNotificationQueue((prev) => prev.filter((item) => item.registrationNumber !== regNumber));
+
+    const activeUser = storageService.getCurrentUser() || currentUser;
+    if (activeUser?.role === 'admin_sekolah' || activeUser?.role === 'operator_sekolah') {
+      navigate({ viewMode: 'app', schoolTab: 'applicants' });
+    } else if (activeUser?.role === 'admin_pusat') {
+      navigate({ viewMode: 'app', centralTab: 'applicants' });
+    }
+  };
+
+  const handleDismissApplicantNotification = (id: string) => {
+    setApplicantNotificationQueue((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const handleDismissAllApplicantNotifications = () => {
+    setApplicantNotificationQueue([]);
+  };
+
+  const handleMarkAllNotificationsAsRead = () => {
+    setApplicantNotificationHistory([]);
+    setApplicantNotificationQueue([]);
+  };
+
+  const handleSimulateApplicantNotification = () => {
+    const activeUser = storageService.getCurrentUser() || currentUser;
+    const userSchoolId =
+      activeUser?.role === 'admin_sekolah' || activeUser?.role === 'operator_sekolah'
+        ? activeUser.school_id
+        : undefined;
+    storageService.simulateNewApplicantNotification(userSchoolId);
+  };
+
   // Get active school for current user with fallback
   const currentSchool =
     schools.find((s) => s.school_id === currentUser?.school_id) ||
@@ -483,6 +604,17 @@ export default function App() {
       {/* App Splash Screen on initial boot / sync */}
       {isAppInitialLoading && (
         <AppSplashScreen settings={settings} />
+      )}
+
+      {/* Real-time Floating New Applicant Notification Banner */}
+      {currentUser && currentUser.role !== 'calon_murid' && (
+        <NewApplicantNotificationBanner
+          queue={applicantNotificationQueue}
+          schools={schools}
+          onOpenApplicant={handleOpenApplicantFromNotification}
+          onDismiss={handleDismissApplicantNotification}
+          onDismissAll={handleDismissAllApplicantNotifications}
+        />
       )}
 
       {/* Navbar on app/auth pages (LandingPage has its own dedicated navigation header) */}
@@ -497,6 +629,11 @@ export default function App() {
             setProfileModalTab('profile');
             setIsProfileModalOpen(true);
           }}
+          notifications={applicantNotificationHistory}
+          unreadNotificationsCount={applicantNotificationHistory.length}
+          onOpenApplicantFromNotification={handleOpenApplicantFromNotification}
+          onMarkAllNotificationsAsRead={handleMarkAllNotificationsAsRead}
+          onSimulateApplicantNotification={handleSimulateApplicantNotification}
         />
       )}
 
@@ -630,6 +767,8 @@ export default function App() {
                 onRefreshData={refreshData}
                 activeTab={currentRoute.schoolTab || 'overview'}
                 onTabChange={(tab) => navigate({ schoolTab: tab })}
+                highlightRegNumber={highlightApplicantRegNumber}
+                onClearHighlight={() => setHighlightApplicantRegNumber(null)}
               />
             )}
 
@@ -660,6 +799,8 @@ export default function App() {
                 onRefreshData={refreshData}
                 activeTab={(currentRoute.centralTab as CentralTab) || 'overview'}
                 onTabChange={(tab) => navigate({ centralTab: tab })}
+                highlightRegNumber={highlightApplicantRegNumber}
+                onClearHighlight={() => setHighlightApplicantRegNumber(null)}
               />
             )}
           </div>

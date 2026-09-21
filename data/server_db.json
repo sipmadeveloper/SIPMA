@@ -61,19 +61,22 @@
   "applications": [],
   "documents": [
     {
-      "document_id": "DOC-TEST-123",
+      "document_id": "DOC-TEST-1789726494998",
       "registration_number": "REG-TEST-001",
-      "document_type": "kartu_keluarga",
-      "file_name": "Ahmad_Fauzi_REG-TEST-001_Kartu_Keluarga_KK.pdf",
-      "file_size_kb": 1,
-      "drive_file_id": "1IWCC0h_ovnmchXGy7jJsuGZahcgARuuv",
-      "drive_url": "https://lh3.googleusercontent.com/d/1IWCC0h_ovnmchXGy7jJsuGZahcgARuuv",
-      "upload_time": "2026-09-07T16:14:23.733Z",
+      "document_type": "kk",
+      "file_name": "Budi_Santoso_REG-TEST-001_Kartu_Keluarga_KK.png",
+      "file_size_kb": 0,
+      "drive_file_id": "1RnhwtCONkhN82w4mG4Kv9hHFYRMssOji",
+      "drive_url": "https://lh3.googleusercontent.com/d/1RnhwtCONkhN82w4mG4Kv9hHFYRMssOji",
+      "upload_time": "2026-09-18T10:15:00.582Z",
       "verification_status": "menunggu",
       "notes": "",
-      "local_url": "",
-      "file_data_base64": "",
-      "view_url": "https://lh3.googleusercontent.com/d/1IWCC0h_ovnmchXGy7jJsuGZahcgARuuv"
+      "local_url": "/uploads/Budi_Santoso_REG-TEST-001_Kartu_Keluarga_KK.png",
+      "file_data_base64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+      "view_url": "https://lh3.googleusercontent.com/d/1RnhwtCONkhN82w4mG4Kv9hHFYRMssOji",
+      "student_id": "STD-TEST",
+      "document_title": "Kartu Keluarga",
+      "mime_type": "image/png"
     },
     {
       "document_id": "TEST-DOC-1",
@@ -126,22 +129,19 @@
       "view_url": "https://lh3.googleusercontent.com/d/1EcmHjB8gAPVWh4rAwkKXwl88nAlY_9T2"
     },
     {
-      "document_id": "DOC-TEST-1789726494998",
+      "document_id": "DOC-TEST-123",
       "registration_number": "REG-TEST-001",
-      "student_id": "STD-TEST",
-      "document_type": "kk",
-      "document_title": "Kartu Keluarga",
-      "file_name": "Budi_Santoso_REG-TEST-001_Kartu_Keluarga_KK.png",
-      "file_data_base64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-      "mime_type": "image/png",
-      "drive_file_id": "1RnhwtCONkhN82w4mG4Kv9hHFYRMssOji",
-      "drive_url": "https://lh3.googleusercontent.com/d/1RnhwtCONkhN82w4mG4Kv9hHFYRMssOji",
-      "local_url": "/uploads/Budi_Santoso_REG-TEST-001_Kartu_Keluarga_KK.png",
-      "upload_time": "2026-09-18T10:15:00.582Z",
-      "file_size_kb": 0,
+      "document_type": "kartu_keluarga",
+      "file_name": "Ahmad_Fauzi_REG-TEST-001_Kartu_Keluarga_KK.pdf",
+      "file_size_kb": 1,
+      "drive_file_id": "1IWCC0h_ovnmchXGy7jJsuGZahcgARuuv",
+      "drive_url": "https://lh3.googleusercontent.com/d/1IWCC0h_ovnmchXGy7jJsuGZahcgARuuv",
+      "upload_time": "2026-09-07T16:14:23.733Z",
       "verification_status": "menunggu",
       "notes": "",
-      "view_url": "https://lh3.googleusercontent.com/d/1RnhwtCONkhN82w4mG4Kv9hHFYRMssOji"
+      "local_url": "",
+      "file_data_base64": "",
+      "view_url": "https://lh3.googleusercontent.com/d/1IWCC0h_ovnmchXGy7jJsuGZahcgARuuv"
     }
   ],
   "schools": [
@@ -209,6 +209,28 @@
   ],
   "audit_logs": [
     {
+      "log_id": "LOG-MAIL-1789930908020",
+      "timestamp": "2026-09-20T19:01:48.020Z",
+      "user_id": "SYSTEM",
+      "username": "Panitia PPDB MI ASY-SYAFI'IYYAH 02",
+      "role": "system",
+      "action": "SEND_EMAIL_NOTIFICATION",
+      "target": "REG-TEST-001",
+      "description": "Notifikasi email PPDB [VERIFICATION: terverifikasi] dikirim ke test.calon@gmail.com dari pengirim madrasah 'MI ASY-SYAFI'IYYAH 02' (mi02jatibarang.brebes@gmail.com). (Tersimpan di antrean sistem)",
+      "status": "queued"
+    },
+    {
+      "log_id": "LOG-MAIL-1789930820987",
+      "timestamp": "2026-09-20T19:00:20.987Z",
+      "user_id": "SYSTEM",
+      "username": "Panitia PPDB MI ASY-SYAFI'IYYAH 02",
+      "role": "system",
+      "action": "SEND_EMAIL_NOTIFICATION",
+      "target": "REG-TEST-001",
+      "description": "Notifikasi email PPDB [VERIFICATION: terverifikasi] dikirim ke test.calon@gmail.com dari pengirim madrasah 'MI ASY-SYAFI'IYYAH 02' (mi02jatibarang.brebes@gmail.com). (Tersimpan di antrean sistem)",
+      "status": "queued"
+    },
+    {
       "log_id": "LOG-MAIL-1789267007148",
       "timestamp": "2026-09-13T02:36:47.148Z",
       "user_id": "SYSTEM",
@@ -220,5 +242,5 @@
       "status": "queued"
     }
   ],
-  "last_updated": "2026-09-19T07:37:29.426Z"
+  "last_updated": "2026-09-20T19:01:48.020Z"
 }

@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { User as UserType, School, SystemSettings } from '../../types/sipma';
 import { normalizeImageUrl, handleImageError } from '../../utils/imageUrl';
+import { NotificationBellDropdown } from '../common/NotificationBellDropdown';
+import { NewApplicantItem } from '../common/NewApplicantNotificationBanner';
 
 interface Props {
   currentUser: UserType | null;
@@ -19,6 +21,11 @@ interface Props {
   onLogout: () => void;
   onNavigateHome: () => void;
   onOpenProfile?: () => void;
+  notifications?: NewApplicantItem[];
+  unreadNotificationsCount?: number;
+  onOpenApplicantFromNotification?: (regNumber: string) => void;
+  onMarkAllNotificationsAsRead?: () => void;
+  onSimulateApplicantNotification?: () => void;
 }
 
 export const Navbar: React.FC<Props> = ({
@@ -28,6 +35,11 @@ export const Navbar: React.FC<Props> = ({
   onLogout,
   onNavigateHome,
   onOpenProfile,
+  notifications = [],
+  unreadNotificationsCount = 0,
+  onOpenApplicantFromNotification,
+  onMarkAllNotificationsAsRead,
+  onSimulateApplicantNotification,
 }) => {
   const getRoleBadge = () => {
     switch (currentUser?.role) {
@@ -111,7 +123,18 @@ export const Navbar: React.FC<Props> = ({
         {/* User Right Menu */}
         <div className="flex items-center gap-3">
           {currentUser ? (
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2">
+              {/* Notification Bell Dropdown for Admin & Operators */}
+              {currentUser.role !== 'calon_murid' && onOpenApplicantFromNotification && onMarkAllNotificationsAsRead && (
+                <NotificationBellDropdown
+                  notifications={notifications}
+                  unreadCount={unreadNotificationsCount}
+                  onOpenApplicant={onOpenApplicantFromNotification}
+                  onMarkAllAsRead={onMarkAllNotificationsAsRead}
+                  onSimulateTestApplicant={onSimulateApplicantNotification}
+                />
+              )}
+
               <button
                 type="button"
                 onClick={onOpenProfile}

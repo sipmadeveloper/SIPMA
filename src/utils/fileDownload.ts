@@ -265,7 +265,7 @@ export function getDocumentUniqueKey(doc: {
  * Filter out duplicate documents, merging the most up-to-date metadata
  * and preserving existing document IDs and drive IDs.
  */
-export function deduplicateDocuments<T extends { registration_number?: string; document_type?: string; document_id?: string; upload_time?: string; drive_file_id?: string; drive_url?: string; local_url?: string; file_name?: string }>(
+export function deduplicateDocuments<T extends { registration_number?: string; document_type?: string } = DocumentItem>(
   docs: T[]
 ): T[] {
   if (!Array.isArray(docs)) return [];
@@ -276,31 +276,33 @@ export function deduplicateDocuments<T extends { registration_number?: string; d
     const key = getDocumentUniqueKey(doc);
     const existing = map.get(key);
 
-    const normalizedDoc: T = {
+    const normalizedDoc = {
       ...doc,
       document_type: normalizeDocumentType(doc.document_type || ''),
-    };
+    } as T;
 
     if (!existing) {
       map.set(key, normalizedDoc);
     } else {
-      const existingTime = existing.upload_time ? new Date(existing.upload_time).getTime() : 0;
-      const docTime = doc.upload_time ? new Date(doc.upload_time).getTime() : 0;
+      const existingDoc = existing as any;
+      const docAny = doc as any;
+      const existingTime = existingDoc.upload_time ? new Date(existingDoc.upload_time).getTime() : 0;
+      const docTime = docAny.upload_time ? new Date(docAny.upload_time).getTime() : 0;
 
-      const merged: T = {
+      const merged = {
         ...existing,
         ...normalizedDoc,
-        document_id: existing.document_id || normalizedDoc.document_id,
-        drive_file_id: normalizedDoc.drive_file_id || existing.drive_file_id || '',
-        drive_url: normalizedDoc.drive_url || existing.drive_url || '',
-        local_url: normalizedDoc.local_url || existing.local_url || '',
-        file_name: normalizedDoc.file_name || existing.file_name || '',
-      };
+        document_id: existingDoc.document_id || docAny.document_id,
+        drive_file_id: docAny.drive_file_id || existingDoc.drive_file_id || '',
+        drive_url: docAny.drive_url || existingDoc.drive_url || '',
+        local_url: docAny.local_url || existingDoc.local_url || '',
+        file_name: docAny.file_name || existingDoc.file_name || '',
+      } as T;
 
       if (docTime >= existingTime) {
         map.set(key, merged);
       } else {
-        map.set(key, { ...merged, ...existing });
+        map.set(key, { ...merged, ...existing } as T);
       }
     }
   }

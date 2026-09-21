@@ -719,6 +719,26 @@ function extractDriveIdFromAnyUrl(url) {
 }
 
 /**
+ * Normalisasi Document Type di GAS untuk menjamin Zero Duplicate
+ */
+function normalizeDocumentTypeGAS(type) {
+  if (!type) return "dokumen";
+  var t = String(type).toLowerCase().trim().replace(/[\s-]+/g, "_");
+  if (t === "kk" || t === "kartu_keluarga") return "kartu_keluarga";
+  if (t === "akta" || t === "akta_kelahiran" || t === "akta_lahir") return "akta_kelahiran";
+  if (t === "ijazah" || t === "skl" || t === "ijazah_skl") return "ijazah_skl";
+  if (t === "foto" || t === "pas_foto" || t === "foto_murid" || t === "pas_foto_3x4") return "foto";
+  if (t === "kip" || t === "pkh" || t === "kks" || t === "kartu_afirmasi" || t === "afirmasi") return "kartu_afirmasi";
+  if (t === "dispensasi" || t === "surat_dispensasi") return "surat_dispensasi";
+  if (t === "prestasi" || t === "sertifikat" || t === "sertifikat_prestasi" || t === "piagam") return "sertifikat_prestasi";
+  if (t === "mutasi" || t === "surat_mutasi" || t === "penugasan") return "surat_mutasi";
+  if (t === "avatar" || t === "foto_profil") return "foto_profil";
+  if (t === "logo_sekolah" || t === "school_logo") return "logo_sekolah";
+  if (t === "logo_aplikasi" || t === "app_logo") return "logo_aplikasi";
+  return t;
+}
+
+/**
  * 3. UPLOAD DOKUMEN KE GOOGLE DRIVE & SINKRONISASI DATABASE GOOGLE SHEETS
  * Sesuai Urutan Hirarki Otomatis:
  * - Berkas Calon Murid:
@@ -989,10 +1009,12 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
   var existingRows = docSheet.getDataRange().getValues();
   var foundRowIndex = -1;
   var oldSheetDriveFileId = "";
+  var normDocType = normalizeDocumentTypeGAS(docType);
 
   for (var r = 1; r < existingRows.length; r++) {
+    var rowDocType = String(existingRows[r][2] || "").trim();
     if (String(existingRows[r][1]).trim() === String(data.registration_number).trim() &&
-        String(existingRows[r][2]).trim() === docType) {
+        (rowDocType === docType || normalizeDocumentTypeGAS(rowDocType) === normDocType)) {
       foundRowIndex = r + 1;
       docId = String(existingRows[r][0]); // Pertahankan docId asli
       oldSheetDriveFileId = String(existingRows[r][5] || "").trim();
@@ -1283,25 +1305,26 @@ function handleDeleteFile(data, spreadsheetId) {
   var docSheet = ss.getSheetByName(SHEETS.DOCUMENTS);
 
   // Jika driveFileId belum ada, cari barisnya di Sheet Documents
+  var normTargetDocType = docType ? normalizeDocumentTypeGAS(docType) : "";
   if (docSheet && docSheet.getLastRow() > 1) {
     var docRows = docSheet.getDataRange().getValues();
     for (var r = docRows.length - 1; r >= 1; r--) {
       var match = false;
+      var rowDocType = String(docRows[r][2] || "").trim();
       if (documentId && String(docRows[r][0]).trim() === String(documentId).trim()) match = true;
       if (driveFileId && String(docRows[r][5]).trim() === String(driveFileId).trim()) match = true;
-      if (regNumber && docType && String(docRows[r][1]).trim() === String(regNumber).trim() && String(docRows[r][2]).trim() === docType) match = true;
+      if (regNumber && normTargetDocType && String(docRows[r][1]).trim() === String(regNumber).trim() && (rowDocType === docType || normalizeDocumentTypeGAS(rowDocType) === normTargetDocType)) match = true;
       if (match) {
         if (!driveFileId) {
           driveFileId = String(docRows[r][5]).trim();
         }
         if (!docType) {
-          docType = String(docRows[r][2]).trim();
+          docType = rowDocType;
         }
         if (!regNumber) {
           regNumber = String(docRows[r][1]).trim();
         }
         docSheet.deleteRow(r + 1);
-        break;
       }
     }
   }
@@ -1476,39 +1499,50 @@ function handleSendNotificationEmail(data, targetSpreadsheetId) {
 
   // 1. TAHAP PENDAFTARAN BERHASIL DISERAHKAN
   if (eventType === "registration_submitted" || eventType === "submission") {
-    subject = "[SIPMA] Bukti Pendaftaran Berhasil Diajukan - " + studentName + " (" + regNumber + ")";
+    subject = "[PPDB " + schoolName + "] Bukti Pengajuan Pendaftaran: " + studentName + " (" + regNumber + ")";
     statusBadge = "PENDAFTARAN BERHASIL DIAJUKAN";
     badgeColor = "#059669"; // Emerald
-    headline = "Selamat! Formulir pendaftaran Anda telah berhasil diserahkan ke Panitia PPDB " + schoolName + ".";
-    detailHtml = "<p>Data biodata diri, data orang tua/wali, titik lokasi tempat tinggal, serta dokumen berkas persyaratan Anda telah terkunci di sistem dan diteruskan ke panitia pemeriksa.</p>" +
+    headline = "Formulir pendaftaran Anda telah berhasil diserahkan ke Panitia PPDB " + schoolName + ".";
+    detailHtml = "<p>Data biodata diri, data orang tua/wali, titik lokasi tempat tinggal, serta dokumen berkas persyaratan Anda telah tercatat di sistem panitia pemeriksa.</p>" +
       "<div style='background-color:#ecfdf5;border-left:4px solid #10b981;padding:14px;margin:14px 0;border-radius:6px;font-size:13px;color:#065f46;'>" +
-      "<b>Langkah Selanjutnya:</b> Panitia PPDB " + schoolName + " akan melakukan verifikasi keabsahan dokumen berkas yang Anda lampirkan. Pantau status berkas secara berkala melalui akun portal pendaftaran Anda." +
+      "<b>Langkah Selanjutnya:</b> Panitia PPDB " + schoolName + " akan memverifikasi kelengkapan dan keabsahan berkas yang Anda unggah. Pantau status berkas secara berkala melalui akun portal pendaftaran Anda." +
       "</div>" +
-      "<p style='margin-top:10px;'>Simpan nomor pendaftaran <b>" + regNumber + "</b> ini sebagai bukti sah keikutsertaan Anda.</p>";
+      "<p style='margin-top:10px;'>Nomor registrasi resmi Anda: <b>" + regNumber + "</b>.</p>";
+  }
+  // 1b. TAHAP PERBAIKAN BERKAS DISERAHKAN ULANG
+  else if (eventType === "revision_submitted") {
+    subject = "[PPDB " + schoolName + "] Bukti Penyerahan Berkas Perbaikan: " + studentName + " (" + regNumber + ")";
+    statusBadge = "BERKAS PERBAIKAN DITERIMA";
+    badgeColor = "#2563eb"; // Blue
+    headline = "Perbaikan berkas dan data pendaftaran Anda telah berhasil diserahkan ke Panitia PPDB " + schoolName + ".";
+    detailHtml = "<p>Dokumen revisi yang Anda unggah telah tercatat di sistem dan masuk kembali ke antrean verifikasi panitia pemeriksa.</p>" +
+      "<div style='background-color:#eff6ff;border-left:4px solid #3b82f6;padding:12px;margin:12px 0;border-radius:6px;font-size:13px;color:#1e40af;'>" +
+      "<b>Status Saat Ini:</b> Menunggu peninjauan ulang oleh Panitia PPDB " + schoolName + ". Anda akan menerima email notifikasi segera setelah berkas selesai diverifikasi." +
+      "</div>";
   }
   // 2. TAHAP VERIFIKASI BERKAS
   else if (eventType === "verification") {
     if (newStatus === "terverifikasi") {
-      subject = "[SIPMA] Berkas Pendaftaran DIVERIFIKASI - " + studentName + " (" + regNumber + ")";
+      subject = "[PPDB " + schoolName + "] Hasil Verifikasi Berkas: Terverifikasi (Lengkap) - " + studentName + " (" + regNumber + ")";
       statusBadge = "BERKAS TERVERIFIKASI (VALID)";
       badgeColor = "#059669"; // Emerald
-      headline = "Kabar Baik! Seluruh berkas pendaftaran Anda telah berhasil diverifikasi oleh Panitia PPDB " + schoolName + ".";
+      headline = "Kabar Baik: Seluruh berkas persyaratan pendaftaran Anda telah selesai diverifikasi oleh Panitia PPDB " + schoolName + ".";
       detailHtml = "<p>Seluruh dokumen dan berkas persyaratan yang Anda unggah telah diperiksa oleh panitia dan dinyatakan <b>LENGKAP, VALID & MEMENUHI SYARAT</b>.</p>" +
         "<div style='background-color:#ecfdf5;border-left:4px solid #10b981;padding:12px;margin:12px 0;border-radius:6px;font-size:13px;color:#065f46;'>" +
         "<b>Tahap Berikutnya:</b> Nama calon peserta didik kini secara resmi masuk ke tahap perangkingan dan seleksi penerimaan murid baru sesuai kuota jalur yang dipilih." +
         "</div>";
     } else if (newStatus === "perlu_perbaikan") {
-      subject = "[SIPMA] PENTING: Berkas Pendaftaran Perlu Perbaikan - " + studentName + " (" + regNumber + ")";
+      subject = "[PPDB " + schoolName + "] Catatan Verifikasi Berkas: Perlu Perbaikan - " + studentName + " (" + regNumber + ")";
       statusBadge = "PERLU PERBAIKAN BERKAS";
       badgeColor = "#d97706"; // Amber
       headline = "Perhatian: Terdapat berkas pendaftaran yang memerlukan perbaikan dari Anda.";
-      detailHtml = "<p>Panitia pemeriksa berkas di <b>" + schoolName + "</b> menemukan catatan pada dokumen yang Anda lampirkan:</p>" +
+      detailHtml = "<p>Panitia pemeriksa berkas di <b>" + schoolName + "</b> memberikan catatan pada dokumen pendaftaran:</p>" +
         "<div style='background-color:#fef3c7;border-left:4px solid #f59e0b;padding:14px;margin:12px 0;border-radius:6px;font-size:14px;color:#92400e;line-height:1.5;'>" +
         "<b>Catatan Panitia:</b><br/>" + (notes || "Mohon periksa kembali kelengkapan dokumen dan unggah berkas pengganti yang lebih jelas.") +
         "</div>" +
         "<p><b>Tindakan Diperlukan:</b> Akses formulir pendaftaran Anda pada portal SIPMA, masuk ke menu unggah dokumen, lalu klik tombol <b>Ganti File</b> untuk mengunggah dokumen revisi agar pendaftaran Anda dapat segera disetujui.</p>";
     } else if (newStatus === "ditolak") {
-      subject = "[SIPMA] Pemberitahuan Status Verifikasi Berkas - " + studentName + " (" + regNumber + ")";
+      subject = "[PPDB " + schoolName + "] Hasil Verifikasi Berkas: Berkas Ditolak - " + studentName + " (" + regNumber + ")";
       statusBadge = "BERKAS DITOLAK";
       badgeColor = "#dc2626"; // Red
       headline = "Pemberitahuan hasil pemeriksaan berkas persyaratan administrasi pendaftaran.";
@@ -1522,7 +1556,7 @@ function handleSendNotificationEmail(data, targetSpreadsheetId) {
   // 3. TAHAP SELEKSI AKHIR & KELULUSAN
   else if (eventType === "selection") {
     if (newStatus === "lulus") {
-      subject = "[SIPMA] SELAMAT! Anda Dinyatakan LULUS Seleksi PPDB di " + schoolName + " - " + regNumber;
+      subject = "[PPDB " + schoolName + "] Pengumuman Kelulusan Seleksi: Dinyatakan LULUS - " + studentName + " (" + regNumber + ")";
       statusBadge = "SELAMAT, ANDA LULUS SELEKSI!";
       badgeColor = "#059669"; // Emerald
       headline = "Alhamdulillah! Anda secara resmi dinyatakan LULUS dalam seleksi penerimaan murid baru.";
@@ -1535,7 +1569,7 @@ function handleSendNotificationEmail(data, targetSpreadsheetId) {
         "</div>" +
         "<p><b>Instruksi Daftar Ulang:</b> Silakan masuk ke akun portal SIPMA Anda untuk mengunduh dan mencetak <b>Bukti Tanda Lulus Seleksi</b> serta melihat jadwal pelaksanaan daftar ulang di " + schoolName + ".</p>";
     } else if (newStatus === "tidak_lulus") {
-      subject = "[SIPMA] Pengumuman Hasil Seleksi PPDB - " + studentName + " (" + regNumber + ")";
+      subject = "[PPDB " + schoolName + "] Pengumuman Hasil Seleksi: Belum Masuk Kuota - " + studentName + " (" + regNumber + ")";
       statusBadge = "TIDAK LULUS SELEKSI";
       badgeColor = "#64748b"; // Slate
       headline = "Pengumuman Hasil Seleksi Akhir PPDB Madrasah.";
@@ -1545,7 +1579,7 @@ function handleSendNotificationEmail(data, targetSpreadsheetId) {
         "<b>Rekomendasi Lanjutan:</b> Sistem SIPMA menyediakan fitur pencarian madrasah alternatif terdekat yang masih memiliki sisa kuota. Silakan login ke portal SIPMA untuk melihat pilihan rekomendasi madrasah lain." +
         "</div>";
     } else if (newStatus === "cadangan" || newStatus === "waiting_list") {
-      subject = "[SIPMA] Informasi Status Cadangan Seleksi PPDB - " + studentName + " (" + regNumber + ")";
+      subject = "[PPDB " + schoolName + "] Informasi Status Cadangan (Waiting List) - " + studentName + " (" + regNumber + ")";
       statusBadge = "STATUS CADANGAN (WAITING LIST)";
       badgeColor = "#d97706"; // Amber
       headline = "Status Seleksi: Anda Masuk Daftar Cadangan / Waiting List.";
@@ -1555,7 +1589,7 @@ function handleSendNotificationEmail(data, targetSpreadsheetId) {
   }
   // 4. PENGUMUMAN RESMI DARI MADRASAH
   else if (eventType === "announcement") {
-    subject = "[SIPMA] Pengumuman Resmi PPDB " + schoolName + ": " + (data.title || "Pemberitahuan Pendaftar");
+    subject = "[PPDB " + schoolName + "] Pengumuman Resmi: " + (data.title || "Pemberitahuan Pendaftar");
     statusBadge = "PENGUMUMAN RESMI";
     badgeColor = "#2563eb"; // Blue
     headline = data.title || ("Pemberitahuan Resmi dari Panitia PPDB " + schoolName);
@@ -1566,7 +1600,7 @@ function handleSendNotificationEmail(data, targetSpreadsheetId) {
   }
   // 5. PEMINDAHAN / PENGALIHAN BERKAS
   else if (eventType === "transfer" || eventType === "reroute") {
-    subject = "[SIPMA] Pemberitahuan Pemindahan Berkas Pendaftaran - " + studentName + " (" + regNumber + ")";
+    subject = "[PPDB " + schoolName + "] Pemberitahuan Pemindahan Berkas Pendaftaran - " + studentName + " (" + regNumber + ")";
     statusBadge = "BERKAS DIALIHKAN";
     badgeColor = "#7c3aed"; // Purple
     headline = "Berkas pendaftaran Anda telah berhasil dialihkan ke madrasah tujuan baru.";
@@ -1578,7 +1612,7 @@ function handleSendNotificationEmail(data, targetSpreadsheetId) {
 
   // Fallback subjek jika belum terisi
   if (!subject) {
-    subject = "[SIPMA] Pemberitahuan PPDB Madrasah - " + studentName + " (" + regNumber + ")";
+    subject = "[PPDB " + schoolName + "] Pemberitahuan Pendaftaran - " + studentName + " (" + regNumber + ")";
     statusBadge = (newStatus || "PEMBERITAHUAN").toUpperCase();
     headline = "Terdapat pembaruan status pendaftaran Anda di sistem SIPMA.";
     detailHtml = "<p>" + (notes || "Silakan cek akun portal pendaftaran Anda untuk informasi lebih lengkap.") + "</p>";
@@ -1600,6 +1634,20 @@ function handleSendNotificationEmail(data, targetSpreadsheetId) {
     detailHtml: detailHtml
   });
 
+  // Plain-text alternative (Anti-Spam standard: avoids MIME_HTML_ONLY penalty)
+  var plainTextBody = (appName || "SIPMA PPDB Madrasah") + "\n" +
+    "Panitia PPDB: " + schoolName + "\n\n" +
+    "Yth. " + studentName + " (No. Reg: " + regNumber + ")\n" +
+    "Status: " + statusBadge + "\n\n" +
+    headline + "\n\n" +
+    (notes ? ("Catatan Panitia: " + notes + "\n\n") : "") +
+    "Untuk informasi selengkapnya, silakan kunjungi portal SIPMA.\n\n" +
+    "Panitia Penerimaan Peserta Didik Baru (PPDB)\n" +
+    schoolName + "\n" +
+    (schoolAddress ? ("Alamat: " + schoolAddress + "\n") : "") +
+    (schoolEmail ? ("Email: " + schoolEmail + "\n") : "") +
+    (schoolPhone ? ("Telp/WA: " + schoolPhone + "\n") : "");
+
   // Konfigurasi pengirim email:
   // Nama Pengirim: Panitia PPDB [Nama Madrasah]
   // Reply-To: [Email Madrasah yang dipilih saat mendaftar]
@@ -1607,12 +1655,19 @@ function handleSendNotificationEmail(data, targetSpreadsheetId) {
   var mailOptions = {
     to: email,
     subject: subject,
+    body: plainTextBody,
     htmlBody: htmlBody,
     name: senderDisplayName
   };
 
   if (schoolEmail && schoolEmail.indexOf("@") > -1) {
     mailOptions.replyTo = schoolEmail;
+    try {
+      var aliases = GmailApp.getAliases();
+      if (aliases && aliases.indexOf(schoolEmail) > -1) {
+        mailOptions.from = schoolEmail;
+      }
+    } catch (aliasErr) {}
   }
 
   // Kirim dengan perlindungan error bertingkat (MailApp -> GmailApp -> error safe return)
@@ -1628,11 +1683,19 @@ function handleSendNotificationEmail(data, targetSpreadsheetId) {
     };
   } catch (errMail) {
     try {
-      GmailApp.sendEmail(email, subject, "", {
+      var gmailOptions = {
         htmlBody: htmlBody,
         name: senderDisplayName,
         replyTo: (schoolEmail && schoolEmail.indexOf("@") > -1) ? schoolEmail : undefined
-      });
+      };
+      try {
+        var gAliases = GmailApp.getAliases();
+        if (schoolEmail && gAliases && gAliases.indexOf(schoolEmail) > -1) {
+          gmailOptions.from = schoolEmail;
+        }
+      } catch (e2) {}
+
+      GmailApp.sendEmail(email, subject, plainTextBody, gmailOptions);
       return {
         success: true,
         message: "Email notifikasi berhasil dikirim via GmailApp ke " + email,
@@ -2303,8 +2366,8 @@ export const GAS_SETUP_STEPS = [
   },
   {
     step: 5,
-    title: 'Deploy sebagai Web App',
-    description: 'Klik tombol "Deploy" (Terapkan) > "New deployment" (Penerapan baru). Pilih type "Web app". Atur: Execute as: "Me" dan Who has access: "Anyone" (Siapa saja). Salin URL Web App yang berakhiran /exec.',
+    title: 'Deploy sebagai Web App & Berikan Izin Akses Email',
+    description: 'Klik tombol "Deploy" (Terapkan) > "New deployment" (Penerapan baru). Pilih type "Web app". Atur: Execute as: "Me" dan Who has access: "Anyone" (Siapa saja). Klik "Deploy", lalu klik "Authorize access" (izinkan akses Spreadsheet, Drive, dan Kirim Email Notifikasi PPDB atas nama madrasah). Salin URL Web App yang berakhiran /exec.',
   },
   {
     step: 6,

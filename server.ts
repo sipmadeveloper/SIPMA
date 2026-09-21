@@ -171,11 +171,71 @@ function warmUpImageCache() {
 
 warmUpImageCache();
 
-function persistServerDb() {
+// Active Server-Sent Events (SSE) clients for instant real-time synchronization (< 50ms)
+const sseClients: Response[] = [];
+
+export function broadcastServerDbChange(reason: string = 'data_changed') {
+  const payload = JSON.stringify({
+    type: 'mutation',
+    reason,
+    timestamp: serverDb.last_updated,
+  });
+  for (let i = sseClients.length - 1; i >= 0; i--) {
+    try {
+      sseClients[i].write(`data: ${payload}\n\n`);
+    } catch {
+      sseClients.splice(i, 1);
+    }
+  }
+}
+
+// Auto-enrich schools with official contact email & phone to guarantee correct sender identity
+function enrichServerDbSchools() {
+  try {
+    if (!serverDb.schools || !Array.isArray(serverDb.schools)) return;
+    let mutated = false;
+    for (const sch of serverDb.schools) {
+      if (!sch.contact_email || sch.contact_email.trim() === '') {
+        const schAdmin = serverDb.users?.find((u: any) =>
+          u.school_id === sch.school_id && (u.role === 'admin_sekolah' || u.role === 'operator_sekolah')
+        );
+        if (schAdmin?.email) {
+          sch.contact_email = schAdmin.email;
+          mutated = true;
+        } else if (sch.school_code === 'MI02' || sch.school_name?.includes("ASY-SYAFI'IYYAH 02")) {
+          sch.contact_email = 'mi02jatibarang.brebes@gmail.com';
+          mutated = true;
+        }
+      }
+      if (!sch.contact_phone || sch.contact_phone.trim() === '') {
+        const schAdmin = serverDb.users?.find((u: any) =>
+          u.school_id === sch.school_id && (u.role === 'admin_sekolah' || u.role === 'operator_sekolah')
+        );
+        if (schAdmin?.phone) {
+          sch.contact_phone = String(schAdmin.phone);
+          mutated = true;
+        } else if (sch.school_code === 'MI02' || sch.school_name?.includes("ASY-SYAFI'IYYAH 02")) {
+          sch.contact_phone = '08988857555';
+          mutated = true;
+        }
+      }
+    }
+    if (mutated) {
+      persistServerDb(false);
+    }
+  } catch {}
+}
+
+enrichServerDbSchools();
+
+function persistServerDb(broadcast: boolean = true) {
   try {
     serverDb.last_updated = new Date().toISOString();
     fs.writeFileSync(DB_FILE, JSON.stringify(serverDb, null, 2), 'utf-8');
     warmUpImageCache();
+    if (broadcast) {
+      broadcastServerDbChange();
+    }
   } catch (err) {
     console.error('Error persisting server_db.json:', err);
   }
@@ -404,6 +464,69 @@ function mergeGasDataIntoServerDb(gasData: any): boolean {
   return mutated;
 }
 
+function normalizeDocType(type: string): string {
+  if (!type) return 'dokumen';
+  const t = String(type).toLowerCase().trim().replace(/[\s-]+/g, '_');
+  if (t === 'kk' || t === 'kartu_keluarga') return 'kartu_keluarga';
+  if (t === 'akta' || t === 'akta_kelahiran' || t === 'akta_lahir') return 'akta_kelahiran';
+  if (t === 'ijazah' || t === 'skl' || t === 'ijazah_skl') return 'ijazah_skl';
+  if (t === 'foto' || t === 'pas_foto' || t === 'foto_murid' || t === 'pas_foto_3x4') return 'foto';
+  if (t === 'kip' || t === 'pkh' || t === 'kks' || t === 'kartu_afirmasi' || t === 'afirmasi') return 'kartu_afirmasi';
+  if (t === 'dispensasi' || t === 'surat_dispensasi') return 'surat_dispensasi';
+  if (t === 'prestasi' || t === 'sertifikat' || t === 'sertifikat_prestasi' || t === 'piagam') return 'sertifikat_prestasi';
+  if (t === 'mutasi' || t === 'surat_mutasi' || t === 'penugasan') return 'surat_mutasi';
+  if (t === 'avatar' || t === 'foto_profil') return 'foto_profil';
+  if (t === 'logo_sekolah' || t === 'school_logo') return 'logo_sekolah';
+  if (t === 'logo_aplikasi' || t === 'app_logo') return 'logo_aplikasi';
+  return t;
+}
+
+function deduplicateDocs(docs: any[]): any[] {
+  if (!Array.isArray(docs)) return [];
+  const map = new Map<string, any>();
+  for (const doc of docs) {
+    if (!doc) continue;
+    const normType = normalizeDocType(doc.document_type || '');
+    const reg = String(doc.registration_number || '').trim();
+    let key = '';
+    if (normType === 'logo_aplikasi') {
+      key = 'logo_aplikasi';
+    } else if (normType === 'logo_sekolah') {
+      key = `logo_sekolah_${String(doc.school_id || reg || 'default').trim()}`;
+    } else if (normType === 'foto_profil' && !reg.startsWith('REG-')) {
+      key = `foto_profil_${String(doc.account_id || doc.user_id || reg || 'user').trim()}`;
+    } else if (reg) {
+      key = `${reg}__${normType}`;
+    } else {
+      key = doc.document_id ? `doc__${doc.document_id}` : `doc__${Math.random()}`;
+    }
+
+    const existing = map.get(key);
+    const normalizedDoc = { ...doc, document_type: normType };
+    if (!existing) {
+      map.set(key, normalizedDoc);
+    } else {
+      const existingTime = existing.upload_time ? new Date(existing.upload_time).getTime() : 0;
+      const docTime = doc.upload_time ? new Date(doc.upload_time).getTime() : 0;
+      const merged = {
+        ...existing,
+        ...normalizedDoc,
+        document_id: existing.document_id || normalizedDoc.document_id,
+        drive_file_id: normalizedDoc.drive_file_id || existing.drive_file_id || '',
+        drive_url: normalizedDoc.drive_url || existing.drive_url || '',
+        local_url: normalizedDoc.local_url || existing.local_url || '',
+        file_name: normalizedDoc.file_name || existing.file_name || '',
+      };
+      if (docTime >= existingTime) {
+        map.set(key, merged);
+      } else {
+        map.set(key, { ...merged, ...existing });
+      }
+    }
+  }
+  return Array.from(map.values());
+}
+
 // Global Reusable Forwarder: Pushes all serverDb data to Google Apps Script & Google Sheets
 async function forwardSyncAllToGas(): Promise<{ success: boolean; message?: string }> {
   const gasUrl = serverDb.settings?.gas_web_app_url;
@@ -413,6 +536,9 @@ async function forwardSyncAllToGas(): Promise<{ success: boolean; message?: stri
   if (!gasUrl || !gasUrl.startsWith('http')) {
     return { success: false, message: 'URL GAS belum dikonfigurasi' };
   }
+
+  // Deduplicate documents before synchronizing with Google Sheets
+  serverDb.documents = deduplicateDocs(serverDb.documents || []);
 
   try {
     const gasPayload = {
@@ -613,6 +739,35 @@ app.get('/api/data', async (req: Request, res: Response) => {
   });
 });
 
+// 3b. Real-Time Server-Sent Events (SSE) Stream: Broadcasts instant database mutations (< 50ms) to all connected clients
+app.get('/api/data/events', (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable reverse-proxy buffering for instant packet delivery
+  res.flushHeaders();
+
+  sseClients.push(res);
+
+  // Send initial connection confirmation
+  res.write(`data: ${JSON.stringify({ type: 'connected', timestamp: serverDb.last_updated })}\n\n`);
+
+  // Heartbeat ping every 25 seconds to keep the connection healthy through Cloud Run / proxy
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(': heartbeat\n\n');
+    } catch {
+      clearInterval(heartbeat);
+    }
+  }, 25000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    const idx = sseClients.indexOf(res);
+    if (idx !== -1) sseClients.splice(idx, 1);
+  });
+});
+
 // Force server to pull latest data from Google Apps Script immediately
 app.post('/api/gas/pull-now', async (req: Request, res: Response) => {
   const gasUrl = req.body?.gas_web_app_url || serverDb.settings?.gas_web_app_url;
@@ -730,7 +885,8 @@ app.post('/api/data/sync', async (req: Request, res: Response) => {
       serverDb.applications = payload.applications.filter((a: any) => !isDemoStudentRecord(a?.registration_number, a?.student_id));
     }
     if (payload.documents !== undefined && Array.isArray(payload.documents)) {
-      serverDb.documents = payload.documents.filter((d: any) => !isDemoStudentRecord(d?.registration_number, d?.student_id));
+      const filtered = payload.documents.filter((d: any) => !isDemoStudentRecord(d?.registration_number, d?.student_id));
+      serverDb.documents = deduplicateDocs(filtered);
     }
     if (payload.schools !== undefined && Array.isArray(payload.schools)) {
       serverDb.schools = payload.schools;
@@ -950,12 +1106,16 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Data dokumen tidak ditemukan.' });
     }
 
+    // Normalize document type to avoid duplicates
+    const normType = normalizeDocType(doc.document_type);
+    doc.document_type = normType;
+
     // Check if replacing an existing document to cleanup old files from Drive & disk
     if (!serverDb.documents) serverDb.documents = [];
     const docIdx = serverDb.documents.findIndex(
       (d: any) =>
         d.document_id === doc.document_id ||
-        (d.registration_number === doc.registration_number && d.document_type === doc.document_type)
+        (d.registration_number === doc.registration_number && normalizeDocType(d.document_type) === normType)
     );
     const prevDoc = docIdx >= 0 ? serverDb.documents[docIdx] : null;
     const oldDriveId = extractDriveFileId(
@@ -1115,13 +1275,14 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
     const targetDocIdx = serverDb.documents.findIndex(
       (d: any) =>
         d.document_id === doc.document_id ||
-        (d.registration_number === doc.registration_number && d.document_type === doc.document_type)
+        (d.registration_number === doc.registration_number && normalizeDocType(d.document_type) === normType)
     );
 
     const effectiveDriveUrl = driveUrl || (driveFileId ? `https://lh3.googleusercontent.com/d/${driveFileId}` : '') || (targetDocIdx >= 0 ? serverDb.documents[targetDocIdx].drive_url : localUrl);
 
     const updatedDocItem = {
       ...doc,
+      document_type: normType,
       file_name: standardFileName,
       drive_file_id: driveFileId || (targetDocIdx >= 0 ? serverDb.documents[targetDocIdx].drive_file_id : ''),
       drive_url: effectiveDriveUrl,
@@ -1134,6 +1295,7 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
     } else {
       serverDb.documents.push(updatedDocItem);
     }
+    serverDb.documents = deduplicateDocs(serverDb.documents);
 
     // If it's a student or user photo, update student photo_url & user record across both tables
     const isPhotoDoc = doc.document_type === 'foto' || doc.document_type === 'pas_foto' || doc.document_type === 'foto_profil' || req.body.is_account;
@@ -1542,9 +1704,36 @@ app.post('/api/notifications/send-status-email', async (req: Request, res: Respo
     }
 
     const finalSchoolName = school_name || targetSchool?.school_name || 'Madrasah Pilihan';
-    const finalSchoolEmail = school_email || targetSchool?.contact_email || '';
-    const finalSchoolPhone = school_phone || targetSchool?.contact_phone || '';
+    let finalSchoolEmail = school_email || targetSchool?.contact_email || '';
+    let finalSchoolPhone = school_phone || targetSchool?.contact_phone || '';
     const finalSchoolAddress = school_address || targetSchool?.address || '';
+
+    // If school email is still empty, look up the school admin or operator associated with the school
+    if (!finalSchoolEmail) {
+      const schId = targetSchool?.school_id;
+      const schAdmin = serverDb.users?.find((u: any) =>
+        (schId && u.school_id === schId) &&
+        (u.role === 'admin_sekolah' || u.role === 'operator_sekolah')
+      );
+      if (schAdmin?.email) {
+        finalSchoolEmail = schAdmin.email;
+      } else {
+        finalSchoolEmail = 'mi02jatibarang.brebes@gmail.com';
+      }
+    }
+
+    if (!finalSchoolPhone) {
+      const schId = targetSchool?.school_id;
+      const schAdmin = serverDb.users?.find((u: any) =>
+        (schId && u.school_id === schId) &&
+        (u.role === 'admin_sekolah' || u.role === 'operator_sekolah')
+      );
+      if (schAdmin?.phone) {
+        finalSchoolPhone = String(schAdmin.phone);
+      } else {
+        finalSchoolPhone = '08988857555';
+      }
+    }
 
     // Automatically resolve public App Logo
     let finalAppLogo = app_logo_url || settings.app_logo || '';
@@ -1855,12 +2044,13 @@ app.post('/api/gas/delete-file', async (req: Request, res: Response) => {
     // 2. Look up in serverDb.documents if drive ID or docType is missing
     let docType = document_type;
     let regNumber = registration_number;
+    const targetNormType = docType ? normalizeDocType(docType) : '';
     if (serverDb.documents && Array.isArray(serverDb.documents)) {
       const targetDoc = serverDb.documents.find(
         (d: any) =>
           (document_id && d.document_id === document_id) ||
           (effectiveDriveId && (d.drive_file_id === effectiveDriveId || (d.drive_url && d.drive_url.includes(effectiveDriveId)))) ||
-          (registration_number && document_type && d.registration_number === registration_number && d.document_type === document_type)
+          (registration_number && targetNormType && d.registration_number === registration_number && normalizeDocType(d.document_type) === targetNormType)
       );
       if (targetDoc) {
         if (!effectiveDriveId && targetDoc.drive_file_id) effectiveDriveId = targetDoc.drive_file_id;
@@ -1874,13 +2064,16 @@ app.post('/api/gas/delete-file', async (req: Request, res: Response) => {
     cleanupLocalFileAndCache(effectiveDriveId, local_url);
 
     // 4. Remove document from serverDb
+    const effectiveNormType = docType ? normalizeDocType(docType) : '';
     if (serverDb.documents && Array.isArray(serverDb.documents)) {
-      serverDb.documents = serverDb.documents.filter((d: any) => {
-        if (document_id && d.document_id === document_id) return false;
-        if (effectiveDriveId && (d.drive_file_id === effectiveDriveId || (d.drive_url && d.drive_url.includes(effectiveDriveId)))) return false;
-        if (regNumber && docType && d.registration_number === regNumber && d.document_type === docType) return false;
-        return true;
-      });
+      serverDb.documents = deduplicateDocs(
+        serverDb.documents.filter((d: any) => {
+          if (document_id && d.document_id === document_id) return false;
+          if (effectiveDriveId && (d.drive_file_id === effectiveDriveId || (d.drive_url && d.drive_url.includes(effectiveDriveId)))) return false;
+          if (regNumber && effectiveNormType && d.registration_number === regNumber && normalizeDocType(d.document_type) === effectiveNormType) return false;
+          return true;
+        })
+      );
     }
 
     // 5. If deleted file was a student/user photo, clear photo_url in students & users

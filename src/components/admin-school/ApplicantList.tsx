@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Search,
   Filter,
@@ -45,6 +45,8 @@ interface Props {
   onExportCsv?: () => void;
   onExportExcel?: () => void;
   onDeleteApplicant?: (regNumber: string) => void;
+  highlightRegNumber?: string | null;
+  onClearHighlight?: () => void;
 }
 
 export const ApplicantList: React.FC<Props> = ({
@@ -60,6 +62,8 @@ export const ApplicantList: React.FC<Props> = ({
   onExportCsv,
   onExportExcel,
   onDeleteApplicant,
+  highlightRegNumber,
+  onClearHighlight,
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [pathwayFilter, setPathwayFilter] = useState<string>('all');
@@ -72,6 +76,21 @@ export const ApplicantList: React.FC<Props> = ({
   const [initialVerificationTab, setInitialVerificationTab] = useState<'profile' | 'location' | 'docs'>('profile');
   const [resetPasswordApp, setResetPasswordApp] = useState<Application | null>(null);
   const [appToDelete, setAppToDelete] = useState<Application | null>(null);
+
+  // Auto-select applicant for review when navigated from toast/banner
+  useEffect(() => {
+    if (highlightRegNumber) {
+      const target = applications.find((a) => a.registration_number === highlightRegNumber);
+      if (target) {
+        setPathwayFilter('all');
+        setVerificationFilter('all');
+        setSelectionFilter('all');
+        setSearchQuery('');
+        setSelectedAppForVerification(target);
+        setInitialVerificationTab('profile');
+      }
+    }
+  }, [highlightRegNumber, applications]);
 
   // Export Excel Modal & Options state
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -387,14 +406,30 @@ export const ApplicantList: React.FC<Props> = ({
                 filteredApps.map((app, index) => {
                   const student = students[app.registration_number];
                   const isZonasiCompliant = app.zoning_status === 'memenuhi';
+                  const isHighlighted = highlightRegNumber === app.registration_number;
 
                   return (
-                    <tr key={app.application_id} className="hover:bg-slate-50/80 transition-colors">
+                    <tr
+                      key={app.application_id}
+                      id={`applicant-row-${app.registration_number}`}
+                      className={`transition-colors ${
+                        isHighlighted
+                          ? 'bg-emerald-50/90 ring-2 ring-emerald-500/50'
+                          : 'hover:bg-slate-50/80'
+                      }`}
+                    >
                       <td className="py-3.5 px-4 text-center font-mono text-slate-400">
                         {index + 1}
                       </td>
                       <td className="py-3.5 px-4 font-mono font-bold text-slate-900">
-                        <div>{app.registration_number}</div>
+                        <div className="flex items-center gap-1.5">
+                          <span>{app.registration_number}</span>
+                          {isHighlighted && (
+                            <span className="px-1.5 py-0.2 rounded-full bg-emerald-600 text-white text-[9px] font-black animate-pulse">
+                              BARU
+                            </span>
+                          )}
+                        </div>
                         {app.is_auto_rerouted && (
                           <span
                             className="inline-flex items-center gap-1 text-[10px] bg-sky-100 text-sky-800 font-bold px-1.5 py-0.5 rounded mt-0.5"
@@ -798,7 +833,10 @@ export const ApplicantList: React.FC<Props> = ({
           documents={documents.filter((d) => d.registration_number === selectedAppForVerification.registration_number)}
           school={school}
           initialTab={initialVerificationTab}
-          onClose={() => setSelectedAppForVerification(null)}
+          onClose={() => {
+            setSelectedAppForVerification(null);
+            if (onClearHighlight) onClearHighlight();
+          }}
           onVerify={(status, notes) => {
             onVerify(selectedAppForVerification.registration_number, status, notes);
           }}

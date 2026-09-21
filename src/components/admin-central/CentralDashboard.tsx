@@ -69,6 +69,8 @@ interface Props {
   onRefreshData?: () => void;
   activeTab?: 'overview' | 'schools' | 'admins' | 'applicants' | 'map' | 'config' | 'logs' | 'announcements';
   onTabChange?: (tab: 'overview' | 'schools' | 'admins' | 'applicants' | 'map' | 'config' | 'logs' | 'announcements') => void;
+  highlightRegNumber?: string | null;
+  onClearHighlight?: () => void;
 }
 
 export const CentralDashboard: React.FC<Props> = ({
@@ -96,6 +98,8 @@ export const CentralDashboard: React.FC<Props> = ({
   onRefreshData,
   activeTab: controlledActiveTab,
   onTabChange,
+  highlightRegNumber,
+  onClearHighlight,
 }) => {
   const [internalActiveTab, setInternalActiveTab] = useState<
     'overview' | 'schools' | 'admins' | 'applicants' | 'map' | 'config' | 'logs' | 'announcements'
@@ -324,6 +328,8 @@ export const CentralDashboard: React.FC<Props> = ({
           onExportCsv={onExportCsv}
           onExportExcel={onExportExcel}
           onDeleteApplicant={onDeleteApplicant}
+          highlightRegNumber={highlightRegNumber}
+          onClearHighlight={onClearHighlight}
         />
       )}
 

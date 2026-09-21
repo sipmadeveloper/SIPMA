@@ -14,7 +14,6 @@ import {
   Phone,
   Mail,
   ChevronDown,
-  Calendar,
   ExternalLink,
   Trophy,
   Briefcase,
@@ -157,8 +156,7 @@ export const LandingPage: React.FC<Props> = ({
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-600/15 via-transparent to-transparent pointer-events-none" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="text-center max-w-3xl mx-auto space-y-5 sm:space-y-6">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-800/80 border border-emerald-400/40 text-emerald-200 text-[11px] sm:text-xs font-bold shadow-xs max-w-full backdrop-blur-xs">
-              <Calendar className="w-3.5 h-3.5 shrink-0 text-emerald-300" />
+            <div className="inline-flex items-center px-3.5 py-1.5 rounded-full bg-emerald-800/80 border border-emerald-400/40 text-emerald-200 text-[11px] sm:text-xs font-bold shadow-xs max-w-full backdrop-blur-xs">
               <span className="truncate">Penerimaan Peserta Didik Madrasah Tahun Ajaran {academicYearText}</span>
             </div>
 
