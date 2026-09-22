@@ -253,7 +253,6 @@ export interface SystemSettings {
   max_file_size_mb: number;
   registration_open: boolean;
   announcement_open: boolean;
-  demo_mode: boolean;
   db_config_locked?: boolean;
   db_config_pin?: string;
   realtime_sync_enabled?: boolean;

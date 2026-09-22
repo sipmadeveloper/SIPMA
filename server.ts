@@ -112,7 +112,6 @@ function loadInitialServerDb(): ServerDbState {
     max_file_size_mb: 2,
     registration_open: true,
     announcement_open: true,
-    demo_mode: false,
     db_config_locked: true,
     db_config_pin: 123456,
     realtime_sync_enabled: true,
@@ -957,7 +956,7 @@ app.post('/api/data/sync', async (req: Request, res: Response) => {
     // Auto-forward to Google Apps Script
     let gasResult: { success: boolean; message?: string } | null = null;
     if (payload.forwardToGas !== false) {
-      if (payload.waitGas === true) {
+      if (payload.waitGas === true || process.env.VERCEL) {
         gasResult = await forwardSyncAllToGas();
         if (gasResult?.success) {
           if (!serverDb.settings) serverDb.settings = {} as any;
@@ -965,7 +964,7 @@ app.post('/api/data/sync', async (req: Request, res: Response) => {
           persistServerDb(false);
         }
       } else {
-        triggerServerGasSyncDebounced(1000);
+        triggerServerGasSyncDebounced(700);
       }
     }
 

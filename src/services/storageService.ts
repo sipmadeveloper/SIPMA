@@ -173,15 +173,10 @@ class StorageService {
   }
 
   triggerAutoSync(isSettingsUpdate: boolean = false): void {
+    this.hasSyncedWithServer = true;
     this.notifySubscribers('data_mutated');
 
-    // Only broadcast local mutations to server after initial server sync has completed
-    // (avoids pushing stale initial defaults before real database data is loaded)
-    if (!this.hasSyncedWithServer) {
-      return;
-    }
-
-    // 1. Always immediately push the complete local state to centralized server (/api/data/sync)
+    // 1. Immediately push the complete state to centralized server (/api/data/sync)
     const dataPayload = {
       users: this.getUsers(),
       students: this.getStudentsMap(),
@@ -204,15 +199,35 @@ class StorageService {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(dataPayload),
     }).catch(() => {
-      // Fallback: If centralized server is unavailable or offline, attempt direct client push to GAS
-      const settings = this.getSettings();
-      if (settings.gas_web_app_url && settings.gas_web_app_url.startsWith('http') && settings.realtime_sync_enabled !== false) {
-        if (this.autoSyncTimeout) clearTimeout(this.autoSyncTimeout);
-        this.autoSyncTimeout = setTimeout(() => {
-          this.syncAllToGAS().catch(() => {});
-        }, 1500);
-      }
+      // ignore network errors if server is unreachable
     });
+
+    // 2. OTOMATIS SINKRONISASI KE GOOGLE SHEETS / CLOUD DATABASE
+    // Setiap penambahan madrasah, siswa baru, pengumuman, atau perubahan data
+    // langsung otomatis tersimpan ke Google Sheets tanpa harus klik tombol manual!
+    const settings = this.getSettings();
+    if (settings.gas_web_app_url && settings.gas_web_app_url.startsWith('http')) {
+      if (this.autoSyncTimeout) clearTimeout(this.autoSyncTimeout);
+      this.autoSyncTimeout = setTimeout(() => {
+        this.notifySubscribers('auto_sync_status', { status: 'syncing', message: 'Menyinkronkan otomatis ke database Google Sheets...' });
+        this.syncAllToGAS()
+          .then((res) => {
+            if (res && res.success) {
+              this.notifySubscribers('auto_sync_status', {
+                status: 'synced',
+                message: 'Tersinkron otomatis ke Google Sheets',
+                timestamp: new Date().toISOString(),
+              });
+            } else {
+              this.notifySubscribers('auto_sync_status', { status: 'idle' });
+            }
+          })
+          .catch((err) => {
+            console.warn('[AutoSync] Sinkronisasi otomatis ke Google Sheets:', err?.message);
+            this.notifySubscribers('auto_sync_status', { status: 'idle' });
+          });
+      }, 700);
+    }
   }
 
   private initRealtimeEvents(): void {

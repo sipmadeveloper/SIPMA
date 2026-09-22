@@ -136,7 +136,6 @@ export const INITIAL_SETTINGS: SystemSettings = {
   max_file_size_mb: 2,
   registration_open: true,
   announcement_open: true,
-  demo_mode: false,
   db_config_locked: true,
   db_config_pin: '123456',
   realtime_sync_enabled: true,

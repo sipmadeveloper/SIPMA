@@ -1203,8 +1203,15 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
                   <ArrowUpDown className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-xs text-slate-900">Sinkronkan ke Google Sheets</h4>
-                  <p className="text-[11px] text-slate-600">Kirim seluruh data pendaftar lokal ke Google Spreadsheet secara realtime.</p>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-xs text-slate-900">Sinkronisasi Google Sheets</h4>
+                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold rounded-full">
+                      100% Otomatis
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 mt-0.5">
+                    Data baru (madrasah, calon siswa, berkas, seleksi) <strong>langsung otomatis tersimpan</strong> ke Google Sheets tanpa perlu klik tombol.
+                  </p>
                 </div>
               </div>
 
@@ -1212,10 +1219,10 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
                 type="button"
                 onClick={handleManualPushSync}
                 disabled={isSyncing}
-                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-xs cursor-pointer"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                <span>{isSyncing ? 'Sedang Menyinkronkan...' : 'Kirim / Sinkronkan Data Sekarang'}</span>
+                <span>{isSyncing ? 'Sedang Menyinkronkan...' : 'Sinkronkan Ulang Manual (Jika Diperlukan)'}</span>
               </button>
             </div>
 
