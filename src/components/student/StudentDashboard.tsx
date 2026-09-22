@@ -77,20 +77,21 @@ export const StudentDashboard: React.FC<Props> = ({
   const [showAcceptanceModal, setShowAcceptanceModal] = useState<boolean>(false);
   const [isCancellingSchool, setIsCancellingSchool] = useState<boolean>(false);
 
-  const safeSchool: School = school || {
-    school_id: 'SCH-MAN1',
-    npsn: '20100001',
-    school_name: 'MAN 1 Kota Jakarta',
-    level: 'MA',
+  const allSchools = storageService.getSchools();
+  const safeSchool: School = school || allSchools.find((s) => s.school_id === application.school_id) || allSchools[0] || {
+    school_id: application.school_id || '',
+    npsn: '',
+    school_name: 'Madrasah',
+    level: 'MI',
     status: 'active',
-    address: 'Jl. Madrasah No. 1',
-    principal_name: 'H. Ahmad Fauzi, M.Pd',
-    village: 'Pondok Indah',
-    district: 'Kebayoran Lama',
-    city: 'Jakarta Selatan',
-    province: 'DKI Jakarta',
-    latitude: -6.2655,
-    longitude: 106.7844,
+    address: '-',
+    principal_name: '-',
+    village: '',
+    district: '',
+    city: '',
+    province: '',
+    latitude: 0,
+    longitude: 0,
     radius_zonasi_km: 5,
     zoning_radius_km: 5,
     quota_total: 100,

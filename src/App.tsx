@@ -402,7 +402,7 @@ export default function App() {
       } else {
         showAlert(
           'Data Tidak Ditemukan',
-          `Nomor pendaftaran atau NIK "${query}" tidak ditemukan dalam sistem. Pastikan Anda memasukkan nomor pendaftaran (misal: SIPMA-MAN01-000001) atau NIK yang benar saat mendaftar.`,
+          `Nomor pendaftaran atau NIK "${query}" tidak ditemukan dalam sistem. Pastikan Anda memasukkan nomor pendaftaran atau NIK yang benar saat mendaftar.`,
           'warning'
         );
       }
@@ -584,15 +584,6 @@ export default function App() {
     setApplicantNotificationQueue([]);
   };
 
-  const handleSimulateApplicantNotification = () => {
-    const activeUser = storageService.getCurrentUser() || currentUser;
-    const userSchoolId =
-      activeUser?.role === 'admin_sekolah' || activeUser?.role === 'operator_sekolah'
-        ? activeUser.school_id
-        : undefined;
-    storageService.simulateNewApplicantNotification(userSchoolId);
-  };
-
   // Get active school for current user with fallback
   const currentSchool =
     schools.find((s) => s.school_id === currentUser?.school_id) ||
@@ -633,7 +624,6 @@ export default function App() {
           unreadNotificationsCount={applicantNotificationHistory.length}
           onOpenApplicantFromNotification={handleOpenApplicantFromNotification}
           onMarkAllNotificationsAsRead={handleMarkAllNotificationsAsRead}
-          onSimulateApplicantNotification={handleSimulateApplicantNotification}
         />
       )}
 
@@ -679,34 +669,34 @@ export default function App() {
             {/* Calon Murid Dashboard */}
             {currentUser.role === 'calon_murid' && (
               (() => {
-                const regNum = currentUser.registration_number || 'REG-20260825-001';
-                const student: StudentProfile = students[regNum] || {
-                  student_id: 'STD-DEFAULT',
+                const regNum = currentUser.registration_number || '';
+                const student: StudentProfile = (regNum && students[regNum]) ? students[regNum] : {
+                  student_id: '',
                   user_id: currentUser.user_id,
                   registration_number: regNum,
-                  nik: '3171012345670001',
-                  nisn: '0081234567',
+                  nik: '',
+                  nisn: '',
                   name: currentUser.name,
-                  birth_place: 'Jakarta',
-                  birth_date: '2010-05-14',
+                  birth_place: '',
+                  birth_date: '',
                   gender: 'L',
                   religion: 'Islam',
-                  family_card_number: '3171012345670001',
+                  family_card_number: '',
                   child_order: 1,
-                  total_siblings: 2,
+                  total_siblings: 0,
                   family_status: 'Anak Kandung',
-                  phone: '081234567890',
+                  phone: currentUser.phone || '',
                   email: currentUser.email,
                 };
-                const app: Application = applications.find((a) => a.registration_number === regNum) || {
-                  application_id: 'APP-DEFAULT',
+                const app: Application = (regNum && applications.find((a) => a.registration_number === regNum)) || {
+                  application_id: '',
                   registration_number: regNum,
                   user_id: currentUser.user_id,
                   student_id: student.student_id,
-                  school_id: currentUser.school_id || 'SCH-MAN1',
-                  admission_year: '2026',
+                  school_id: currentUser.school_id || schools[0]?.school_id || '',
+                  admission_year: String(settings.application_year || '2027'),
                   pathway: 'zonasi',
-                  distance_km: 1.25,
+                  distance_km: 0,
                   max_distance_km: 5.0,
                   zoning_status: 'memenuhi',
                   verification_status: 'menunggu',
@@ -714,8 +704,8 @@ export default function App() {
                   final_status: 'draft',
                   step_completed: 1,
                   is_locked: false,
-                  latitude: -6.175392,
-                  longitude: 106.827153,
+                  latitude: schools[0]?.latitude || -6.964,
+                  longitude: schools[0]?.longitude || 109.056,
                   created_at: new Date().toISOString(),
                   updated_at: new Date().toISOString(),
                 };
@@ -824,7 +814,7 @@ export default function App() {
                   ? {
                       application_id: 'APP-CURR',
                       registration_number: printRegNumber,
-                      school_id: currentUser.school_id || 'SCH-MAN1',
+                      school_id: currentUser.school_id || schools[0]?.school_id || '',
                       pathway: 'zonasi' as const,
                       distance_km: 1.2,
                       max_distance_km: 5.0,

@@ -9,16 +9,15 @@
     "app_name": "SIPMA",
     "app_tagline": "Sistem Penerimaan Murid Madrasah",
     "app_logo": "https://cdn.phototourl.com/free/2026-09-08-b0f28857-9c61-4607-b0b8-d9f8cf8eef3e.png",
-    "default_school_id": "SCH-MAN1",
+    "default_school_id": "SCH-NEW-1787905953621",
     "max_file_size_mb": 2,
     "registration_open": true,
     "announcement_open": true,
-    "demo_mode": true,
     "db_config_locked": true,
     "db_config_pin": 123456,
     "realtime_sync_enabled": true,
     "auto_sync_interval_sec": 15,
-    "last_synced_at": "2026-09-17T23:18:01.723Z"
+    "last_synced_at": "2026-09-22T09:10:08.370Z"
   },
   "users": [
     {
@@ -34,7 +33,7 @@
       "school_id": "",
       "status": "active",
       "created_at": "",
-      "updated_at": "2026-09-20T22:46:46.671Z",
+      "updated_at": "2026-09-22T09:10:24.807Z",
       "photo_url": ""
     },
     {
@@ -50,108 +49,16 @@
       "school_id": "SCH-NEW-1787905953621",
       "status": "active",
       "created_at": "",
-      "updated_at": "2026-09-20T22:46:46.679Z",
+      "updated_at": "2026-09-22T09:10:24.808Z",
       "photo_url": ""
     }
   ],
-  "students": {
-    "REG-2027-9929": {
-      "student_id": "STU-SIM-1789944334323",
-      "user_id": "USR-SIM-1789944334323",
-      "registration_number": "REG-2027-9929",
-      "name": "Muhammad Haidar Ali",
-      "nik": "3329884432134467",
-      "nisn": 70529484,
-      "gender": "P",
-      "birth_place": "Brebes",
-      "birth_date": "2015-06-15T00:00:00Z",
-      "religion": "Islam",
-      "family_card_number": "3329469705473842",
-      "child_order": 1,
-      "total_siblings": 2,
-      "family_status": "Anak Kandung",
-      "hobby": "",
-      "living_status": "orang_tua_kandung",
-      "phone": 81234567890,
-      "email": "muhammad.haidar.ali@gmail.com",
-      "photo_url": ""
-    }
-  },
+  "students": {},
   "parents": {},
   "school_origins": {},
   "addresses": {},
-  "applications": [
-    {
-      "application_id": "APP-SIM-1789944334323",
-      "registration_number": "REG-2027-9929",
-      "user_id": "USR-SIM-1789944334323",
-      "student_id": "STU-SIM-1789944334323",
-      "school_id": "SCH-NEW-1787905953621",
-      "admission_year": 2027,
-      "pathway": "afirmasi",
-      "submission_date": "2026-09-20T22:45:34.323Z",
-      "latitude": -6.969385237591064,
-      "longitude": 109.05293388933588,
-      "distance_km": 1.49,
-      "max_distance_km": 5,
-      "zoning_status": "memenuhi",
-      "verification_status": "ditolak",
-      "selection_status": "menunggu",
-      "final_status": "ditolak",
-      "verification_notes": "",
-      "score": 0,
-      "afirmasi_category": "",
-      "dispensation_reason": "",
-      "achievement_type": "",
-      "achievement_name": "",
-      "achievement_level": "",
-      "achievement_rank": "",
-      "mutation_parent_instansi": "",
-      "mutation_letter_number": "",
-      "mutation_letter_date": "",
-      "step_completed": 5,
-      "is_locked": false,
-      "created_at": "2026-09-20T22:45:34.323Z",
-      "updated_at": "2026-09-20T22:46:44.892Z"
-    }
-  ],
+  "applications": [],
   "documents": [
-    {
-      "document_id": "DOC-TEST-1789726494998",
-      "registration_number": "REG-TEST-001",
-      "document_type": "kartu_keluarga",
-      "file_name": "Budi_Santoso_REG-TEST-001_Kartu_Keluarga_KK.png",
-      "file_size_kb": 0,
-      "drive_file_id": "1RnhwtCONkhN82w4mG4Kv9hHFYRMssOji",
-      "drive_url": "https://lh3.googleusercontent.com/d/1RnhwtCONkhN82w4mG4Kv9hHFYRMssOji",
-      "upload_time": "2026-09-18T10:15:00.582Z",
-      "verification_status": "menunggu",
-      "notes": "",
-      "local_url": "/uploads/Budi_Santoso_REG-TEST-001_Kartu_Keluarga_KK.png",
-      "file_data_base64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-      "view_url": "https://lh3.googleusercontent.com/d/1RnhwtCONkhN82w4mG4Kv9hHFYRMssOji",
-      "student_id": "STD-TEST",
-      "document_title": "Kartu Keluarga",
-      "mime_type": "image/png"
-    },
-    {
-      "document_id": "TEST-DOC-1",
-      "registration_number": "SIPMA-TEST-001",
-      "document_type": "foto_profil",
-      "document_title": "Foto Profil",
-      "file_name": "Ahmad_Dahlan_SIPMA-TEST-001_Pas_Foto_3x4.png",
-      "file_size_kb": 1,
-      "file_size_bytes": 85,
-      "mime_type": "image/png",
-      "file_data_base64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-      "drive_file_id": "1ZvHiMj5hXnMZq0mnsBo3vuu9f2qlCDKZ",
-      "drive_url": "https://lh3.googleusercontent.com/d/1ZvHiMj5hXnMZq0mnsBo3vuu9f2qlCDKZ",
-      "local_url": "/uploads/Ahmad_Dahlan_SIPMA-TEST-001_Pas_Foto_3x4.png",
-      "upload_time": "2026-09-08T12:03:34.478Z",
-      "view_url": "https://lh3.googleusercontent.com/d/1ZvHiMj5hXnMZq0mnsBo3vuu9f2qlCDKZ",
-      "verification_status": "menunggu",
-      "notes": ""
-    },
     {
       "document_id": "DOC-1864a533",
       "registration_number": "USR-ADMIN-PUSAT",
@@ -166,38 +73,6 @@
       "local_url": "",
       "file_data_base64": "",
       "view_url": "https://drive.google.com/file/d/1-r6cCmLK5PScsKzsgQjqjA47pPSTBfBJ/view?usp=drivesdk"
-    },
-    {
-      "document_id": "DOC-TEST-1",
-      "registration_number": "REG-TEST",
-      "document_type": "foto",
-      "document_title": "Pas Foto",
-      "file_name": "Test_Student_REG-TEST_Pas_Foto_3x4.png",
-      "file_data_base64": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
-      "mime_type": "image/png",
-      "drive_file_id": "1EcmHjB8gAPVWh4rAwkKXwl88nAlY_9T2",
-      "drive_url": "https://lh3.googleusercontent.com/d/1EcmHjB8gAPVWh4rAwkKXwl88nAlY_9T2",
-      "local_url": "/uploads/Test_Student_REG-TEST_Pas_Foto_3x4.png",
-      "upload_time": "2026-09-18T10:10:50.529Z",
-      "file_size_kb": 0,
-      "verification_status": "menunggu",
-      "notes": "",
-      "view_url": "https://lh3.googleusercontent.com/d/1EcmHjB8gAPVWh4rAwkKXwl88nAlY_9T2"
-    },
-    {
-      "document_id": "DOC-TEST-123",
-      "registration_number": "REG-TEST-001",
-      "document_type": "kartu_keluarga",
-      "file_name": "Budi_Santoso_REG-TEST-001_Kartu_Keluarga_KK.png",
-      "file_size_kb": 0,
-      "drive_file_id": "1RnhwtCONkhN82w4mG4Kv9hHFYRMssOji",
-      "drive_url": "https://lh3.googleusercontent.com/d/1RnhwtCONkhN82w4mG4Kv9hHFYRMssOji",
-      "upload_time": "2026-09-18T10:15:00.582Z",
-      "verification_status": "menunggu",
-      "notes": "",
-      "local_url": "",
-      "file_data_base64": "",
-      "view_url": "https://lh3.googleusercontent.com/d/1RnhwtCONkhN82w4mG4Kv9hHFYRMssOji"
     }
   ],
   "schools": [
@@ -238,7 +113,7 @@
       "school_id": "",
       "is_published": true,
       "created_at": "2026-08-29T12:59:09.026Z",
-      "author_name": "Panitia Pusat Kemenag"
+      "author_name": "Panitia Pusat PPDB"
     },
     {
       "announcement_id": "ANC-002",
@@ -246,10 +121,10 @@
       "content": "Bagi pendaftar Jalur Zonasi, pastikan titik penanda (marker) pada peta interaktif berada tepat di atas atap rumah tempat tinggal sesuai alamat pada Kartu Keluarga (KK). Radius zonasi maksimal adalah 5,00 km.",
       "category": "informasi",
       "target_role": "calon_murid",
-      "school_id": "SCH-MAN1",
+      "school_id": "",
       "is_published": true,
       "created_at": "2026-08-29T12:59:09.027Z",
-      "author_name": "Panitia PPDB MAN 1"
+      "author_name": "Panitia Pusat PPDB"
     },
     {
       "announcement_id": "ANC-003",
@@ -257,46 +132,12 @@
       "content": "Calon peserta didik Jalur Prestasi (KSM, OSN, Tahfidz) dan Jalur Mutasi (SK Penugasan Orang Tua) wajib memastikan dokumen pendukung terunggah jelas untuk verifikasi keaslian oleh panitia seleksi madrasah.",
       "category": "informasi",
       "target_role": "calon_murid",
-      "school_id": "SCH-MAN1",
+      "school_id": "",
       "is_published": true,
       "created_at": "2026-08-29T12:59:09.027Z",
-      "author_name": "Panitia PPDB MAN 1"
+      "author_name": "Panitia Pusat PPDB"
     }
   ],
-  "audit_logs": [
-    {
-      "log_id": "LOG-MAIL-1789930908020",
-      "timestamp": "2026-09-20T19:01:48.020Z",
-      "user_id": "SYSTEM",
-      "username": "Panitia PPDB MI ASY-SYAFI'IYYAH 02",
-      "role": "system",
-      "action": "SEND_EMAIL_NOTIFICATION",
-      "target": "REG-TEST-001",
-      "description": "Notifikasi email PPDB [VERIFICATION: terverifikasi] dikirim ke test.calon@gmail.com dari pengirim madrasah 'MI ASY-SYAFI'IYYAH 02' (mi02jatibarang.brebes@gmail.com). (Tersimpan di antrean sistem)",
-      "status": "queued"
-    },
-    {
-      "log_id": "LOG-MAIL-1789930820987",
-      "timestamp": "2026-09-20T19:00:20.987Z",
-      "user_id": "SYSTEM",
-      "username": "Panitia PPDB MI ASY-SYAFI'IYYAH 02",
-      "role": "system",
-      "action": "SEND_EMAIL_NOTIFICATION",
-      "target": "REG-TEST-001",
-      "description": "Notifikasi email PPDB [VERIFICATION: terverifikasi] dikirim ke test.calon@gmail.com dari pengirim madrasah 'MI ASY-SYAFI'IYYAH 02' (mi02jatibarang.brebes@gmail.com). (Tersimpan di antrean sistem)",
-      "status": "queued"
-    },
-    {
-      "log_id": "LOG-MAIL-1789267007148",
-      "timestamp": "2026-09-13T02:36:47.148Z",
-      "user_id": "SYSTEM",
-      "username": "Panitia PPDB MAN 1 Kota",
-      "role": "system",
-      "action": "SEND_EMAIL_NOTIFICATION",
-      "target": "SIPMA-MAN01-2026-0001",
-      "description": "Notifikasi email PPDB [VERIFICATION: terverifikasi] dikirim ke test.calonmurid@example.com dari pengirim madrasah 'MAN 1 Kota' (email madrasah). (Tersimpan di antrean sistem)",
-      "status": "queued"
-    }
-  ],
-  "last_updated": "2026-09-21T12:20:29.995Z"
+  "audit_logs": [],
+  "last_updated": "2026-09-22T09:14:38.452Z"
 }

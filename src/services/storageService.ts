@@ -115,6 +115,7 @@ class StorageService {
   private sseConnection: EventSource | null = null;
   public isSseConnected: boolean = false;
   private sseReconnectTimer: any = null;
+  private sseSyncDebounceTimer: any = null;
 
   // High-speed in-memory cache for instant (<0.0001s) data reads and zero parsing lag
   private memCache: {
@@ -256,8 +257,16 @@ class StorageService {
           if (!event.data) return;
           const payload = JSON.parse(event.data);
           if (payload.type === 'mutation' || payload.type === 'gas_synced') {
-            // Immediate real-time sync with centralized server (< 50ms)
-            this.syncWithServer(false).catch(() => {});
+            // High-concurrency protection: debounce with randomized jitter (60-180ms)
+            // to prevent all connected clients from slamming the server at the exact same millisecond
+            if (this.sseSyncDebounceTimer) {
+              clearTimeout(this.sseSyncDebounceTimer);
+            }
+            const jitterMs = 60 + Math.floor(Math.random() * 120);
+            this.sseSyncDebounceTimer = setTimeout(() => {
+              this.sseSyncDebounceTimer = null;
+              this.syncWithServer(false).catch(() => {});
+            }, jitterMs);
           }
         } catch {}
       };
@@ -1818,12 +1827,13 @@ class StorageService {
   }
 
   generateRegistrationNumber(schoolId?: string): string {
-    const targetSchoolId = schoolId || this.getSettings().default_school_id || 'SCH-MAN1';
-    const school = this.getSchoolById(targetSchoolId);
+    const schools = this.getSchools();
+    const targetSchoolId = schoolId || this.getSettings().default_school_id || schools[0]?.school_id || '';
+    const school = this.getSchoolById(targetSchoolId) || schools[0];
     
     // Determine the unique school code (e.g. MAN01, MTS01, MI01)
-    const rawCode = school?.school_code || (school?.school_id ? school.school_id.replace(/^SCH-/, '') : 'MAN01');
-    const schoolCode = rawCode.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'MAN01';
+    const rawCode = school?.school_code || (school?.school_id ? school.school_id.replace(/^SCH-/, '') : (school?.level ? school.level + '01' : 'REG'));
+    const schoolCode = rawCode.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() || 'REG';
     
     // Prefix for registration number: SIPMA-<schoolCode>-<sequence>
     const codePrefix = `SIPMA-${schoolCode}-`;
@@ -3106,7 +3116,7 @@ class StorageService {
       registration_number: randomReg,
       user_id: `USR-SIM-${Date.now()}`,
       student_id: `STU-SIM-${Date.now()}`,
-      school_id: targetSchool?.school_id || 'SCH-MAN1',
+      school_id: targetSchool?.school_id || this.getSchools()[0]?.school_id || '',
       admission_year: '2027',
       pathway: randomPathway,
       submission_date: new Date().toISOString(),

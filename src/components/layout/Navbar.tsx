@@ -25,7 +25,6 @@ interface Props {
   unreadNotificationsCount?: number;
   onOpenApplicantFromNotification?: (regNumber: string) => void;
   onMarkAllNotificationsAsRead?: () => void;
-  onSimulateApplicantNotification?: () => void;
 }
 
 export const Navbar: React.FC<Props> = ({
@@ -39,7 +38,6 @@ export const Navbar: React.FC<Props> = ({
   unreadNotificationsCount = 0,
   onOpenApplicantFromNotification,
   onMarkAllNotificationsAsRead,
-  onSimulateApplicantNotification,
 }) => {
   const getRoleBadge = () => {
     switch (currentUser?.role) {
@@ -131,7 +129,6 @@ export const Navbar: React.FC<Props> = ({
                   unreadCount={unreadNotificationsCount}
                   onOpenApplicant={onOpenApplicantFromNotification}
                   onMarkAllAsRead={onMarkAllNotificationsAsRead}
-                  onSimulateTestApplicant={onSimulateApplicantNotification}
                 />
               )}
 

@@ -25,6 +25,7 @@ import {
   ExternalLink,
   Activity,
 } from 'lucide-react';
+import { storageService } from '../../services/storageService';
 
 interface Props {
   school: School;
@@ -62,26 +63,26 @@ export const ApplicantDistributionMap: React.FC<Props> = ({
 
   const safeSchool: School = useMemo(() => {
     return (
-      school || {
-        school_id: 'SCH-MAN1',
-        npsn: '20100001',
-        school_name: 'MAN 1 Kota Jakarta',
-        level: 'MA',
+      school || storageService.getSchools()[0] || {
+        school_id: '',
+        npsn: '',
+        school_name: 'Madrasah',
+        level: 'MI',
         status: 'active',
-        address: 'Jl. Madrasah No. 1',
-        village: 'Pondok Indah',
-        district: 'Kebayoran Lama',
-        city: 'Jakarta Selatan',
-        province: 'DKI Jakarta',
-        latitude: -6.2655,
-        longitude: 106.7844,
-        radius_zonasi_km: 5,
-        zoning_radius_km: 5,
-        quota_total: 100,
-        quota_zonasi: 50,
-        quota_afirmasi: 20,
-        quota_prestasi: 20,
-        quota_mutasi: 10,
+        address: '-',
+        village: '',
+        district: '',
+        city: '',
+        province: '',
+        latitude: -6.964,
+        longitude: 109.056,
+        radius_zonasi_km: 1,
+        zoning_radius_km: 1,
+        quota_total: 0,
+        quota_zonasi: 0,
+        quota_afirmasi: 0,
+        quota_prestasi: 0,
+        quota_mutasi: 0,
       }
     );
   }, [school]);

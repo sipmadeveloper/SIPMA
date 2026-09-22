@@ -90,19 +90,19 @@ export const AcceptanceLetterModal: React.FC<Props> = ({
     province: 'DKI Jakarta',
   };
 
-  const application = propApplication || storageService.getApplication(regNum) || {
-    registration_number: regNum,
-    school_id: 'SCH-MAN1',
+  const application = propApplication || (regNum ? storageService.getApplication(regNum) : null) || {
+    registration_number: regNum || '',
+    school_id: '',
     pathway: 'zonasi',
     final_status: 'lulus',
-    distance_km: 0.85,
+    distance_km: 0,
     max_distance_km: 5.0,
   };
 
   const schools = storageService.getSchools();
   const foundSchool =
     propSchool ||
-    schools.find((s) => s.school_id === application.school_id) ||
+    (application.school_id ? schools.find((s) => s.school_id === application.school_id) : null) ||
     schools[0];
 
   const defaultSchoolFallback: Partial<School> & {
@@ -118,17 +118,17 @@ export const AcceptanceLetterModal: React.FC<Props> = ({
     school_code?: string;
     school_id?: string;
   } = {
-    school_name: 'MAN 1 JAKARTA SELATAN',
-    level: 'MA',
-    address: 'Jl. Madrasah No. 1, Cilandak Timur, Pasar Minggu, Jakarta Selatan',
-    contact_phone: '(021) 7801234',
-    contact_email: 'info@man1jaksel.sch.id',
-    nsm: '131131740001',
-    npsn: '20107890',
-    principal_name: 'Dr. H. Ahmad Sanusi, M.Pd.',
-    headmaster_nip: '197205121998031002',
-    school_code: 'MAN01',
-    school_id: 'SCH-MAN1',
+    school_name: 'Madrasah',
+    level: 'MI',
+    address: '-',
+    contact_phone: '-',
+    contact_email: '-',
+    nsm: '-',
+    npsn: '-',
+    principal_name: 'Kepala Madrasah',
+    headmaster_nip: '-',
+    school_code: '',
+    school_id: '',
   };
 
   const school = foundSchool || defaultSchoolFallback;

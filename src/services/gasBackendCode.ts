@@ -392,39 +392,15 @@ function ensureAllSheetsExist(ss) {
 }
 
 /**
- * Mengisi data awal madrasah dan admin jika database baru dibuat
+ * Mengisi data awal admin jika database baru dibuat (tanpa data madrasah/user/siswa uji coba)
  */
 function seedInitialDataIfEmpty(ss) {
-  var schoolSheet = ss.getSheetByName(SHEETS.SCHOOLS);
-  if (schoolSheet && schoolSheet.getLastRow() <= 1) {
-    schoolSheet.appendRow([
-      "SCH-MAN1-JKT", "MAN 1 Jakarta Selatan", "MAN01", "131131740001", "20108345",
-      "MA", "Jl. Wijaya Kusuma No. 48, Cilandak, Jakarta Selatan", "Cilandak Barat", "Cilandak", "Jakarta Selatan", "DKI Jakarta",
-      -6.2842, 106.7978, 5.0, 180, 72, 36, 54, 18, "active", "Drs. H. Ahmad Fauzi, M.Pd", "021-7654321", "info@man1jaksel.sch.id"
-    ]);
-    schoolSheet.appendRow([
-      "SCH-MTSN1-JKT", "MTsN 1 Jakarta Selatan", "MTS01", "121131740001", "20108346",
-      "MTs", "Jl. Bangka VII No. 12, Pela Mampang, Jakarta Selatan", "Pela Mampang", "Mampang Prapatan", "Jakarta Selatan", "DKI Jakarta",
-      -6.2514, 106.8211, 4.0, 160, 64, 32, 48, 16, "active", "Hj. Nurhayati, S.Ag", "021-7198765", "info@mtsn1jaksel.sch.id"
-    ]);
-    schoolSheet.appendRow([
-      "SCH-MIN1-JKT", "MIN 1 Jakarta Selatan", "MIN01", "111131740001", "20108347",
-      "MI", "Jl. Kemang Timur No. 3, Bangka, Jakarta Selatan", "Bangka", "Mampang Prapatan", "Jakarta Selatan", "DKI Jakarta",
-      -6.2625, 106.8189, 3.0, 120, 48, 24, 36, 12, "active", "Dra. Siti Rahmah, M.Si", "021-7182345", "info@min1jaksel.sch.id"
-    ]);
-  }
-
   var usersSheet = ss.getSheetByName(SHEETS.USERS);
   if (usersSheet && usersSheet.getLastRow() <= 1) {
     var now = new Date().toISOString();
     usersSheet.appendRow([
-      "USR-ADMIN-PUSAT", "", "Administrator Wilayah Kemenag", "admin@sipma.kemenag.go.id", "08119876543",
-      "197801012005011001", "Kepala Sub Bagian PPDB", hashPassword("admin123"), "admin_pusat", "",
-      "active", "", now, now
-    ]);
-    usersSheet.appendRow([
-      "USR-PANITIA-MAN1", "", "Panitia PPDB MAN 1", "panitia@man1jaksel.sch.id", "081234567890",
-      "198505122010012003", "Ketua Panitia PMB", hashPassword("panitia123"), "admin_sekolah", "SCH-MAN1-JKT",
+      "USR-ADMIN-PUSAT", "", "Administrator Pusat PPDB", "adminpusatsipma@gmail.com", "085747520003",
+      "", "Admin Pusat", hashPassword("sipma123"), "admin_pusat", "",
       "active", "", now, now
     ]);
   }

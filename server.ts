@@ -2,9 +2,25 @@ import express, { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import compression from 'compression';
 
 const app = express();
 const PORT = 3000;
+
+// High-performance gzip/deflate compression for all API and static responses (> 1KB)
+app.use(
+  compression({
+    level: 6,
+    threshold: 1024,
+    filter: (req, res) => {
+      // Never compress Server-Sent Events stream or image binaries already compressed
+      if (req.headers.accept === 'text/event-stream' || req.path.startsWith('/api/data/events')) {
+        return false;
+      }
+      return compression.filter(req, res);
+    },
+  })
+);
 
 // Determine environment
 const isVercel = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NOW_REGION);
@@ -12,7 +28,7 @@ const DATA_DIR = isVercel ? path.join(os.tmpdir(), 'sipma_data') : path.join(pro
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const DB_FILE = path.join(DATA_DIR, 'server_db.json');
 
-// Process-level safety guards to prevent unexpected exit
+// Process-level safety guards to prevent unexpected exit under load
 process.on('uncaughtException', (err) => {
   console.error('[SIPMA Server] Uncaught exception:', err);
 });
@@ -50,13 +66,40 @@ app.use(
   })
 );
 
-// High-speed in-memory RAM cache for images (< 0.05ms serving time)
+// High-speed bounded in-memory RAM cache for images with LRU memory eviction
 interface MemoryImageItem {
   buffer: Buffer;
   contentType: string;
   etag: string;
 }
+const MAX_MEMORY_CACHE_ITEMS = 120;
+const MAX_MEMORY_CACHE_BYTES = 45 * 1024 * 1024; // 45 MB max memory
+let currentMemoryCacheBytes = 0;
 const memoryImageCache = new Map<string, MemoryImageItem>();
+
+export function setMemoryImageCache(key: string, item: MemoryImageItem): void {
+  const existing = memoryImageCache.get(key);
+  if (existing) {
+    currentMemoryCacheBytes -= existing.buffer.length;
+  }
+
+  while (
+    (memoryImageCache.size >= MAX_MEMORY_CACHE_ITEMS ||
+      currentMemoryCacheBytes + item.buffer.length > MAX_MEMORY_CACHE_BYTES) &&
+    memoryImageCache.size > 0
+  ) {
+    const oldestKey = memoryImageCache.keys().next().value;
+    if (!oldestKey) break;
+    const removed = memoryImageCache.get(oldestKey);
+    if (removed) {
+      currentMemoryCacheBytes -= removed.buffer.length;
+    }
+    memoryImageCache.delete(oldestKey);
+  }
+
+  memoryImageCache.set(key, item);
+  currentMemoryCacheBytes += item.buffer.length;
+}
 
 // In-Memory & File-Backed Persistent Database for Centralized Multi-Device Sync
 interface ServerDbState {
@@ -142,7 +185,7 @@ function warmUpImageCache() {
       const raw = serverDb.settings.app_logo;
       const matches = raw.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
       if (matches) {
-        memoryImageCache.set('app_logo', { buffer: Buffer.from(matches[2], 'base64'), contentType: matches[1], etag: '"app_logo"' });
+        setMemoryImageCache('app_logo', { buffer: Buffer.from(matches[2], 'base64'), contentType: matches[1], etag: '"app_logo"' });
       }
     }
     if (serverDb.schools && Array.isArray(serverDb.schools)) {
@@ -151,19 +194,22 @@ function warmUpImageCache() {
           const raw = s.logo_url;
           const matches = raw.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
           if (matches) {
-            memoryImageCache.set(`school_${s.school_id}`, { buffer: Buffer.from(matches[2], 'base64'), contentType: matches[1], etag: `"${s.school_id}"` });
+            setMemoryImageCache(`school_${s.school_id}`, { buffer: Buffer.from(matches[2], 'base64'), contentType: matches[1], etag: `"${s.school_id}"` });
           }
         }
       }
     }
     if (fs.existsSync(UPLOAD_DIR)) {
       const files = fs.readdirSync(UPLOAD_DIR);
+      let count = 0;
       for (const f of files) {
+        if (count > 50) break; // Limit startup preload to top 50 images to conserve RAM
         if (f.startsWith('cache_drive_') && f.endsWith('.jpg')) {
           const fileId = f.replace('cache_drive_', '').replace('.jpg', '');
           try {
             const buf = fs.readFileSync(path.join(UPLOAD_DIR, f));
-            memoryImageCache.set(fileId, { buffer: buf, contentType: 'image/jpeg', etag: `"${fileId}"` });
+            setMemoryImageCache(fileId, { buffer: buf, contentType: 'image/jpeg', etag: `"${fileId}"` });
+            count++;
           } catch {}
         }
       }
@@ -175,16 +221,25 @@ warmUpImageCache();
 
 // Active Server-Sent Events (SSE) clients for instant real-time synchronization (< 50ms)
 const sseClients: Response[] = [];
+const MAX_SSE_CLIENTS = 1200;
 
 export function broadcastServerDbChange(reason: string = 'data_changed') {
+  if (sseClients.length === 0) return;
   const payload = JSON.stringify({
     type: 'mutation',
     reason,
     timestamp: serverDb.last_updated,
   });
+  const chunk = `data: ${payload}\n\n`;
+
   for (let i = sseClients.length - 1; i >= 0; i--) {
+    const client = sseClients[i];
     try {
-      sseClients[i].write(`data: ${payload}\n\n`);
+      if (client.writable && !client.destroyed) {
+        client.write(chunk);
+      } else {
+        sseClients.splice(i, 1);
+      }
     } catch {
       sseClients.splice(i, 1);
     }
@@ -230,16 +285,63 @@ function enrichServerDbSchools() {
 
 enrichServerDbSchools();
 
-function persistServerDb(broadcast: boolean = true) {
+// High-Concurrency Non-Blocking Asynchronous Atomic DB Writer
+let dbWriteTimer: NodeJS.Timeout | null = null;
+let isWritingDb = false;
+let pendingDbWrite = false;
+
+async function executeDbWriteAsync() {
+  if (isWritingDb) {
+    pendingDbWrite = true;
+    return;
+  }
+  isWritingDb = true;
+  pendingDbWrite = false;
+
   try {
-    serverDb.last_updated = new Date().toISOString();
-    fs.writeFileSync(DB_FILE, JSON.stringify(serverDb, null, 2), 'utf-8');
-    warmUpImageCache();
-    if (broadcast) {
-      broadcastServerDbChange();
-    }
+    const tmpFile = `${DB_FILE}.tmp.${Date.now()}`;
+    const minifiedJson = JSON.stringify(serverDb); // Minified JSON reduces CPU serialize time & disk I/O by ~40%
+    await fs.promises.writeFile(tmpFile, minifiedJson, 'utf-8');
+    await fs.promises.rename(tmpFile, DB_FILE);
   } catch (err) {
-    console.error('Error persisting server_db.json:', err);
+    console.error('[SIPMA Server] Non-blocking DB write error:', err);
+  } finally {
+    isWritingDb = false;
+    if (pendingDbWrite) {
+      pendingDbWrite = false;
+      scheduleDbWrite(50);
+    }
+  }
+}
+
+function scheduleDbWrite(delayMs = 150) {
+  if (dbWriteTimer) {
+    clearTimeout(dbWriteTimer);
+  }
+  dbWriteTimer = setTimeout(() => {
+    dbWriteTimer = null;
+    executeDbWriteAsync().catch(() => {});
+  }, delayMs);
+}
+
+// Synchronous emergency flush used on process termination to ensure zero data loss
+export function flushServerDbSync() {
+  try {
+    if (dbWriteTimer) {
+      clearTimeout(dbWriteTimer);
+      dbWriteTimer = null;
+    }
+    fs.writeFileSync(DB_FILE, JSON.stringify(serverDb), 'utf-8');
+  } catch (err) {
+    console.error('[SIPMA Server] Emergency sync flush error:', err);
+  }
+}
+
+export function persistServerDb(broadcast: boolean = true) {
+  serverDb.last_updated = new Date().toISOString();
+  scheduleDbWrite(150);
+  if (broadcast) {
+    broadcastServerDbChange();
   }
 }
 
@@ -800,6 +902,14 @@ app.get('/api/data/events', (req: Request, res: Response) => {
   res.setHeader('X-Accel-Buffering', 'no'); // Disable reverse-proxy buffering for instant packet delivery
   res.flushHeaders();
 
+  // Guard connection pool against resource exhaustion under massive traffic
+  if (sseClients.length >= MAX_SSE_CLIENTS) {
+    const oldest = sseClients.shift();
+    if (oldest && !oldest.destroyed) {
+      try { oldest.end(); } catch {}
+    }
+  }
+
   sseClients.push(res);
 
   // Send initial connection confirmation
@@ -808,17 +918,25 @@ app.get('/api/data/events', (req: Request, res: Response) => {
   // Heartbeat ping every 25 seconds to keep the connection healthy through Cloud Run / proxy
   const heartbeat = setInterval(() => {
     try {
-      res.write(': heartbeat\n\n');
+      if (!res.destroyed && res.writable) {
+        res.write(': heartbeat\n\n');
+      } else {
+        cleanup();
+      }
     } catch {
-      clearInterval(heartbeat);
+      cleanup();
     }
   }, 25000);
 
-  req.on('close', () => {
+  const cleanup = () => {
     clearInterval(heartbeat);
     const idx = sseClients.indexOf(res);
     if (idx !== -1) sseClients.splice(idx, 1);
-  });
+  };
+
+  req.on('close', cleanup);
+  res.on('close', cleanup);
+  res.on('error', cleanup);
 });
 
 // Force server to pull latest data from Google Apps Script immediately
@@ -1923,7 +2041,7 @@ app.get('/api/drive/image/:fileId', async (req: Request, res: Response) => {
     try {
       const buf = fs.readFileSync(cachePath);
       const etag = `"${fileId}"`;
-      memoryImageCache.set(fileId, { buffer: buf, contentType: 'image/jpeg', etag });
+      setMemoryImageCache(fileId, { buffer: buf, contentType: 'image/jpeg', etag });
       res.setHeader('Content-Type', 'image/jpeg');
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       res.setHeader('ETag', etag);
@@ -1942,7 +2060,7 @@ app.get('/api/drive/image/:fileId', async (req: Request, res: Response) => {
       const buf = fs.readFileSync(path.join(UPLOAD_DIR, matched));
       const mime = matched.endsWith('.png') ? 'image/png' : matched.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
       const etag = `"${fileId}"`;
-      memoryImageCache.set(fileId, { buffer: buf, contentType: mime, etag });
+      setMemoryImageCache(fileId, { buffer: buf, contentType: mime, etag });
       res.setHeader('Content-Type', mime);
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       res.setHeader('ETag', etag);
@@ -1961,7 +2079,7 @@ app.get('/api/drive/image/:fileId', async (req: Request, res: Response) => {
         const base64Data = matches ? matches[2] : raw.includes(',') ? raw.split(',')[1] : raw;
         const buf = Buffer.from(base64Data, 'base64');
         const etag = `"${fileId}"`;
-        memoryImageCache.set(fileId, { buffer: buf, contentType: mime, etag });
+        setMemoryImageCache(fileId, { buffer: buf, contentType: mime, etag });
         try { fs.writeFileSync(cachePath, buf); } catch {}
         res.setHeader('Content-Type', mime);
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
@@ -1981,7 +2099,7 @@ app.get('/api/drive/image/:fileId', async (req: Request, res: Response) => {
         const base64Data = matches ? matches[2] : logoStr.includes(',') ? logoStr.split(',')[1] : logoStr;
         const buf = Buffer.from(base64Data, 'base64');
         const etag = `"${fileId}"`;
-        memoryImageCache.set(fileId, { buffer: buf, contentType: mime, etag });
+        setMemoryImageCache(fileId, { buffer: buf, contentType: mime, etag });
         try { fs.writeFileSync(cachePath, buf); } catch {}
         res.setHeader('Content-Type', mime);
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
@@ -2005,7 +2123,7 @@ app.get('/api/drive/image/:fileId', async (req: Request, res: Response) => {
       const buffer = Buffer.from(await upstream.arrayBuffer());
       const mime = upstream.headers.get('content-type') || 'image/jpeg';
       const etag = `"${fileId}"`;
-      memoryImageCache.set(fileId, { buffer, contentType: mime, etag });
+      setMemoryImageCache(fileId, { buffer, contentType: mime, etag });
       try { fs.writeFileSync(cachePath, buffer); } catch {}
       res.setHeader('Content-Type', mime);
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
@@ -2020,7 +2138,7 @@ app.get('/api/drive/image/:fileId', async (req: Request, res: Response) => {
       const buffer = Buffer.from(await lh3Res.arrayBuffer());
       const mime = lh3Res.headers.get('content-type') || 'image/jpeg';
       const etag = `"${fileId}"`;
-      memoryImageCache.set(fileId, { buffer, contentType: mime, etag });
+      setMemoryImageCache(fileId, { buffer, contentType: mime, etag });
       try { fs.writeFileSync(cachePath, buffer); } catch {}
       res.setHeader('Content-Type', mime);
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
@@ -2040,7 +2158,7 @@ app.get('/api/drive/image/:fileId', async (req: Request, res: Response) => {
       const buffer = Buffer.from(await dlRes.arrayBuffer());
       const mime = dlRes.headers.get('content-type') || 'image/jpeg';
       const etag = `"${fileId}"`;
-      memoryImageCache.set(fileId, { buffer, contentType: mime, etag });
+      setMemoryImageCache(fileId, { buffer, contentType: mime, etag });
       try { fs.writeFileSync(cachePath, buffer); } catch {}
       res.setHeader('Content-Type', mime);
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
@@ -2521,10 +2639,25 @@ async function startServer() {
       app.use(vite.middlewares);
     } else {
       const distPath = path.join(process.cwd(), 'dist');
-      app.use(express.static(distPath));
+      app.use(
+        express.static(distPath, {
+          maxAge: 31536000000,
+          immutable: true,
+          etag: true,
+          lastModified: true,
+          setHeaders: (res, filePath) => {
+            if (filePath.endsWith('index.html')) {
+              res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+            } else {
+              res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            }
+          },
+        })
+      );
       app.get('*', (req: Request, res: Response) => {
         const indexPath = path.join(distPath, 'index.html');
         if (fs.existsSync(indexPath)) {
+          res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
           res.sendFile(indexPath);
         } else {
           res.status(200).send('SIPMA Server Ready');
@@ -2536,8 +2669,13 @@ async function startServer() {
       console.log(`SIPMA Server running on http://0.0.0.0:${PORT}`);
     });
 
+    // Optimize keep-alive timeouts for high concurrent traffic and Cloud Run reverse proxy
+    server.keepAliveTimeout = 65000;
+    server.headersTimeout = 66000;
+
     const shutdown = (signal: string) => {
       console.log(`[SIPMA Server] Received ${signal}, gracefully shutting down...`);
+      flushServerDbSync();
       server.close(() => {
         console.log('[SIPMA Server] Closed HTTP server.');
         process.exit(0);

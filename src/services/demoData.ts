@@ -54,17 +54,6 @@ export const INITIAL_USERS: User[] = [
     updated_at: '2026-01-01T08:00:00Z',
   },
   {
-    user_id: 'USR-ADMIN-PUSAT-ALIAS',
-    name: 'Administrator Pusat PPDB',
-    email: 'adminpusat@gmail.com',
-    phone: '085747520003',
-    role: 'admin_pusat',
-    status: 'active',
-    password_hash: 'sipma123',
-    created_at: '2026-01-01T08:00:00Z',
-    updated_at: '2026-01-01T08:00:00Z',
-  },
-  {
     user_id: 'USR-ADM-MI02-MTEE79SF',
     name: 'Abdurrahman Wahid',
     email: 'mi02jatibarang.brebes@gmail.com',
@@ -98,7 +87,7 @@ export const INITIAL_ANNOUNCEMENTS: Announcement[] = [
     date: '2026-02-01',
     is_published: true,
     target_role: 'all',
-    author_name: 'Panitia Pusat Kemenag',
+    author_name: 'Panitia Pusat PPDB',
   },
   {
     announcement_id: 'ANC-002',
@@ -107,8 +96,7 @@ export const INITIAL_ANNOUNCEMENTS: Announcement[] = [
     date: '2026-02-03',
     is_published: true,
     target_role: 'calon_murid',
-    school_id: 'SCH-MAN1',
-    author_name: 'Panitia PPDB MAN 1',
+    author_name: 'Panitia Pusat PPDB',
   },
   {
     announcement_id: 'ANC-003',
@@ -117,8 +105,7 @@ export const INITIAL_ANNOUNCEMENTS: Announcement[] = [
     date: '2026-02-10',
     is_published: true,
     target_role: 'calon_murid',
-    school_id: 'SCH-MAN1',
-    author_name: 'Panitia PPDB MAN 1',
+    author_name: 'Panitia Pusat PPDB',
   },
 ];
 
