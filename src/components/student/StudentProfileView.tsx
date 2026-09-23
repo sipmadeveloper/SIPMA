@@ -91,20 +91,64 @@ export const StudentProfileView: React.FC<Props> = ({
 
     try {
       const compressed = await compressAndResizeImage(file, 600, 600, 0.88);
-      setPhotoUrl(compressed.base64);
-      setStudent((prev) => ({ ...prev, photo_url: compressed.base64 }));
-      setSuccessMsg('Foto profil dipilih & dioptimalkan. Klik "Simpan Perubahan" untuk menyimpan ke cloud.');
-      setTimeout(() => setSuccessMsg(null), 3500);
-    } catch {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64 = reader.result as string;
-        setPhotoUrl(base64);
-        setStudent((prev) => ({ ...prev, photo_url: base64 }));
-        setSuccessMsg('Foto profil berhasil dipilih. Klik "Simpan Perubahan" untuk menyimpan ke cloud.');
-        setTimeout(() => setSuccessMsg(null), 3500);
+      const base64Data = compressed.base64;
+      setPhotoUrl(base64Data);
+      setStudent((prev) => ({ ...prev, photo_url: base64Data }));
+
+      // Langsung upload ke Google Drive agar otomatis tersimpan
+      const standardFileName = formatStandardDocumentFileName({
+        accountName: student.name,
+        registrationNumber: student.registration_number,
+        documentType: 'foto',
+        documentTitle: 'Pas Foto 3x4 Calon Murid',
+        extension: 'jpg',
+      });
+
+      const existingDocs = storageService.getDocumentsByRegistration(student.registration_number);
+      const fotoDoc = existingDocs.find((d) => d.document_type === 'foto' || d.document_type === 'pas_foto');
+      const oldDriveId = extractDriveFileId(fotoDoc?.drive_file_id || fotoDoc?.drive_url || student.photo_url) || '';
+
+      const photoDoc: DocumentItem = {
+        document_id: fotoDoc ? fotoDoc.document_id : `DOC-FOTO-${Date.now()}`,
+        registration_number: student.registration_number,
+        student_id: student.student_id || `STD-${Date.now()}`,
+        document_type: 'foto',
+        document_title: 'Pas Foto 3x4 Calon Murid',
+        file_name: standardFileName,
+        file_size_kb: Math.round((base64Data.length * 0.75) / 1024),
+        file_data_base64: base64Data,
+        old_drive_file_id: oldDriveId,
+        upload_time: new Date().toISOString(),
+        verification_status: 'menunggu',
       };
-      reader.readAsDataURL(file);
+
+      storageService.saveDocument(photoDoc, student.name, school?.school_name);
+      const uploadRes = await storageService.uploadDocumentToDrive(
+        photoDoc,
+        student.name,
+        school?.school_name,
+        {
+          schoolId: school?.school_id,
+          accountName: student.name,
+          accountId: currentUser?.user_id || student.registration_number,
+        }
+      );
+
+      const finalUrl = uploadRes?.file?.thumbnail_url || uploadRes?.file?.drive_url || base64Data;
+      setPhotoUrl(finalUrl);
+      const updatedProfile = { ...student, photo_url: finalUrl };
+      setStudent(updatedProfile);
+      storageService.saveStudentProfile(updatedProfile);
+
+      setSuccessMsg(
+        uploadRes?.gas_synced
+          ? 'Pas foto berhasil diunggah & tersimpan rapi di Google Drive!'
+          : 'Pas foto profil berhasil disimpan ke sistem dan cloud.'
+      );
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Gagal memproses pas foto.');
+      setTimeout(() => setErrorMsg(null), 4000);
     }
   };
 

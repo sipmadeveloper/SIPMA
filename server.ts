@@ -800,7 +800,7 @@ if (!isVercel) {
 
   setInterval(async () => {
     await checkAndAutoPullFromGas(true);
-  }, 30000);
+  }, 10000);
 }
 
 // ================= API ROUTES =================
@@ -915,18 +915,23 @@ app.get('/api/data/events', (req: Request, res: Response) => {
   // Send initial connection confirmation
   res.write(`data: ${JSON.stringify({ type: 'connected', timestamp: serverDb.last_updated })}\n\n`);
 
-  // Heartbeat ping every 25 seconds to keep the connection healthy through Cloud Run / proxy
+  // Heartbeat ping every 12 seconds (keepalive comments) + data ping every 24s to guarantee connection persistence
+  let pingCount = 0;
   const heartbeat = setInterval(() => {
     try {
       if (!res.destroyed && res.writable) {
-        res.write(': heartbeat\n\n');
+        res.write(': keepalive\n\n');
+        pingCount++;
+        if (pingCount % 2 === 0) {
+          res.write(`data: ${JSON.stringify({ type: 'ping', timestamp: serverDb.last_updated })}\n\n`);
+        }
       } else {
         cleanup();
       }
     } catch {
       cleanup();
     }
-  }, 25000);
+  }, 12000);
 
   const cleanup = () => {
     clearInterval(heartbeat);
@@ -1060,7 +1065,14 @@ app.post('/api/data/sync', async (req: Request, res: Response) => {
       serverDb.documents = deduplicateDocs(filtered);
     }
     if (payload.schools !== undefined && Array.isArray(payload.schools)) {
-      serverDb.schools = payload.schools;
+      const existingSchools = serverDb.schools || [];
+      serverDb.schools = payload.schools.map((ps: any) => {
+        const ex = existingSchools.find((s: any) => s.school_id === ps.school_id || s.school_code === ps.school_code);
+        return {
+          ...ps,
+          logo_url: ps.logo_url !== undefined && ps.logo_url !== '' ? ps.logo_url : (ex?.logo_url || ''),
+        };
+      });
     }
     if (payload.announcements !== undefined && Array.isArray(payload.announcements)) {
       serverDb.announcements = payload.announcements;
@@ -1287,9 +1299,11 @@ export function cleanupLocalFileAndCache(driveFileId?: string, localUrl?: string
 app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
   lastFileUploadTimestamp = Date.now();
   const settings = serverDb.settings || {};
-  const gasUrl = req.body.gas_web_app_url || settings.gas_web_app_url;
-  const ssId = req.body.spreadsheet_id || settings.spreadsheet_id;
-  const driveId = req.body.drive_root_folder_id || settings.drive_root_folder_id;
+  const gasUrl = (settings.gas_web_app_url && settings.gas_web_app_url.startsWith('http'))
+    ? settings.gas_web_app_url
+    : (req.body.gas_web_app_url || '');
+  const ssId = settings.spreadsheet_id || req.body.spreadsheet_id || '';
+  const driveId = settings.drive_root_folder_id || req.body.drive_root_folder_id || '';
 
   try {
     const { doc, student_name, school_name } = req.body;
@@ -1453,8 +1467,11 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
           gasSuccess = true;
           const fInfo = gasResult.file || gasResult.data || {};
           driveFileId = fInfo.drive_file_id || '';
-          driveUrl = fInfo.thumbnail_url || (driveFileId ? `https://lh3.googleusercontent.com/d/${driveFileId}` : '') || fInfo.drive_url || fInfo.view_url || localUrl;
-          viewUrl = fInfo.view_url || fInfo.thumbnail_url || driveUrl || localUrl;
+          const isPdf = (detectedMime && detectedMime.includes('pdf')) || standardFileName.toLowerCase().endsWith('.pdf');
+          const realDriveViewUrl = driveFileId ? `https://drive.google.com/file/d/${driveFileId}/view?usp=drivesdk` : '';
+          const directThumbUrl = (driveFileId && !isPdf) ? `https://lh3.googleusercontent.com/d/${driveFileId}` : '';
+          driveUrl = realDriveViewUrl || fInfo.drive_url || localUrl;
+          viewUrl = isPdf ? (realDriveViewUrl || localUrl) : (directThumbUrl || realDriveViewUrl || localUrl);
         }
       } catch (gasErr: any) {
         console.warn('Gagal upload ke Google Apps Script Drive:', gasErr?.message);
@@ -1469,7 +1486,11 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
         (d.registration_number === doc.registration_number && normalizeDocType(d.document_type) === normType)
     );
 
-    const effectiveDriveUrl = driveUrl || (driveFileId ? `https://lh3.googleusercontent.com/d/${driveFileId}` : '') || (targetDocIdx >= 0 ? serverDb.documents[targetDocIdx].drive_url : localUrl);
+    const isPdf = (detectedMime && detectedMime.includes('pdf')) || standardFileName.toLowerCase().endsWith('.pdf');
+    const realDriveViewUrl = driveFileId ? `https://drive.google.com/file/d/${driveFileId}/view?usp=drivesdk` : '';
+    const directThumbUrl = (driveFileId && !isPdf) ? `https://lh3.googleusercontent.com/d/${driveFileId}` : '';
+    const effectiveDriveUrl = realDriveViewUrl || driveUrl || (targetDocIdx >= 0 ? serverDb.documents[targetDocIdx].drive_url : localUrl);
+    const effectiveViewUrl = isPdf ? (realDriveViewUrl || localUrl) : (directThumbUrl || effectiveDriveUrl || localUrl);
 
     const updatedDocItem = {
       ...doc,
@@ -1477,6 +1498,8 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
       file_name: standardFileName,
       drive_file_id: driveFileId || (targetDocIdx >= 0 ? serverDb.documents[targetDocIdx].drive_file_id : ''),
       drive_url: effectiveDriveUrl,
+      view_url: effectiveViewUrl,
+      thumbnail_url: directThumbUrl || effectiveDriveUrl,
       local_url: localUrl,
       upload_time: new Date().toISOString(),
     };
@@ -1639,9 +1662,11 @@ app.get('/api/files/download', async (req: Request, res: Response) => {
 app.post('/api/gas/upload-logo', async (req: Request, res: Response) => {
   lastFileUploadTimestamp = Date.now();
   const settings = serverDb.settings || {};
-  const gasUrl = req.body.gas_web_app_url || settings.gas_web_app_url;
-  const ssId = req.body.spreadsheet_id || settings.spreadsheet_id;
-  const driveId = req.body.drive_root_folder_id || settings.drive_root_folder_id;
+  const gasUrl = (settings.gas_web_app_url && settings.gas_web_app_url.startsWith('http'))
+    ? settings.gas_web_app_url
+    : (req.body.gas_web_app_url || '');
+  const ssId = settings.spreadsheet_id || req.body.spreadsheet_id || '';
+  const driveId = settings.drive_root_folder_id || req.body.drive_root_folder_id || '';
 
   try {
     const { logo_type, id, name, base64_data, file_name } = req.body;

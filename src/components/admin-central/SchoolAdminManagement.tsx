@@ -14,6 +14,7 @@ import {
   Search,
   CheckCircle2,
   XCircle,
+  X,
   Edit3,
   Trash2,
   Copy,
@@ -566,9 +567,9 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
 
       {/* MODAL: Tambah / Edit Akun Admin */}
       {isAddEditModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200 overflow-hidden">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 sm:px-6 py-4 bg-white shrink-0">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-emerald-100 text-emerald-800 rounded-xl">
                   <UserPlus className="w-5 h-5" />
@@ -584,9 +585,17 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
                   </p>
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={() => setIsAddEditModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            <form onSubmit={handleSaveAdmin} className="space-y-3.5">
+            <form onSubmit={handleSaveAdmin} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-3.5">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   Madrasah Naungan <span className="text-rose-500">*</span>
@@ -706,12 +715,13 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
                   <option value="inactive">Non-Aktif / Terkunci (Diblokir)</option>
                 </select>
               </div>
+            </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <div className="flex items-center justify-end gap-2 px-5 sm:px-6 py-3.5 bg-slate-50 border-t border-slate-100 shrink-0 rounded-b-2xl">
                 <button
                   type="button"
                   onClick={() => setIsAddEditModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                 >
                   Batal
                 </button>

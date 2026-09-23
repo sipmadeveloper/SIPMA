@@ -551,9 +551,9 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
 
       {/* ================= MODAL: ADD / EDIT OPERATOR ================= */}
       {isAddEditModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95 my-8">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-hidden">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between px-5 sm:px-6 py-4 border-b border-slate-100 bg-white shrink-0">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-teal-100 text-teal-800 rounded-xl">
                   {editingOperator ? <Edit2 className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />}
@@ -563,7 +563,7 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
                     {editingOperator ? 'Perbarui Data Operator' : 'Tambah Akun Operator Madrasah'}
                   </h3>
                   <p className="text-xs text-slate-500">
-                    {school.school_name} &bull; Wewenang Seleksi & Verifikasi
+                    {school.school_name} &bull; Wewenang Seleksi &amp; Verifikasi
                   </p>
                 </div>
               </div>
@@ -576,7 +576,8 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSaveOperator} className="space-y-4 text-xs">
+            <form onSubmit={handleSaveOperator} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 text-xs">
               {/* Name */}
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
@@ -703,18 +704,19 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
                   </button>
                 </div>
               </div>
+            </div>
 
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+              <div className="px-5 sm:px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2 shrink-0 rounded-b-2xl">
                 <button
                   type="button"
                   onClick={() => setIsAddEditModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-colors cursor-pointer"
+                  className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl font-bold transition-colors cursor-pointer text-xs"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold transition-colors shadow-xs cursor-pointer"
+                  className="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-bold transition-colors shadow-xs cursor-pointer text-xs"
                 >
                   {editingOperator ? 'Simpan Perubahan' : 'Buat Akun Operator'}
                 </button>

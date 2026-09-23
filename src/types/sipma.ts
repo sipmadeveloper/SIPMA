@@ -141,6 +141,8 @@ export interface DocumentItem {
   drive_file_id?: string;
   old_drive_file_id?: string;
   drive_url?: string;
+  view_url?: string;
+  thumbnail_url?: string;
   local_url?: string;
   file_data_base64?: string; // for preview / upload transfer
   upload_time: string;

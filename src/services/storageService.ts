@@ -116,6 +116,8 @@ class StorageService {
   public isSseConnected: boolean = false;
   private sseReconnectTimer: any = null;
   private sseSyncDebounceTimer: any = null;
+  private sseWatchdogTimer: any = null;
+  private sseReconnectAttempts: number = 0;
 
   // High-speed in-memory cache for instant (<0.0001s) data reads and zero parsing lag
   private memCache: {
@@ -171,6 +173,72 @@ class StorageService {
 
   getAutoSyncStatus() {
     return this.getAutoSyncState();
+  }
+
+  getRealtimeConnectionStatus() {
+    const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+    return {
+      connected: this.isSseConnected && isOnline,
+      isOnline,
+      isSseActive: this.isSseConnected,
+      lastSyncTime: this.getSettings().last_synced_at || new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Forces an immediate real-time sync with both Google Apps Script and local database server
+   */
+  async forceRealtimeSync(): Promise<{ success: boolean; message: string }> {
+    this.notifySubscribers('auto_sync_status', { status: 'syncing', message: 'Menyinkronkan data database realtime...' });
+    try {
+      const settings = this.getSettings();
+      let gasPulled = false;
+
+      // 1. Force server to pull latest changes from Google Apps Script if configured
+      if (settings.gas_web_app_url && settings.gas_web_app_url.startsWith('http')) {
+        try {
+          const res = await fetch('/api/gas/pull-now', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              gas_web_app_url: settings.gas_web_app_url,
+              spreadsheet_id: settings.spreadsheet_id,
+            }),
+          });
+          if (res.ok) {
+            gasPulled = true;
+          }
+        } catch {}
+      }
+
+      // 2. Refresh local cache from server
+      await this.syncWithServer(true);
+
+      // 3. Ensure SSE connection is alive
+      if (!this.isSseConnected || !this.sseConnection || this.sseConnection.readyState !== EventSource.OPEN) {
+        this.initRealtimeEvents();
+      }
+
+      this.notifySubscribers('auto_sync_status', {
+        status: 'synced',
+        message: 'Database berhasil disinkronkan',
+        timestamp: new Date().toISOString(),
+      });
+      this.notifySubscribers('data_mutated');
+
+      return {
+        success: true,
+        message: gasPulled
+          ? 'Data realtime berhasil ditarik dari Google Sheets dan disinkronkan ke aplikasi!'
+          : 'Data berhasil disinkronkan dengan basis data server terpusat!',
+      };
+    } catch (err: any) {
+      this.notifySubscribers('auto_sync_status', { status: 'idle' });
+      return {
+        success: false,
+        message: err?.message || 'Gagal menyinkronkan data database realtime.',
+      };
+    }
   }
 
   triggerAutoSync(isSettingsUpdate: boolean = false): void {
@@ -231,12 +299,25 @@ class StorageService {
     }
   }
 
+  private resetSseWatchdog(): void {
+    if (this.sseWatchdogTimer) {
+      clearTimeout(this.sseWatchdogTimer);
+    }
+    // Watchdog: If no message, ping, or heartbeat is received in 36 seconds, force reconnect
+    this.sseWatchdogTimer = setTimeout(() => {
+      this.initRealtimeEvents();
+      this.syncWithServer(false).catch(() => {});
+    }, 36000);
+  }
+
   private initRealtimeEvents(): void {
     if (typeof window === 'undefined' || typeof EventSource === 'undefined') return;
 
     try {
       if (this.sseConnection) {
-        this.sseConnection.close();
+        try {
+          this.sseConnection.close();
+        } catch {}
         this.sseConnection = null;
       }
       if (this.sseReconnectTimer) {
@@ -246,23 +327,34 @@ class StorageService {
 
       const es = new EventSource('/api/data/events');
       this.sseConnection = es;
+      this.resetSseWatchdog();
 
       es.onopen = () => {
         this.isSseConnected = true;
+        this.sseReconnectAttempts = 0;
+        this.resetSseWatchdog();
         this.notifySubscribers('realtime_status', { connected: true, isOnline: true });
+        // Immediately sync on connect to ensure zero gap
+        this.syncWithServer(false).catch(() => {});
       };
 
       es.onmessage = (event) => {
+        this.resetSseWatchdog();
         try {
           if (!event.data) return;
           const payload = JSON.parse(event.data);
-          if (payload.type === 'mutation' || payload.type === 'gas_synced') {
-            // High-concurrency protection: debounce with randomized jitter (60-180ms)
-            // to prevent all connected clients from slamming the server at the exact same millisecond
+
+          if (payload.type === 'connected') {
+            this.isSseConnected = true;
+            this.notifySubscribers('realtime_status', { connected: true, isOnline: true });
+          } else if (payload.type === 'ping') {
+            this.isSseConnected = true;
+          } else if (payload.type === 'mutation' || payload.type === 'gas_synced') {
+            // High-concurrency protection: debounce with randomized jitter (40-120ms)
             if (this.sseSyncDebounceTimer) {
               clearTimeout(this.sseSyncDebounceTimer);
             }
-            const jitterMs = 60 + Math.floor(Math.random() * 120);
+            const jitterMs = 40 + Math.floor(Math.random() * 80);
             this.sseSyncDebounceTimer = setTimeout(() => {
               this.sseSyncDebounceTimer = null;
               this.syncWithServer(false).catch(() => {});
@@ -274,14 +366,20 @@ class StorageService {
       es.onerror = () => {
         this.isSseConnected = false;
         this.notifySubscribers('realtime_status', { connected: false });
-        if (es.readyState === EventSource.CLOSED) {
-          if (this.sseReconnectTimer) clearTimeout(this.sseReconnectTimer);
-          this.sseReconnectTimer = setTimeout(() => {
-            if (!this.isSseConnected) {
-              this.initRealtimeEvents();
-            }
-          }, 3500);
-        }
+        try {
+          es.close();
+        } catch {}
+        this.sseConnection = null;
+
+        if (this.sseReconnectTimer) clearTimeout(this.sseReconnectTimer);
+        // Exponential backoff capped at 6 seconds
+        const backoffMs = Math.min(1500 * Math.pow(1.25, this.sseReconnectAttempts), 6000);
+        this.sseReconnectAttempts++;
+        this.sseReconnectTimer = setTimeout(() => {
+          if (!this.isSseConnected) {
+            this.initRealtimeEvents();
+          }
+        }, backoffMs);
       };
     } catch (err) {
       console.warn('[Storage] SSE connection initialization error:', err);
@@ -301,24 +399,30 @@ class StorageService {
       clearInterval(this.serverSyncTimer);
     }
 
-    // Real-time server sync: Poll centralized server every 6 seconds as robust fallback
+    // Real-time server sync: Poll centralized server every 5 seconds as ultra-resilient fallback
     this.serverSyncTimer = setInterval(() => {
       if (!document.hidden) {
+        if (!this.isSseConnected || !this.sseConnection || this.sseConnection.readyState !== EventSource.OPEN) {
+          this.initRealtimeEvents();
+        }
         this.syncWithServer(false).catch(() => {});
       }
-    }, 6000);
+    }, 5000);
 
-    // Auto-pull from GAS every 25 seconds in background if configured
+    // Auto-pull from GAS every 18 seconds in background if configured
     this.autoPullTimer = setInterval(() => {
       const s = this.getSettings();
       if (s.gas_web_app_url && s.gas_web_app_url.startsWith('http') && s.realtime_sync_enabled !== false && !document.hidden) {
         this.pullAllFromGAS().catch(() => {});
       }
-    }, 25000);
+    }, 18000);
 
     // Instant sync on window focus and tab visibility change
     const handleVisibility = () => {
       if (!document.hidden) {
+        if (!this.isSseConnected || !this.sseConnection || this.sseConnection.readyState !== EventSource.OPEN) {
+          this.initRealtimeEvents();
+        }
         this.syncWithServer(false).catch(() => {});
         const s = this.getSettings();
         if (s.gas_web_app_url && s.gas_web_app_url.startsWith('http') && s.realtime_sync_enabled !== false) {
@@ -329,7 +433,6 @@ class StorageService {
 
     // Instant reconnect and sync when device regains internet connection
     const handleOnline = () => {
-      console.log('[Storage] Jaringan online terdeteksi, memulihkan koneksi realtime...');
       this.initRealtimeEvents();
       this.syncWithServer(false).catch(() => {});
       const s = this.getSettings();
@@ -337,12 +440,13 @@ class StorageService {
         this.pullAllFromGAS().catch(() => {});
       }
       this.notifySubscribers('network_status', { isOnline: true });
+      this.notifySubscribers('realtime_status', { connected: true, isOnline: true });
     };
 
     const handleOffline = () => {
       this.isSseConnected = false;
       this.notifySubscribers('network_status', { isOnline: false });
-      this.notifySubscribers('realtime_status', { connected: false });
+      this.notifySubscribers('realtime_status', { connected: false, isOnline: false });
     };
 
     window.removeEventListener('focus', handleVisibility);
@@ -3433,16 +3537,21 @@ class StorageService {
           (d.registration_number === doc.registration_number && normalizeDocumentType(d.document_type) === normType)
       );
       const driveFileId = fileInfo.drive_file_id || '';
-      const cdnUrl = fileInfo.thumbnail_url || (driveFileId ? `https://lh3.googleusercontent.com/d/${driveFileId}` : '') || fileInfo.drive_url || fileInfo.view_url || '';
+      const isPdf = normType.includes('pdf') || (doc.file_name && doc.file_name.toLowerCase().endsWith('.pdf'));
+      const realDriveViewUrl = driveFileId ? `https://drive.google.com/file/d/${driveFileId}/view?usp=drivesdk` : '';
+      const cdnUrl = (!isPdf && driveFileId) ? `https://lh3.googleusercontent.com/d/${driveFileId}` : (realDriveViewUrl || fileInfo.drive_url || fileInfo.local_url || '');
+      const effectiveDriveUrl = realDriveViewUrl || fileInfo.drive_url || cdnUrl || '';
 
       if (idx >= 0) {
         if (driveFileId) docs[idx].drive_file_id = driveFileId;
-        if (cdnUrl) docs[idx].drive_url = cdnUrl;
+        if (effectiveDriveUrl) docs[idx].drive_url = effectiveDriveUrl;
         if (fileInfo.file_name) docs[idx].file_name = fileInfo.file_name;
         if (fileInfo.local_url) docs[idx].local_url = fileInfo.local_url;
         docs[idx].document_type = normType;
+        docs[idx].view_url = isPdf ? (realDriveViewUrl || fileInfo.local_url) : (cdnUrl || effectiveDriveUrl || fileInfo.local_url);
+        docs[idx].thumbnail_url = cdnUrl || effectiveDriveUrl;
         // Purge memory/storage base64 once stored on server/drive
-        if (cdnUrl || fileInfo.local_url) {
+        if (driveFileId || fileInfo.local_url) {
           delete docs[idx].file_data_base64;
         }
       } else {
@@ -3450,7 +3559,9 @@ class StorageService {
           ...doc,
           document_type: normType,
           drive_file_id: driveFileId,
-          drive_url: cdnUrl,
+          drive_url: effectiveDriveUrl,
+          view_url: isPdf ? (realDriveViewUrl || fileInfo.local_url) : (cdnUrl || effectiveDriveUrl || fileInfo.local_url),
+          thumbnail_url: cdnUrl || effectiveDriveUrl,
           file_name: fileInfo.file_name || doc.file_name,
           local_url: fileInfo.local_url,
         });
@@ -3460,21 +3571,23 @@ class StorageService {
       this.memCache.documents = deduplicated;
       safeSetItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(deduplicated));
       this.notifySubscribers('data_mutated');
+      this.triggerAutoSync(true);
 
       // Also update student photo and user profile if it was a photo document
       const isPhoto = normType === 'foto' || normType === 'pas_foto' || normType === 'foto_profil' || isAccount;
-      if (isPhoto && cdnUrl) {
+      if (isPhoto && (cdnUrl || effectiveDriveUrl)) {
+        const photoForProfile = cdnUrl || effectiveDriveUrl;
         const reg = doc.registration_number || options?.accountId;
         if (reg) {
           const student = this.getStudentProfile(reg);
           if (student) {
-            student.photo_url = cdnUrl;
+            student.photo_url = photoForProfile;
             this.saveStudentProfile(student);
           }
         }
         const currentUser = this.getCurrentUser();
         if (currentUser && (currentUser.registration_number === reg || currentUser.user_id === options?.accountId || isAccount)) {
-          this.updateUserProfile(currentUser.user_id, { photo_url: cdnUrl });
+          this.updateUserProfile(currentUser.user_id, { photo_url: photoForProfile });
         }
       }
 
@@ -3486,10 +3599,10 @@ class StorageService {
           document_id: (idx >= 0 ? docs[idx].document_id : doc.document_id),
           file_name: fileInfo.file_name || doc.file_name,
           drive_file_id: driveFileId,
-          drive_url: cdnUrl,
-          thumbnail_url: cdnUrl,
+          drive_url: effectiveDriveUrl,
+          thumbnail_url: cdnUrl || effectiveDriveUrl,
           local_url: fileInfo.local_url,
-          view_url: fileInfo.view_url || cdnUrl,
+          view_url: isPdf ? (realDriveViewUrl || fileInfo.local_url) : (cdnUrl || effectiveDriveUrl),
         }
       };
     }
@@ -3500,7 +3613,7 @@ class StorageService {
   async uploadAllPendingDocumentsToDrive(): Promise<{ uploaded: number; total: number }> {
     const docs = this.getDocuments();
     const pending = docs.filter(
-      (d) => d.file_data_base64 && (!d.drive_url || !d.drive_url.includes('drive.google.com'))
+      (d) => d.file_data_base64 && (!d.drive_file_id || d.drive_file_id === 'LOCAL_STORAGE' || !d.drive_url)
     );
     let count = 0;
     const schools = this.getSchools();

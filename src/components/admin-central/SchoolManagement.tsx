@@ -247,8 +247,8 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
 
       {/* CASCADE DELETE CONFIRMATION MODAL */}
       {schoolToDelete && cascadeStats && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-rose-200 space-y-5 animate-in fade-in">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92vh] overflow-y-auto p-6 shadow-2xl border border-rose-200 space-y-5 animate-in fade-in my-auto">
             <div className="flex items-start gap-3.5">
               <div className="p-3 bg-rose-100 text-rose-600 rounded-2xl shrink-0">
                 <AlertTriangle className="w-6 h-6" />
@@ -311,23 +311,39 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
 
       {/* Edit / Add Modal */}
       {editingSchool && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="font-bold text-base text-slate-900">
-                {isNew ? 'Tambah Madrasah Baru' : `Edit Madrasah: ${editingSchool.school_name}`}
-              </h3>
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-hidden">
+          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            {/* Header (Always Visible at Top - Never Clipped) */}
+            <div className="flex justify-between items-center px-5 sm:px-6 py-4 border-b border-slate-100 bg-white rounded-t-2xl shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                  <SchoolIcon className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-900 leading-tight">
+                    {isNew ? 'Tambah Madrasah Baru' : `Edit Madrasah: ${editingSchool.school_name}`}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {isNew
+                      ? 'Daftarkan satuan pendidikan madrasah baru ke sistem PPDB'
+                      : 'Perbarui profil madrasah, kuota daya tampung, dan ketentuan daftar ulang'}
+                  </p>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={() => setEditingSchool(null)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
+                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                title="Tutup Formulir"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSave} className="space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Form with Scrollable Content & Pinned Footer */}
+            <form onSubmit={handleSave} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2 bg-emerald-50/50 p-3.5 rounded-xl border border-emerald-200/80">
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="block font-bold text-slate-800 text-xs flex items-center gap-1.5">
@@ -388,6 +404,34 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
                     onChange={(e) => setEditingSchool({ ...editingSchool, zoning_radius_km: parseFloat(e.target.value) || 1 })}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
                     required
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Titik Koordinat (Latitude)
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={editingSchool.latitude ?? -6.2}
+                    onChange={(e) => setEditingSchool({ ...editingSchool, latitude: parseFloat(e.target.value) || 0 })}
+                    placeholder="Contoh: -6.96415"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-mono focus:ring-2 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Titik Koordinat (Longitude)
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={editingSchool.longitude ?? 106.8}
+                    onChange={(e) => setEditingSchool({ ...editingSchool, longitude: parseFloat(e.target.value) || 0 })}
+                    placeholder="Contoh: 109.05663"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg font-mono focus:ring-2 focus:ring-emerald-500 outline-none"
                   />
                 </div>
 
@@ -608,21 +652,29 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
                   </div>
                 </div>
               </div>
+            </div>
 
-              <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setEditingSchool(null)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-xs cursor-pointer"
-                >
-                  Simpan Data Madrasah
-                </button>
+              {/* Pinned Sticky Footer - Always Visible & Never Cut Off */}
+              <div className="flex items-center justify-between gap-3 px-5 sm:px-6 py-3.5 bg-slate-50 border-t border-slate-200/80 rounded-b-2xl shrink-0">
+                <div className="text-[11px] text-slate-500 hidden sm:flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  <span>Periksa kembali data madrasah sebelum menyimpan perubahan</span>
+                </div>
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setEditingSchool(null)}
+                    className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-xs transition-colors cursor-pointer"
+                  >
+                    {isNew ? 'Tambah Madrasah Baru' : 'Simpan Data Madrasah'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

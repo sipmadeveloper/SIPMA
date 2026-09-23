@@ -485,12 +485,13 @@ export const VerificationModal: React.FC<Props> = ({
                           </a>
                         )}
                         <a
-                          href={doc.drive_url}
+                          href={doc.drive_file_id ? `https://drive.google.com/file/d/${doc.drive_file_id}/view?usp=drivesdk` : (doc.drive_url || doc.local_url)}
                           target="_blank"
                           rel="noreferrer"
-                          className="px-3 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1"
+                          className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg text-xs font-semibold flex items-center gap-1"
+                          title="Buka langsung di Google Drive"
                         >
-                          <span>Buka Tab Baru</span>
+                          <span>Buka di Drive</span>
                           <ExternalLink className="w-3 h-3" />
                         </a>
                       </div>

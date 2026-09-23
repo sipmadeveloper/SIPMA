@@ -1167,6 +1167,7 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
     }
   }
 
+  var realDriveUrl = fileUrl || (fileId ? ("https://drive.google.com/file/d/" + fileId + "/view?usp=drivesdk") : "");
   return {
     success: true,
     message: "Dokumen berhasil tersimpan rapi di Google Drive dan Google Sheets tanpa data dobel!",
@@ -1174,19 +1175,19 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
       document_id: docId,
       file_name: cleanFileName,
       drive_file_id: fileId,
-      drive_url: directThumbnailUrl,
-      view_url: directThumbnailUrl,
-      thumbnail_url: directThumbnailUrl
+      drive_url: realDriveUrl,
+      view_url: isDocPdf ? realDriveUrl : (directThumbnailUrl || realDriveUrl),
+      thumbnail_url: directThumbnailUrl || realDriveUrl
     },
     data: {
       document_id: docId,
       file_name: cleanFileName,
       drive_file_id: fileId,
-      drive_url: directThumbnailUrl,
-      view_url: directThumbnailUrl,
-      thumbnail_url: directThumbnailUrl
+      drive_url: realDriveUrl,
+      view_url: isDocPdf ? realDriveUrl : (directThumbnailUrl || realDriveUrl),
+      thumbnail_url: directThumbnailUrl || realDriveUrl
     },
-    logo_url: directThumbnailUrl
+    logo_url: directThumbnailUrl || realDriveUrl
   };
 }
 

@@ -29,6 +29,7 @@ import {
   Lock,
   XCircle,
   RefreshCw,
+  ExternalLink,
 } from 'lucide-react';
 import {
   StudentProfile,
@@ -495,10 +496,11 @@ export const RegistrationWizard: React.FC<Props> = ({
         }
 
         hideLoading();
+        const schoolFolderInfo = effectiveSchool?.school_name ? ` (Folder: ${effectiveSchool.school_name})` : '';
         showAlert(
           'Berkas Berhasil Disimpan',
           uploadRes?.gas_synced
-            ? `Berkas "${standardFileName}" berhasil diunggah & tersimpan aman di Google Drive dan database cloud!`
+            ? `Berkas "${standardFileName}" berhasil diunggah & tersimpan rapi di Google Drive${schoolFolderInfo} dan database cloud!`
             : `Berkas "${standardFileName}" berhasil disimpan ke sistem dan database cloud.`,
           'success'
         );
@@ -2910,6 +2912,22 @@ export const RegistrationWizard: React.FC<Props> = ({
                           >
                             Preview
                           </a>
+                          {(uploaded.drive_file_id || uploaded.drive_url) && (
+                            <a
+                              href={
+                                uploaded.drive_file_id
+                                  ? `https://drive.google.com/file/d/${uploaded.drive_file_id}/view?usp=drivesdk`
+                                  : uploaded.drive_url
+                              }
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 rounded-lg text-xs font-semibold"
+                              title="Buka file ini langsung di Google Drive"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              <span>Drive</span>
+                            </a>
+                          )}
                           <button
                             type="button"
                             onClick={() => handleDeleteDocument(uploaded.document_id)}
