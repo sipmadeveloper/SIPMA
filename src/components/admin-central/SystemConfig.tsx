@@ -494,18 +494,10 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
                 </p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={async () => {
-                await storageService.syncWithServer();
-                setFormData(storageService.getSettings());
-                showToast('Konfigurasi terbaru berhasil disinkronkan dari server pusat!', 'success');
-              }}
-              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shrink-0 transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>Sinkronkan Server</span>
-            </button>
+            <div className="flex items-center gap-2 px-3 py-2 bg-emerald-100/90 text-emerald-800 rounded-xl text-xs font-bold shrink-0 border border-emerald-300">
+              <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
+              <span>Sinkronisasi Otomatis Aktif</span>
+            </div>
           </div>
 
           {/* Patent Configuration Notice */}
@@ -1215,15 +1207,13 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleManualPushSync}
-                disabled={isSyncing}
-                className="w-full py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-xs cursor-pointer"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                <span>{isSyncing ? 'Sedang Menyinkronkan...' : 'Sinkronkan Ulang Manual (Jika Diperlukan)'}</span>
-              </button>
+              <div className="flex items-center justify-between p-3 bg-emerald-100/70 border border-emerald-300 rounded-xl text-emerald-900 text-xs font-semibold">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
+                  <span>Otomatis Sinkron ke Spreadsheet</span>
+                </div>
+                <span className="text-[10px] font-bold bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-md">Realtime</span>
+              </div>
             </div>
 
             {/* Action 2: Pull Sync */}
@@ -1233,20 +1223,18 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
                   <Cloud className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-xs text-slate-900">Tarik Data dari Google Sheets</h4>
-                  <p className="text-[11px] text-slate-600">Ambil data terbaru dari Spreadsheet jika ada perubahan yang diedit langsung di spreadsheet.</p>
+                  <h4 className="font-bold text-xs text-slate-900">Penarikan Data Database Otomatis</h4>
+                  <p className="text-[11px] text-slate-600">Sistem otomatis mengambil data terbaru dari Google Sheets &amp; server saat aplikasi dibuka atau diperbarui.</p>
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleManualPullSync}
-                disabled={isPulling}
-                className="w-full py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-bold transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-xs cursor-pointer"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isPulling ? 'animate-spin' : ''}`} />
-                <span>{isPulling ? 'Sedang Menarik Data...' : 'Tarik Data Terbaru dari Cloud'}</span>
-              </button>
+              <div className="flex items-center justify-between p-3 bg-sky-100/70 border border-sky-300 rounded-xl text-sky-900 text-xs font-semibold">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-sky-600 animate-pulse"></span>
+                  <span>Sistem Otomatis Mengambil Data Terbaru</span>
+                </div>
+                <span className="text-[10px] font-bold bg-sky-200 text-sky-900 px-2 py-0.5 rounded-md">Auto-Fetch</span>
+              </div>
             </div>
           </div>
 

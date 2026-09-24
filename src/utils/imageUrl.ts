@@ -201,12 +201,19 @@ export function normalizeImageUrl(url?: string | null, fallback?: string): strin
     return trimmed;
   }
 
-  // Google Drive URLs conversion to local high-speed cached server proxy
+  // Google Drive URLs: Use Google's ultra-fast globally distributed Edge CDN (lh3.googleusercontent.com/d/ID)
+  // This renders images in 20-50ms directly from Google's edge servers with zero serverless cold-starts or timeouts!
   const fileId = extractDriveFileId(trimmed);
   if (fileId && !fileId.startsWith('sample-') && !fileId.startsWith('SIPMA_')) {
-    const proxyUrl = `/api/drive/image/${fileId}`;
-    normalizedUrlCache.set(trimmed, proxyUrl);
-    return proxyUrl;
+    const cdnUrl = `https://lh3.googleusercontent.com/d/${fileId}`;
+    normalizedUrlCache.set(trimmed, cdnUrl);
+    return cdnUrl;
+  }
+
+  // Local server paths are already fast & cached
+  if (trimmed.startsWith('/uploads/') || trimmed.startsWith('/api/')) {
+    normalizedUrlCache.set(trimmed, trimmed);
+    return trimmed;
   }
 
   normalizedUrlCache.set(trimmed, trimmed);
@@ -222,14 +229,28 @@ export function handleImageError(e: React.SyntheticEvent<HTMLImageElement, Event
 
   const fileId = extractDriveFileId(currentSrc);
   if (fileId) {
-    if (currentSrc.includes('/api/drive/image/')) {
-      // If local proxy returned error, try Google direct CDN
-      target.src = `https://lh3.googleusercontent.com/d/${fileId}`;
+    if (currentSrc.includes('lh3.googleusercontent.com')) {
+      // Step 2: Try Google Drive official thumbnail endpoint
+      target.src = `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
       return;
     }
-    if (currentSrc.includes('lh3.googleusercontent.com')) {
-      // Try Google thumbnail endpoint
-      target.src = `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
+    if (currentSrc.includes('thumbnail')) {
+      // Step 3: Try Google Drive uc export view
+      target.src = `https://drive.google.com/uc?export=view&id=${fileId}`;
+      return;
+    }
+    if (currentSrc.includes('drive.google.com')) {
+      // Step 4: Try server fallback proxy
+      target.src = `/api/drive/image/${fileId}`;
+      return;
+    }
+  }
+
+  // If local /uploads/ URL fails (e.g. on serverless Vercel cold-start where /tmp is wiped)
+  if (currentSrc.includes('/uploads/')) {
+    const match = currentSrc.match(/([a-zA-Z0-9_-]{25,50})/);
+    if (match && match[1]) {
+      target.src = `https://lh3.googleusercontent.com/d/${match[1]}`;
       return;
     }
   }

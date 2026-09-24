@@ -311,10 +311,10 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
 
       {/* Edit / Add Modal */}
       {editingSchool && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-hidden">
-          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs overflow-y-auto p-2 sm:p-4 md:p-6 flex items-start sm:items-center justify-center min-h-screen">
+          <div className="bg-white rounded-2xl max-w-3xl w-full my-auto max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3.5rem)] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             {/* Header (Always Visible at Top - Never Clipped) */}
-            <div className="flex justify-between items-center px-5 sm:px-6 py-4 border-b border-slate-100 bg-white rounded-t-2xl shrink-0">
+            <div className="flex justify-between items-center px-5 sm:px-6 py-4 border-b border-slate-100 bg-white rounded-t-2xl shrink-0 sticky top-0 z-20">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
                   <SchoolIcon className="w-5 h-5" />
@@ -342,7 +342,7 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
 
             {/* Form with Scrollable Content & Pinned Footer */}
             <form onSubmit={handleSave} className="flex-1 flex flex-col min-h-0 overflow-hidden">
-              <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 text-xs">
+              <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 text-xs overscroll-contain">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2 bg-emerald-50/50 p-3.5 rounded-xl border border-emerald-200/80">
                   <div className="flex items-center justify-between mb-1.5">

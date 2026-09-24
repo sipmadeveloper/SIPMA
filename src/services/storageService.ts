@@ -3548,10 +3548,10 @@ class StorageService {
         if (fileInfo.file_name) docs[idx].file_name = fileInfo.file_name;
         if (fileInfo.local_url) docs[idx].local_url = fileInfo.local_url;
         docs[idx].document_type = normType;
-        docs[idx].view_url = isPdf ? (realDriveViewUrl || fileInfo.local_url) : (cdnUrl || effectiveDriveUrl || fileInfo.local_url);
-        docs[idx].thumbnail_url = cdnUrl || effectiveDriveUrl;
-        // Purge memory/storage base64 once stored on server/drive
-        if (driveFileId || fileInfo.local_url) {
+        docs[idx].view_url = isPdf ? (realDriveViewUrl || fileInfo.local_url || doc.view_url) : (cdnUrl || effectiveDriveUrl || doc.file_data_base64 || fileInfo.local_url);
+        docs[idx].thumbnail_url = cdnUrl || effectiveDriveUrl || doc.file_data_base64;
+        // Purge memory/storage base64 ONLY IF real Drive file ID is verified
+        if (driveFileId && driveFileId !== 'LOCAL_STORAGE' && driveFileId.length > 5) {
           delete docs[idx].file_data_base64;
         }
       } else {
@@ -3560,8 +3560,8 @@ class StorageService {
           document_type: normType,
           drive_file_id: driveFileId,
           drive_url: effectiveDriveUrl,
-          view_url: isPdf ? (realDriveViewUrl || fileInfo.local_url) : (cdnUrl || effectiveDriveUrl || fileInfo.local_url),
-          thumbnail_url: cdnUrl || effectiveDriveUrl,
+          view_url: isPdf ? (realDriveViewUrl || fileInfo.local_url || doc.view_url) : (cdnUrl || effectiveDriveUrl || doc.file_data_base64 || fileInfo.local_url),
+          thumbnail_url: cdnUrl || effectiveDriveUrl || doc.file_data_base64,
           file_name: fileInfo.file_name || doc.file_name,
           local_url: fileInfo.local_url,
         });

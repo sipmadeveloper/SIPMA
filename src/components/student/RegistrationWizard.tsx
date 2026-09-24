@@ -487,9 +487,10 @@ export const RegistrationWizard: React.FC<Props> = ({
 
         // Also update student photo if docType is foto
         if ((docType === 'foto' || docType === 'pas_foto') && student) {
+          const effectivePhotoUrl = (uploadRes?.file?.drive_file_id && uploadRes.file.drive_file_id !== 'LOCAL_STORAGE' ? `https://lh3.googleusercontent.com/d/${uploadRes.file.drive_file_id}` : null) || uploadRes?.file?.drive_url || (uploadRes?.file?.view_url && !uploadRes.file.view_url.startsWith('/uploads/') ? uploadRes.file.view_url : null) || base64Data;
           const updated = {
             ...student,
-            photo_url: uploadRes?.file?.drive_url || uploadRes?.file?.view_url || base64Data,
+            photo_url: effectivePhotoUrl,
           };
           setStudent(updated);
           storageService.saveStudentProfile(updated);

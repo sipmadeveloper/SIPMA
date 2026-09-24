@@ -3,9 +3,21 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import compression from 'compression';
+import { fileURLToPath } from 'url';
+
+const currentDir = typeof __dirname !== 'undefined'
+  ? __dirname
+  : (typeof import.meta !== 'undefined' && import.meta.url ? path.dirname(fileURLToPath(import.meta.url)) : process.cwd());
 
 const app = express();
-const PORT = 3000;
+
+const portArgIdx = process.argv.indexOf('--port');
+const cliPort = portArgIdx !== -1 && process.argv[portArgIdx + 1] ? parseInt(process.argv[portArgIdx + 1], 10) : NaN;
+const PORT = !isNaN(cliPort) ? cliPort : parseInt(process.env.PORT || '3000', 10);
+
+const hostArgIdx = process.argv.indexOf('--host');
+const cliHost = hostArgIdx !== -1 && process.argv[hostArgIdx + 1] ? process.argv[hostArgIdx + 1] : undefined;
+const HOST = cliHost || process.env.HOST || '0.0.0.0';
 
 // High-performance gzip/deflate compression for all API and static responses (> 1KB)
 app.use(
@@ -118,8 +130,22 @@ interface ServerDbState {
 }
 
 function loadInitialServerDb(): ServerDbState {
-  const bundledDb = path.join(process.cwd(), 'data', 'server_db.json');
-  const targetFile = fs.existsSync(DB_FILE) ? DB_FILE : (fs.existsSync(bundledDb) ? bundledDb : null);
+  const candidatePaths = [
+    DB_FILE,
+    path.join(process.cwd(), 'data', 'server_db.json'),
+    path.join(currentDir, '..', 'data', 'server_db.json'),
+    path.join(currentDir, 'data', 'server_db.json'),
+    path.join('/var/task', 'data', 'server_db.json'),
+  ];
+  let targetFile: string | null = null;
+  for (const p of candidatePaths) {
+    try {
+      if (fs.existsSync(p)) {
+        targetFile = p;
+        break;
+      }
+    } catch {}
+  }
   if (targetFile) {
     try {
       const raw = fs.readFileSync(targetFile, 'utf-8');
@@ -339,7 +365,13 @@ export function flushServerDbSync() {
 
 export function persistServerDb(broadcast: boolean = true) {
   serverDb.last_updated = new Date().toISOString();
-  scheduleDbWrite(150);
+  if (isVercel) {
+    try {
+      fs.writeFileSync(DB_FILE, JSON.stringify(serverDb), 'utf-8');
+    } catch {}
+  } else {
+    scheduleDbWrite(150);
+  }
   if (broadcast) {
     broadcastServerDbChange();
   }
@@ -857,11 +889,15 @@ app.post('/api/settings', (req: Request, res: Response) => {
 // 3. Global Data Sync (Shared database state for multi-device sync)
 app.get('/api/data', async (req: Request, res: Response) => {
   const forcePull = req.query.force_pull_gas === 'true';
-  if (forcePull) {
+  const shouldPullOnVercel = isVercel && (!serverDb.students || Object.keys(serverDb.students).length === 0 || Date.now() - lastGasPullTimestamp > 45000);
+  if (forcePull || shouldPullOnVercel) {
     try {
-      await checkAndAutoPullFromGas(true);
+      await Promise.race([
+        checkAndAutoPullFromGas(true),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Sync timeout')), 3500)),
+      ]);
     } catch (e) {
-      console.warn('Force pull error in /api/data:', e);
+      console.warn('Pull error or timeout in /api/data:', e);
     }
   } else {
     // Non-blocking auto-pull in the background - responds in 1ms to user reload/boot
@@ -1295,6 +1331,66 @@ export function cleanupLocalFileAndCache(driveFileId?: string, localUrl?: string
   }
 }
 
+// Fallback for /uploads/ when running serverless on Vercel or if local file was not in ephemeral /tmp
+app.get('/uploads/:filename', (req: Request, res: Response) => {
+  const { filename } = req.params;
+  if (!filename) return res.status(404).end();
+
+  // 1. Memory RAM cache
+  const mem = memoryImageCache.get(filename);
+  if (mem) {
+    res.setHeader('Content-Type', mem.contentType);
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return res.send(mem.buffer);
+  }
+
+  // 2. Check if local file exists on disk
+  try {
+    const localPath = path.join(UPLOAD_DIR, filename);
+    if (fs.existsSync(localPath)) {
+      return res.sendFile(localPath);
+    }
+  } catch {}
+
+  // 3. Search serverDb documents
+  if (serverDb.documents) {
+    const doc = serverDb.documents.find(
+      (d: any) =>
+        d.file_name === filename ||
+        (d.local_url && path.basename(d.local_url) === filename)
+    );
+    if (doc?.drive_file_id && doc.drive_file_id !== 'LOCAL_STORAGE') {
+      return res.redirect(302, `https://lh3.googleusercontent.com/d/${encodeURIComponent(doc.drive_file_id)}`);
+    }
+    if (doc?.file_data_base64 && doc.file_data_base64.startsWith('data:')) {
+      const parts = doc.file_data_base64.split(',');
+      const mime = parts[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+      const buf = Buffer.from(parts[1], 'base64');
+      res.setHeader('Content-Type', mime);
+      return res.send(buf);
+    }
+  }
+
+  // 4. Search school logos
+  if (serverDb.schools) {
+    const sch = serverDb.schools.find((s: any) => s.logo_url && s.logo_url.includes(filename));
+    const driveId = extractDriveFileId(sch?.logo_url);
+    if (driveId) {
+      return res.redirect(302, `https://lh3.googleusercontent.com/d/${encodeURIComponent(driveId)}`);
+    }
+  }
+
+  // 5. Search app logo
+  if (serverDb.settings?.app_logo) {
+    const driveId = extractDriveFileId(serverDb.settings.app_logo);
+    if (driveId && serverDb.settings.app_logo.includes(filename)) {
+      return res.redirect(302, `https://lh3.googleusercontent.com/d/${encodeURIComponent(driveId)}`);
+    }
+  }
+
+  return res.status(404).send('File not found');
+});
+
 // 5. Direct Document Upload Proxy to Google Drive via GAS & Local Mirror
 app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
   lastFileUploadTimestamp = Date.now();
@@ -1536,7 +1632,15 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
     persistServerDb();
 
     // Immediately push document row to Google Sheets database
-    forwardSyncAllToGas().catch((e) => console.warn('Gagal sinkronisasi dokumen ke Spreadsheet:', e?.message));
+    if (isVercel) {
+      try {
+        await forwardSyncAllToGas();
+      } catch (e: any) {
+        console.warn('Gagal sinkronisasi dokumen ke Spreadsheet on Vercel:', e?.message);
+      }
+    } else {
+      forwardSyncAllToGas().catch((e) => console.warn('Gagal sinkronisasi dokumen ke Spreadsheet:', e?.message));
+    }
 
     return res.json({
       success: true,
@@ -1549,8 +1653,9 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
         file_name: standardFileName,
         drive_file_id: driveFileId,
         drive_url: effectiveDriveUrl,
-        local_url: localUrl,
+        local_url: isVercel && driveFileId ? '' : localUrl,
         view_url: viewUrl,
+        thumbnail_url: directThumbUrl || effectiveDriveUrl,
       },
     });
   } catch (err: any) {
@@ -1778,7 +1883,7 @@ app.post('/api/gas/upload-logo', async (req: Request, res: Response) => {
       }
     }
 
-    const finalLogoUrl = driveUrl || (driveFileId ? `https://lh3.googleusercontent.com/d/${driveFileId}` : '') || localUrl;
+    const finalLogoUrl = (driveFileId ? `https://lh3.googleusercontent.com/d/${driveFileId}` : '') || driveUrl || (isVercel ? (req.body.base64_data || localUrl) : localUrl);
 
     if (logo_type === 'school' && id) {
       if (serverDb.schools && Array.isArray(serverDb.schools)) {
@@ -1808,14 +1913,22 @@ app.post('/api/gas/upload-logo', async (req: Request, res: Response) => {
     persistServerDb();
 
     // Immediately push updated school logo or app branding to Google Sheets database
-    forwardSyncAllToGas().catch((e) => console.warn('Gagal sinkronisasi logo ke Spreadsheet:', e?.message));
+    if (isVercel) {
+      try {
+        await forwardSyncAllToGas();
+      } catch (e: any) {
+        console.warn('Gagal sinkronisasi logo ke Spreadsheet on Vercel:', e?.message);
+      }
+    } else {
+      forwardSyncAllToGas().catch((e) => console.warn('Gagal sinkronisasi logo ke Spreadsheet:', e?.message));
+    }
 
     return res.json({
       success: true,
       message: gasSuccess ? 'Logo berhasil diunggah dan tersimpan di Google Drive dan Google Sheets!' : 'Logo berhasil disimpan di server dan database Google Sheets.',
       logo_url: finalLogoUrl,
       drive_file_id: driveFileId,
-      local_url: localUrl,
+      local_url: isVercel && driveFileId ? '' : localUrl,
       gas_synced: gasSuccess,
     });
   } catch (err: any) {
@@ -2046,6 +2159,13 @@ app.get('/api/drive/image/:fileId', async (req: Request, res: Response) => {
   const { fileId } = req.params;
   if (!fileId || fileId.includes('..') || fileId.length < 5) {
     return res.status(400).send('Invalid file ID');
+  }
+
+  // On Vercel (serverless environment), redirect immediately to Google's Edge CDN (302)
+  // This eliminates Lambda execution time, avoids cold-start timeouts, and streams in 20ms
+  if (isVercel) {
+    res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400');
+    return res.redirect(302, `https://lh3.googleusercontent.com/d/${encodeURIComponent(fileId)}`);
   }
 
   // 1. Ultra-Fast RAM Cache (< 0.05ms serving time)
@@ -2690,8 +2810,12 @@ async function startServer() {
       });
     }
 
-    const server = app.listen(PORT, '0.0.0.0', () => {
-      console.log(`SIPMA Server running on http://0.0.0.0:${PORT}`);
+    const server = app.listen(PORT, HOST, () => {
+      console.log(`SIPMA Server running on http://${HOST}:${PORT}`);
+    });
+
+    server.on('error', (err: any) => {
+      console.error('[SIPMA Server] Listen error:', err);
     });
 
     // Optimize keep-alive timeouts for high concurrent traffic and Cloud Run reverse proxy
