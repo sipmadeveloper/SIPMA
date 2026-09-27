@@ -457,6 +457,12 @@ class StorageService {
     window.addEventListener('online', handleOnline);
     window.removeEventListener('offline', handleOffline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('sipma:drive_file_missing', (e: any) => {
+      const fileId = e?.detail?.fileId || e?.detail?.currentSrc;
+      if (fileId) {
+        this.handleMissingDriveFile(fileId).catch(() => {});
+      }
+    });
   }
 
   private init() {
@@ -1345,6 +1351,27 @@ class StorageService {
 
       // Always update active session
       this.setCurrentUser(updatedUser);
+
+      // Also update student profile if user is a student / calon_murid
+      const regNum = updatedUser.registration_number || userId;
+      if (regNum) {
+        const students = this.getStudentsMap();
+        if (students[regNum]) {
+          if (updates.photo_url !== undefined) students[regNum].photo_url = updates.photo_url;
+          if (updates.name) students[regNum].name = updates.name;
+          if (updates.phone) students[regNum].phone = updates.phone;
+          this.memCache.students = students;
+          safeSetItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
+          const curStd = this.getCurrentStudent();
+          if (curStd && (curStd.registration_number === regNum || curStd.student_id === regNum)) {
+            this.setCurrentStudent({
+              ...curStd,
+              ...(updates.photo_url !== undefined ? { photo_url: updates.photo_url } : {}),
+              ...(updates.name ? { name: updates.name } : {}),
+            });
+          }
+        }
+      }
 
       // Immediately synchronize profile updates to server database
       fetch('/api/user/update-profile', {
@@ -2586,15 +2613,29 @@ class StorageService {
         if (json.success && json.logo_url) {
           clearImageUrlCache(oldDriveFileId);
           const users = this.getUsers();
-          const idx = users.findIndex((u) => u.user_id === userId || u.email === userId);
+          const idx = users.findIndex((u) => u.user_id === userId || u.email === userId || (u.registration_number && u.registration_number === userId));
           if (idx >= 0) {
             users[idx].photo_url = json.logo_url;
             this.memCache.users = users;
             safeSetItem(STORAGE_KEYS.USERS, JSON.stringify(users));
             const cur = this.getCurrentUser();
-            if (cur && (cur.user_id === userId || cur.email === userId)) {
+            if (cur && (cur.user_id === userId || cur.email === userId || cur.registration_number === userId)) {
               this.setCurrentUser({ ...cur, photo_url: json.logo_url });
             }
+
+            // Also update student if user is a student / calon_murid
+            const regNum = users[idx].registration_number || userId;
+            const students = this.getStudentsMap();
+            if (students[regNum]) {
+              students[regNum].photo_url = json.logo_url;
+              this.memCache.students = students;
+              safeSetItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
+              const curStd = this.getCurrentStudent();
+              if (curStd && (curStd.registration_number === regNum || curStd.student_id === regNum)) {
+                this.setCurrentStudent({ ...curStd, photo_url: json.logo_url });
+              }
+            }
+
             this.notifySubscribers('user_profile_updated', users[idx]);
             this.triggerAutoSync(true);
           }
@@ -2613,7 +2654,7 @@ class StorageService {
   async deleteUserAvatar(userId: string): Promise<ApiResponse> {
     const settings = this.getSettings();
     const users = this.getUsers();
-    const idx = users.findIndex((u) => u.user_id === userId || u.email === userId);
+    const idx = users.findIndex((u) => u.user_id === userId || u.email === userId || (u.registration_number && u.registration_number === userId));
     const targetUser = idx >= 0 ? users[idx] : null;
     const oldPhotoUrl = targetUser?.photo_url || '';
     const oldDriveFileId = extractDriveFileId(oldPhotoUrl) || '';
@@ -2626,9 +2667,33 @@ class StorageService {
       this.memCache.users = users;
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
       const cur = this.getCurrentUser();
-      if (cur && (cur.user_id === userId || cur.email === userId)) {
+      if (cur && (cur.user_id === userId || cur.email === userId || cur.registration_number === userId)) {
         this.setCurrentUser({ ...cur, photo_url: '' });
       }
+
+      // Also clear student photo if user is a student / calon_murid
+      const regNum = users[idx].registration_number || userId;
+      const students = this.getStudentsMap();
+      if (students[regNum]) {
+        students[regNum].photo_url = '';
+        this.memCache.students = students;
+        safeSetItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
+        const curStd = this.getCurrentStudent();
+        if (curStd && (curStd.registration_number === regNum || curStd.student_id === regNum)) {
+          this.setCurrentStudent({ ...curStd, photo_url: '' });
+        }
+      }
+
+      // Also remove any document for this user avatar in documents
+      const docs = this.getDocuments();
+      const filteredDocs = docs.filter(
+        (d) => !(d.registration_number === regNum && (d.document_type === 'foto_profil' || d.document_type === 'avatar' || d.document_type === 'foto'))
+      );
+      if (filteredDocs.length !== docs.length) {
+        this.memCache.documents = filteredDocs;
+        safeSetItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(filteredDocs));
+      }
+
       this.notifySubscribers('user_profile_updated', users[idx]);
     }
 
@@ -2734,6 +2799,109 @@ class StorageService {
 
     this.triggerAutoSync(true);
     return { success: true, message: 'Logo aplikasi berhasil dihapus dari Google Drive dan database.' };
+  }
+
+  /**
+   * Auto-Heal: Tangani berkas atau gambar yang dilaporkan hilang/dihapus dari Google Drive.
+   * Secara otomatis menghapus referensi datanya di memCache & localStorage sistem lokal,
+   * memberi tahu subscriber UI, dan meneruskan pembersihan ke server & Google Sheets.
+   */
+  async handleMissingDriveFile(fileIdOrUrl: string): Promise<void> {
+    if (!fileIdOrUrl) return;
+    const fileId = extractDriveFileId(fileIdOrUrl) || fileIdOrUrl;
+    if (!fileId || fileId.length < 5) return;
+
+    clearImageUrlCache(fileId);
+    clearImageUrlCache(fileIdOrUrl);
+    let mutated = false;
+
+    // 1. Periksa pengguna yang sedang login
+    const curUser = this.getCurrentUser();
+    if (curUser && curUser.photo_url && (curUser.photo_url.includes(fileId) || curUser.photo_url === fileIdOrUrl)) {
+      curUser.photo_url = '';
+      safeSetItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(curUser));
+      this.notifySubscribers('user_profile_updated', curUser);
+      mutated = true;
+    }
+
+    // 2. Periksa seluruh akun pengguna (Admin Pusat, Admin Madrasah, Calon Murid)
+    const users = this.getUsers();
+    let usersChanged = false;
+    for (const u of users) {
+      if (u.photo_url && (u.photo_url.includes(fileId) || u.photo_url === fileIdOrUrl)) {
+        u.photo_url = '';
+        usersChanged = true;
+      }
+    }
+    if (usersChanged) {
+      this.memCache.users = users;
+      safeSetItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+      mutated = true;
+    }
+
+    // 3. Periksa profil siswa / calon murid
+    const studentsMap = this.getStudentsMap();
+    let stdChanged = false;
+    for (const s of Object.values(studentsMap)) {
+      if (s.photo_url && (s.photo_url.includes(fileId) || s.photo_url === fileIdOrUrl)) {
+        s.photo_url = '';
+        stdChanged = true;
+      }
+    }
+    if (stdChanged) {
+      this.memCache.students = studentsMap;
+      safeSetItem(STORAGE_KEYS.STUDENTS, JSON.stringify(studentsMap));
+      mutated = true;
+    }
+
+    // 4. Periksa dokumen
+    const docs = this.getDocuments();
+    const filteredDocs = docs.filter(
+      (d) => !(d.drive_file_id === fileId || (d.drive_url && d.drive_url.includes(fileId)))
+    );
+    if (filteredDocs.length !== docs.length) {
+      this.memCache.documents = filteredDocs;
+      safeSetItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(filteredDocs));
+      mutated = true;
+    }
+
+    // 5. Periksa logo madrasah
+    const schools = this.getSchools();
+    let schChanged = false;
+    for (const sch of schools) {
+      if (sch.logo_url && (sch.logo_url.includes(fileId) || sch.logo_url === fileIdOrUrl)) {
+        sch.logo_url = '';
+        schChanged = true;
+      }
+    }
+    if (schChanged) {
+      this.memCache.schools = schools;
+      safeSetItem(STORAGE_KEYS.SCHOOLS, JSON.stringify(schools));
+      mutated = true;
+    }
+
+    // 6. Periksa logo aplikasi di settings
+    const settings = this.getSettings();
+    if (settings.app_logo && (settings.app_logo.includes(fileId) || settings.app_logo === fileIdOrUrl)) {
+      settings.app_logo = '';
+      this.memCache.settings = settings;
+      safeSetItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+      this.notifySubscribers('settings_updated', settings);
+      mutated = true;
+    }
+
+    if (mutated) {
+      this.notifySubscribers('data_mutated');
+    }
+
+    // Laporkan ke server proxy untuk dibersihkan dari serverDb dan Google Sheets
+    try {
+      await fetch('/api/gas/report-missing-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ file_id: fileId, file_url: fileIdOrUrl }),
+      });
+    } catch {}
   }
 
   saveSchool(school: School): void {
@@ -2925,6 +3093,24 @@ class StorageService {
 
   getStudent(registrationNumber: string): StudentProfile | null {
     return this.getStudentProfile(registrationNumber);
+  }
+
+  getStudents(): StudentProfile[] {
+    return Object.values(this.getStudentsMap());
+  }
+
+  getCurrentStudent(): StudentProfile | null {
+    const curUser = this.getCurrentUser();
+    if (!curUser) return null;
+    const regNum = curUser.registration_number || curUser.user_id;
+    if (!regNum) return null;
+    return this.getStudentProfile(regNum);
+  }
+
+  setCurrentStudent(student: StudentProfile | null): void {
+    if (student) {
+      this.saveStudentProfile(student);
+    }
   }
 
   saveStudentProfile(profile: StudentProfile): void {

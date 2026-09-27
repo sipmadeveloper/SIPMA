@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   User,
@@ -81,6 +81,17 @@ export const AdminProfileModal: React.FC<Props> = ({
   const [isResettingOwnPassword, setIsResettingOwnPassword] = useState<boolean>(false);
   const [copiedResetPassword, setCopiedResetPassword] = useState<boolean>(false);
 
+  useEffect(() => {
+    const handleDriveMissing = (e: any) => {
+      const missingId = e?.detail?.fileId;
+      if (missingId && photoUrl && (photoUrl.includes(missingId) || photoUrl === e?.detail?.currentSrc)) {
+        setPhotoUrl('');
+      }
+    };
+    window.addEventListener('sipma:drive_file_missing', handleDriveMissing);
+    return () => window.removeEventListener('sipma:drive_file_missing', handleDriveMissing);
+  }, [photoUrl]);
+
   const isAdminPusat = currentUser.role === 'admin_pusat';
   const isCalonMurid = currentUser.role === 'calon_murid';
 
@@ -155,7 +166,7 @@ export const AdminProfileModal: React.FC<Props> = ({
       phone: String(phone || '').trim(),
       nip: String(nip || '').trim(),
       position: String(position || '').trim(),
-      photo_url: String(finalPhotoUrl || '').trim() || undefined,
+      photo_url: String(finalPhotoUrl || '').trim(),
     });
     hideLoading();
     setIsSubmitting(false);

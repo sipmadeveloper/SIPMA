@@ -457,10 +457,24 @@ function mergeGasDataIntoServerDb(gasData: any): boolean {
       .filter((u: any) => u.role !== 'calon_murid' || !isDemoStudentRecord(u?.registration_number))
       .map((gu: any) => {
         const ex = existingUsers.find((eu: any) => eu.user_id === gu.user_id || eu.email === gu.email || (eu.registration_number && eu.registration_number === gu.registration_number));
+        
+        // Auto-heal shifted photo_url from created_at if spreadsheet columns were legacy-shifted
+        let incomingPhoto = gu.photo_url;
+        let incomingCreatedAt = gu.created_at || '';
+        if ((incomingPhoto === undefined || incomingPhoto === '') && incomingCreatedAt && (incomingCreatedAt.startsWith('http://') || incomingCreatedAt.startsWith('https://') || incomingCreatedAt.startsWith('/uploads/'))) {
+          incomingPhoto = incomingCreatedAt;
+          incomingCreatedAt = ex?.created_at || new Date().toISOString();
+        }
+
+        // If GAS provides photo_url (even empty string when deleted), respect it. If undefined, fallback to existing.
+        const finalPhoto = (incomingPhoto !== undefined && incomingPhoto !== null)
+          ? incomingPhoto
+          : (ex?.photo_url || '');
+
         return {
           ...gu,
-          // Crucial: preserve existing photo_url if GAS returns empty string
-          photo_url: gu.photo_url || ex?.photo_url || '',
+          created_at: incomingCreatedAt || ex?.created_at || new Date().toISOString(),
+          photo_url: finalPhoto,
         };
       });
     mutated = true;
@@ -471,10 +485,14 @@ function mergeGasDataIntoServerDb(gasData: any): boolean {
     for (const [k, v] of Object.entries(gasData.students)) {
       if (!isDemoStudentRecord(k, (v as any)?.student_id)) {
         const ex = existingStudents[k];
+        const studentVal = v as any;
+        const incomingStdPhoto = studentVal?.photo_url;
+        const finalStdPhoto = (incomingStdPhoto !== undefined && incomingStdPhoto !== null)
+          ? incomingStdPhoto
+          : (ex?.photo_url || '');
         cleanStudents[k] = {
-          ...(v as any),
-          // Crucial: preserve existing photo_url if GAS returns empty string
-          photo_url: (v as any)?.photo_url || ex?.photo_url || '',
+          ...studentVal,
+          photo_url: finalStdPhoto,
         };
       }
     }
@@ -520,25 +538,42 @@ function mergeGasDataIntoServerDb(gasData: any): boolean {
     const existingDocs = serverDb.documents || [];
     const mergedDocsMap = new Map<string, any>();
 
-    // Seed with existing serverDb documents
-    for (const ex of existingDocs) {
-      const key = ex.document_id || `${ex.registration_number}_${ex.document_type}`;
-      mergedDocsMap.set(key, { ...ex });
-    }
-
-    // Merge incoming GAS documents, preserving local files, base64 data, and valid drive URLs
+    // Put incoming GAS documents into map first (authoritative list from cloud sheets)
     for (const gd of cleanGasDocs) {
-      const key = gd.document_id || `${gd.registration_number}_${gd.document_type}`;
-      const ex = mergedDocsMap.get(key);
+      const normType = normalizeDocType(gd.document_type || '');
+      const key = gd.document_id || `${gd.registration_number}_${normType}`;
+      const ex = existingDocs.find((ed: any) => 
+        ed.document_id === gd.document_id || 
+        (ed.registration_number === gd.registration_number && normalizeDocType(ed.document_type) === normType)
+      );
       mergedDocsMap.set(key, {
         ...ex,
         ...gd,
+        document_type: normType,
         local_url: ex?.local_url || gd.local_url || '',
         file_data_base64: ex?.file_data_base64 || gd.file_data_base64 || '',
         drive_file_id: gd.drive_file_id || ex?.drive_file_id || '',
         drive_url: gd.drive_url || ex?.drive_url || '',
         view_url: gd.drive_url || ex?.drive_url || ex?.local_url || gd.local_url || '',
       });
+    }
+
+    // Only keep local documents if created very recently (< 2 minutes ago) and not yet synced
+    const now = Date.now();
+    for (const ex of existingDocs) {
+      const normType = normalizeDocType(ex.document_type || '');
+      const key = ex.document_id || `${ex.registration_number}_${normType}`;
+      if (!mergedDocsMap.has(key)) {
+        const uploadTime = ex.upload_time ? new Date(ex.upload_time).getTime() : 0;
+        if (now - uploadTime < 120000 && (ex.file_data_base64 || ex.local_url)) {
+          mergedDocsMap.set(key, ex);
+        } else {
+          // Document was removed in cloud/Drive, clean local disk and RAM caches
+          if (ex.drive_file_id || ex.local_url) {
+            cleanupLocalFileAndCache(ex.drive_file_id, ex.local_url);
+          }
+        }
+      }
     }
 
     serverDb.documents = Array.from(mergedDocsMap.values());
@@ -550,8 +585,7 @@ function mergeGasDataIntoServerDb(gasData: any): boolean {
       const ex = existingSchools.find((s: any) => s.school_id === gs.school_id || s.school_code === gs.school_code);
       return {
         ...gs,
-        // Crucial: preserve existing logo_url if GAS returns empty string
-        logo_url: gs.logo_url || ex?.logo_url || '',
+        logo_url: gs.logo_url !== undefined ? gs.logo_url : (ex?.logo_url || ''),
       };
     });
     mutated = true;
@@ -1048,7 +1082,7 @@ app.post('/api/data/sync', async (req: Request, res: Response) => {
           const ex = existingUsers.find((eu: any) => eu.user_id === pu.user_id || (eu.email && pu.email && eu.email.toLowerCase() === pu.email.toLowerCase()) || (eu.registration_number && pu.registration_number && eu.registration_number === pu.registration_number));
           return {
             ...pu,
-            photo_url: pu.photo_url || ex?.photo_url || '',
+            photo_url: pu.photo_url !== undefined ? pu.photo_url : (ex?.photo_url || ''),
           };
         });
     }
@@ -1060,7 +1094,7 @@ app.post('/api/data/sync', async (req: Request, res: Response) => {
           const ex = existingStudents[k];
           cleanStudents[k] = {
             ...(v as any),
-            photo_url: (v as any)?.photo_url || ex?.photo_url || '',
+            photo_url: (v as any)?.photo_url !== undefined ? (v as any).photo_url : (ex?.photo_url || ''),
           };
         }
       }
@@ -1106,7 +1140,7 @@ app.post('/api/data/sync', async (req: Request, res: Response) => {
         const ex = existingSchools.find((s: any) => s.school_id === ps.school_id || s.school_code === ps.school_code);
         return {
           ...ps,
-          logo_url: ps.logo_url !== undefined && ps.logo_url !== '' ? ps.logo_url : (ex?.logo_url || ''),
+          logo_url: ps.logo_url !== undefined ? ps.logo_url : (ex?.logo_url || ''),
         };
       });
     }
@@ -1329,6 +1363,184 @@ export function cleanupLocalFileAndCache(driveFileId?: string, localUrl?: string
       if (fs.existsSync(p)) fs.unlinkSync(p);
     } catch (e) {}
   }
+}
+
+/**
+ * Check if a Google Drive file actually exists and is active (not deleted or trashed).
+ */
+export async function isDriveFileAvailable(fileId: string): Promise<boolean> {
+  if (!fileId || fileId === 'LOCAL_STORAGE' || fileId.length < 15) return false;
+  try {
+    const res = await fetch(`https://lh3.googleusercontent.com/d/${encodeURIComponent(fileId)}`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(4000),
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+    });
+    if (res.status === 200) {
+      const ct = res.headers.get('content-type') || '';
+      if (ct.includes('image') || ct.includes('application') || ct.includes('pdf')) {
+        return true;
+      }
+    }
+    const thumbRes = await fetch(`https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w100`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(4000),
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+    });
+    if (thumbRes.status === 200 && (thumbRes.headers.get('content-type') || '').includes('image')) {
+      return true;
+    }
+    return false;
+  } catch (err) {
+    return false;
+  }
+}
+
+/**
+ * Automatically clean up a deleted/missing Drive file from all tables in serverDb:
+ * Clears photo_url for users & students, removes document from documents,
+ * clears logo_url for schools, clears app_logo for settings, cleans disk caches,
+ * and notifies GAS to delete from Google Sheets.
+ */
+export async function cleanupMissingDriveFileFromDb(driveFileId: string): Promise<boolean> {
+  if (!driveFileId || driveFileId.length < 5) return false;
+  let changed = false;
+
+  cleanupLocalFileAndCache(driveFileId);
+
+  // 1. Clean users
+  if (serverDb.users && Array.isArray(serverDb.users)) {
+    for (const usr of serverDb.users) {
+      if (usr.photo_url && usr.photo_url.includes(driveFileId)) {
+        usr.photo_url = '';
+        changed = true;
+      }
+    }
+  }
+
+  // 2. Clean students
+  if (serverDb.students) {
+    if (Array.isArray(serverDb.students)) {
+      for (const std of serverDb.students) {
+        if (std.photo_url && std.photo_url.includes(driveFileId)) {
+          std.photo_url = '';
+          changed = true;
+        }
+      }
+    } else if (typeof serverDb.students === 'object') {
+      for (const key of Object.keys(serverDb.students)) {
+        const std = serverDb.students[key];
+        if (std && std.photo_url && std.photo_url.includes(driveFileId)) {
+          std.photo_url = '';
+          changed = true;
+        }
+      }
+    }
+  }
+
+  // 3. Clean documents
+  if (serverDb.documents && Array.isArray(serverDb.documents)) {
+    const beforeLen = serverDb.documents.length;
+    serverDb.documents = serverDb.documents.filter(
+      (d: any) => !(d.drive_file_id === driveFileId || (d.drive_url && d.drive_url.includes(driveFileId)))
+    );
+    if (serverDb.documents.length !== beforeLen) {
+      changed = true;
+    }
+  }
+
+  // 4. Clean schools
+  if (serverDb.schools && Array.isArray(serverDb.schools)) {
+    for (const sch of serverDb.schools) {
+      if (sch.logo_url && sch.logo_url.includes(driveFileId)) {
+        sch.logo_url = '';
+        changed = true;
+      }
+    }
+  }
+
+  // 5. Clean settings app_logo
+  if (serverDb.settings?.app_logo && serverDb.settings.app_logo.includes(driveFileId)) {
+    serverDb.settings.app_logo = '';
+    changed = true;
+  }
+
+  if (changed) {
+    persistServerDb();
+    // Notify GAS in background to remove row from Google Sheets as well
+    const gasUrl = serverDb.settings?.gas_web_app_url;
+    const ssId = serverDb.settings?.spreadsheet_id;
+    if (gasUrl && gasUrl.startsWith('http')) {
+      fetch(gasUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'deleteDocument',
+          spreadsheet_id: ssId,
+          data: { drive_file_id: driveFileId },
+        }),
+      }).catch((e) => console.warn('GAS cleanupMissingDriveFile notify error:', e?.message));
+    }
+  }
+
+  return changed;
+}
+
+/**
+ * Scan all drive files in serverDb and purge any that no longer exist in Drive.
+ */
+export async function verifyAndCleanServerDbDriveFiles(): Promise<{ checked: number; cleaned: number }> {
+  const driveFileIds = new Set<string>();
+
+  if (serverDb.users && Array.isArray(serverDb.users)) {
+    for (const u of serverDb.users) {
+      const fid = extractDriveFileId(u.photo_url);
+      if (fid && fid.length > 15) driveFileIds.add(fid);
+    }
+  }
+
+  if (serverDb.students) {
+    const list = Array.isArray(serverDb.students) ? serverDb.students : Object.values(serverDb.students);
+    for (const s of list) {
+      const fid = extractDriveFileId(s?.photo_url);
+      if (fid && fid.length > 15) driveFileIds.add(fid);
+    }
+  }
+
+  if (serverDb.documents && Array.isArray(serverDb.documents)) {
+    for (const d of serverDb.documents) {
+      const fid = d.drive_file_id || extractDriveFileId(d.drive_url);
+      if (fid && fid !== 'LOCAL_STORAGE' && fid.length > 15) driveFileIds.add(fid);
+    }
+  }
+
+  if (serverDb.schools && Array.isArray(serverDb.schools)) {
+    for (const sc of serverDb.schools) {
+      const fid = extractDriveFileId(sc.logo_url);
+      if (fid && fid.length > 15) driveFileIds.add(fid);
+    }
+  }
+
+  if (serverDb.settings?.app_logo) {
+    const fid = extractDriveFileId(serverDb.settings.app_logo);
+    if (fid && fid.length > 15) driveFileIds.add(fid);
+  }
+
+  let cleaned = 0;
+  for (const fId of driveFileIds) {
+    const active = await isDriveFileAvailable(fId);
+    if (!active) {
+      const wasCleaned = await cleanupMissingDriveFileFromDb(fId);
+      if (wasCleaned) cleaned++;
+      console.log(`[Drive Health] File ID "${fId}" is missing from Google Drive. Purged automatically from database.`);
+    }
+  }
+
+  return { checked: driveFileIds.size, cleaned };
 }
 
 // Fallback for /uploads/ when running serverless on Vercel or if local file was not in ephemeral /tmp
@@ -1568,6 +1780,36 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
           const directThumbUrl = (driveFileId && !isPdf) ? `https://lh3.googleusercontent.com/d/${driveFileId}` : '';
           driveUrl = realDriveViewUrl || fInfo.drive_url || localUrl;
           viewUrl = isPdf ? (realDriveViewUrl || localUrl) : (directThumbUrl || realDriveViewUrl || localUrl);
+        } else if (!gasSuccess) {
+          // Self-Healing Recovery: Check if GAS uploaded the file to Google Drive and recorded the document
+          try {
+            const pullRes = await fetch(gasUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({ action: 'pullAllData', spreadsheet_id: ssId }),
+            });
+            const pullData = await pullRes.json();
+            if (pullData && pullData.data && Array.isArray(pullData.data.documents)) {
+              const matchedDoc = pullData.data.documents.find(
+                (d: any) =>
+                  (d.registration_number === doc.registration_number || (doc.student_name && d.file_name && d.file_name.includes(doc.student_name))) &&
+                  d.document_type === normType &&
+                  d.drive_file_id &&
+                  Date.now() - new Date(d.upload_time).getTime() < 120000
+              );
+              if (matchedDoc && matchedDoc.drive_file_id) {
+                driveFileId = matchedDoc.drive_file_id;
+                gasSuccess = true;
+                const isPdf = (detectedMime && detectedMime.includes('pdf')) || standardFileName.toLowerCase().endsWith('.pdf');
+                const realDriveViewUrl = `https://drive.google.com/file/d/${driveFileId}/view?usp=drivesdk`;
+                const directThumbUrl = !isPdf ? `https://lh3.googleusercontent.com/d/${driveFileId}` : '';
+                driveUrl = realDriveViewUrl;
+                viewUrl = isPdf ? realDriveViewUrl : (directThumbUrl || realDriveViewUrl);
+              }
+            }
+          } catch (recErr) {
+            console.warn('[upload-file] Recovery check error:', recErr);
+          }
         }
       } catch (gasErr: any) {
         console.warn('Gagal upload ke Google Apps Script Drive:', gasErr?.message);
@@ -1585,7 +1827,7 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
     const isPdf = (detectedMime && detectedMime.includes('pdf')) || standardFileName.toLowerCase().endsWith('.pdf');
     const realDriveViewUrl = driveFileId ? `https://drive.google.com/file/d/${driveFileId}/view?usp=drivesdk` : '';
     const directThumbUrl = (driveFileId && !isPdf) ? `https://lh3.googleusercontent.com/d/${driveFileId}` : '';
-    const effectiveDriveUrl = realDriveViewUrl || driveUrl || (targetDocIdx >= 0 ? serverDb.documents[targetDocIdx].drive_url : localUrl);
+    const effectiveDriveUrl = (driveFileId && !isPdf) ? directThumbUrl : (realDriveViewUrl || driveUrl || (targetDocIdx >= 0 ? serverDb.documents[targetDocIdx].drive_url : localUrl));
     const effectiveViewUrl = isPdf ? (realDriveViewUrl || localUrl) : (directThumbUrl || effectiveDriveUrl || localUrl);
 
     const updatedDocItem = {
@@ -1610,7 +1852,7 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
     // If it's a student or user photo, update student photo_url & user record across both tables
     const isPhotoDoc = doc.document_type === 'foto' || doc.document_type === 'pas_foto' || doc.document_type === 'foto_profil' || req.body.is_account;
     if (isPhotoDoc) {
-      const studentPhotoUrl = effectiveDriveUrl || localUrl;
+      const studentPhotoUrl = (driveFileId ? `https://lh3.googleusercontent.com/d/${driveFileId}` : '') || directThumbUrl || effectiveDriveUrl || localUrl;
       const targetReg = doc.registration_number || req.body.account_id;
       if (serverDb.students && targetReg && serverDb.students[targetReg]) {
         serverDb.students[targetReg].photo_url = studentPhotoUrl;
@@ -1877,6 +2119,33 @@ app.post('/api/gas/upload-logo', async (req: Request, res: Response) => {
           const fInfo = gasResult.file || gasResult.data || {};
           driveFileId = fInfo.drive_file_id || '';
           driveUrl = fInfo.thumbnail_url || (driveFileId ? `https://lh3.googleusercontent.com/d/${driveFileId}` : '') || fInfo.drive_url || localUrl;
+        } else if (!gasSuccess) {
+          // Self-Healing Recovery: Check if GAS uploaded the file to Google Drive and recorded the document
+          try {
+            const pullRes = await fetch(gasUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({ action: 'pullAllData', spreadsheet_id: ssId }),
+            });
+            const pullData = await pullRes.json();
+            if (pullData && pullData.data && Array.isArray(pullData.data.documents)) {
+              const matchedDoc = pullData.data.documents.find(
+                (d: any) =>
+                  (d.registration_number === regNum || (name && d.file_name && d.file_name.includes(name))) &&
+                  d.document_type === docType &&
+                  d.drive_file_id &&
+                  Date.now() - new Date(d.upload_time).getTime() < 120000
+              );
+              if (matchedDoc && matchedDoc.drive_file_id) {
+                driveFileId = matchedDoc.drive_file_id;
+                driveUrl = `https://lh3.googleusercontent.com/d/${driveFileId}`;
+                gasSuccess = true;
+                console.log('[upload-logo] Recovered drive_file_id from GAS pullAllData:', driveFileId);
+              }
+            }
+          } catch (recErr) {
+            console.warn('[upload-logo] Recovery check error:', recErr);
+          }
         }
       } catch (gasErr: any) {
         console.warn('Gagal upload logo ke Drive GAS:', gasErr?.message);
@@ -1902,8 +2171,17 @@ app.post('/api/gas/upload-logo', async (req: Request, res: Response) => {
           }
         }
       }
-      if (serverDb.students && serverDb.students[id]) {
-        serverDb.students[id].photo_url = finalLogoUrl;
+      if (serverDb.students) {
+        if (serverDb.students[id]) {
+          serverDb.students[id].photo_url = finalLogoUrl;
+        } else {
+          for (const key of Object.keys(serverDb.students)) {
+            const std = serverDb.students[key];
+            if (std && (std.registration_number === id || std.student_id === id || (name && std.name === name))) {
+              std.photo_url = finalLogoUrl;
+            }
+          }
+        }
       }
     } else if (logo_type === 'app') {
       if (!serverDb.settings) serverDb.settings = {};
@@ -1913,14 +2191,10 @@ app.post('/api/gas/upload-logo', async (req: Request, res: Response) => {
     persistServerDb();
 
     // Immediately push updated school logo or app branding to Google Sheets database
-    if (isVercel) {
-      try {
-        await forwardSyncAllToGas();
-      } catch (e: any) {
-        console.warn('Gagal sinkronisasi logo ke Spreadsheet on Vercel:', e?.message);
-      }
-    } else {
-      forwardSyncAllToGas().catch((e) => console.warn('Gagal sinkronisasi logo ke Spreadsheet:', e?.message));
+    try {
+      await forwardSyncAllToGas();
+    } catch (e: any) {
+      console.warn('Gagal sinkronisasi logo ke Spreadsheet:', e?.message);
     }
 
     return res.json({
@@ -1958,7 +2232,7 @@ app.post('/api/user/update-profile', (req: Request, res: Response) => {
       serverDb.users[idx] = {
         ...serverDb.users[idx],
         ...updates,
-        photo_url: updates.photo_url !== undefined && updates.photo_url !== '' ? updates.photo_url : serverDb.users[idx].photo_url,
+        photo_url: updates.photo_url !== undefined ? updates.photo_url : (serverDb.users[idx].photo_url || ''),
         updated_at: now,
       };
       updatedUser = serverDb.users[idx];
@@ -1966,6 +2240,7 @@ app.post('/api/user/update-profile', (req: Request, res: Response) => {
       updatedUser = {
         user_id,
         ...updates,
+        photo_url: updates.photo_url || '',
         updated_at: now,
       };
       serverDb.users.push(updatedUser);
@@ -1974,7 +2249,7 @@ app.post('/api/user/update-profile', (req: Request, res: Response) => {
     // Also update student profile if applicable
     const regTarget = updatedUser.registration_number || user_id;
     if (serverDb.students && regTarget && serverDb.students[regTarget]) {
-      if (updates.photo_url) serverDb.students[regTarget].photo_url = updates.photo_url;
+      if (updates.photo_url !== undefined) serverDb.students[regTarget].photo_url = updates.photo_url;
       if (updates.name) serverDb.students[regTarget].name = updates.name;
       if (updates.phone) serverDb.students[regTarget].phone = updates.phone;
     }
@@ -2311,9 +2586,64 @@ app.get('/api/drive/image/:fileId', async (req: Request, res: Response) => {
       return res.send(buffer);
     }
 
-    return res.redirect(`https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`);
+    // All Google Drive endpoints failed - file does NOT exist in Google Drive or has been deleted
+    console.log(`[Drive Proxy] File ID "${fileId}" not found in Google Drive. Cleaning up from database...`);
+    await cleanupMissingDriveFileFromDb(fileId);
+    return res.status(404).json({
+      success: false,
+      missing_from_drive: true,
+      message: 'Berkas tidak ditemukan di Google Drive dan telah dibersihkan otomatis dari database.',
+      drive_file_id: fileId,
+    });
   } catch (err) {
-    return res.redirect(`https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`);
+    await cleanupMissingDriveFileFromDb(fileId);
+    return res.status(404).json({
+      success: false,
+      missing_from_drive: true,
+      message: 'Berkas tidak dapat diakses di Google Drive dan telah dibersihkan otomatis.',
+      drive_file_id: fileId,
+    });
+  }
+});
+
+// Endpoint to manually or automatically trigger full Drive files health check & cleanup
+app.post(['/api/gas/verify-drive-files', '/api/drive/verify-files'], async (req: Request, res: Response) => {
+  try {
+    const result = await verifyAndCleanServerDbDriveFiles();
+    res.json({
+      success: true,
+      message: `Pemeriksaan integritas Google Drive selesai. ${result.checked} berkas diperiksa, ${result.cleaned} berkas yang hilang telah dibersihkan otomatis.`,
+      ...result,
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      message: `Gagal memverifikasi berkas Google Drive: ${err?.message || 'Server error'}`,
+    });
+  }
+});
+
+// Endpoint called by frontend when an image fails to load (reported missing from Drive)
+app.post(['/api/gas/report-missing-file', '/api/drive/report-missing-file'], async (req: Request, res: Response) => {
+  try {
+    const { file_id, file_url } = req.body;
+    const effectiveId = extractDriveFileId(file_id || file_url);
+    if (!effectiveId) {
+      return res.status(400).json({ success: false, message: 'ID Berkas Drive tidak valid.' });
+    }
+    const cleaned = await cleanupMissingDriveFileFromDb(effectiveId);
+    res.json({
+      success: true,
+      cleaned,
+      message: cleaned
+        ? `Berkas "${effectiveId}" berhasil dibersihkan otomatis dari database.`
+        : `Berkas "${effectiveId}" sudah tidak terdaftar di database.`,
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      message: `Gagal memproses berkas hilang: ${err?.message || 'Server error'}`,
+    });
   }
 });
 
@@ -2492,6 +2822,13 @@ app.post('/api/gas/delete-file', async (req: Request, res: Response) => {
       } catch (gasErr) {
         console.warn('Gagal menghapus file di GAS Drive:', gasErr);
       }
+    }
+
+    // 9. Sync database to Google Sheets immediately
+    try {
+      await forwardSyncAllToGas();
+    } catch (e: any) {
+      console.warn('Gagal sinkronisasi penghapusan ke Spreadsheet:', e?.message);
     }
 
     res.json({
@@ -2812,6 +3149,12 @@ async function startServer() {
 
     const server = app.listen(PORT, HOST, () => {
       console.log(`SIPMA Server running on http://${HOST}:${PORT}`);
+      // Run automatic background integrity check for Google Drive files
+      setTimeout(() => {
+        verifyAndCleanServerDbDriveFiles().catch((e) =>
+          console.warn('[Drive Health] Background check error:', e?.message)
+        );
+      }, 4000);
     });
 
     server.on('error', (err: any) => {

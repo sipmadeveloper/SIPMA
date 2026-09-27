@@ -298,6 +298,11 @@ function doPost(e) {
       case "deleteUser":
         response = handleDeleteUser(payload.data, targetSpreadsheetId);
         break;
+      case "cleanMissingDriveFiles":
+      case "verifyDriveFiles":
+        var targetSS = SpreadsheetApp.openById(targetSpreadsheetId);
+        response = verifyAndCleanMissingDriveFiles(targetSS);
+        break;
       default:
         response = { success: false, message: "Aksi '" + action + "' tidak dikenali" };
     }
@@ -379,14 +384,37 @@ function initDatabaseSchema(spreadsheetId) {
 function ensureAllSheetsExist(ss) {
   for (var sheetName in DB_SCHEMA) {
     var sheet = ss.getSheetByName(sheetName);
+    var schemaHeaders = DB_SCHEMA[sheetName];
     if (!sheet) {
       sheet = ss.insertSheet(sheetName);
-      sheet.appendRow(DB_SCHEMA[sheetName]);
-      var hr = sheet.getRange(1, 1, 1, DB_SCHEMA[sheetName].length);
+      sheet.appendRow(schemaHeaders);
+      var hr = sheet.getRange(1, 1, 1, schemaHeaders.length);
       hr.setFontWeight("bold");
       hr.setBackground("#059669");
       hr.setFontColor("#ffffff");
       sheet.setFrozenRows(1);
+    } else {
+      var currentCols = sheet.getLastColumn();
+      if (currentCols < schemaHeaders.length) {
+        var diff = schemaHeaders.length - sheet.getMaxColumns();
+        if (diff > 0) sheet.insertColumnsAfter(sheet.getMaxColumns(), diff);
+      }
+      var existingRow1 = sheet.getRange(1, 1, 1, Math.max(schemaHeaders.length, currentCols || 1)).getValues()[0];
+      var isIdentical = true;
+      for (var h = 0; h < schemaHeaders.length; h++) {
+        if (existingRow1[h] !== schemaHeaders[h]) {
+          isIdentical = false;
+          break;
+        }
+      }
+      if (!isIdentical) {
+        sheet.getRange(1, 1, 1, schemaHeaders.length).setValues([schemaHeaders]);
+        var hr2 = sheet.getRange(1, 1, 1, schemaHeaders.length);
+        hr2.setFontWeight("bold");
+        hr2.setBackground("#059669");
+        hr2.setFontColor("#ffffff");
+        sheet.setFrozenRows(1);
+      }
     }
   }
 }
@@ -599,6 +627,13 @@ function handlePullAllData(spreadsheetId) {
   var ss = SpreadsheetApp.openById(targetId);
   ensureAllSheetsExist(ss);
 
+  // Auto-clean any files/photos that were deleted directly from Google Drive
+  try {
+    verifyAndCleanMissingDriveFiles(ss);
+  } catch (cleanErr) {
+    Logger.log("verifyAndCleanMissingDriveFiles error: " + cleanErr.toString());
+  }
+
   var settingsRows = readSheetAsObjects(ss.getSheetByName(SHEETS.SETTINGS));
   var settingsMap = {};
   for (var s = 0; s < settingsRows.length; s++) {
@@ -639,15 +674,23 @@ function overwriteSheetData(sheet, headers, rows) {
   if (lastRow > 1) {
     sheet.getRange(2, 1, lastRow - 1, maxCols).clearContent();
   }
+  var currentMaxCols = sheet.getMaxColumns();
+  if (headers.length > currentMaxCols) {
+    sheet.insertColumnsAfter(currentMaxCols, headers.length - currentMaxCols);
+  }
+  // Selalu segarkan baris header agar skema kolom tidak pernah tertukar atau bergeser
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  var hr = sheet.getRange(1, 1, 1, headers.length);
+  hr.setFontWeight("bold");
+  hr.setBackground("#059669");
+  hr.setFontColor("#ffffff");
+  sheet.setFrozenRows(1);
+
   if (rows && rows.length > 0) {
     var neededRows = rows.length + 1;
     var currentMaxRows = sheet.getMaxRows();
     if (neededRows > currentMaxRows) {
       sheet.insertRowsAfter(currentMaxRows, neededRows - currentMaxRows);
-    }
-    var currentMaxCols = sheet.getMaxColumns();
-    if (headers.length > currentMaxCols) {
-      sheet.insertColumnsAfter(currentMaxCols, headers.length - currentMaxCols);
     }
     sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
   }
@@ -660,6 +703,9 @@ function readSheetAsObjects(sheet) {
   if (!sheet || sheet.getLastRow() <= 1) return [];
   var values = sheet.getDataRange().getValues();
   var headers = values[0];
+  var sheetName = sheet.getName();
+  var isUsersSheet = (sheetName === SHEETS.USERS || sheetName === "Users");
+  var hasPhotoCol = headers.indexOf("photo_url") > -1;
   var results = [];
 
   for (var i = 1; i < values.length; i++) {
@@ -679,6 +725,21 @@ function readSheetAsObjects(sheet) {
       }
       obj[headerKey] = val;
     }
+
+    // Auto-heal skema legacy Users: Jika header photo_url belum terpasang atau nilai created_at terisi URL foto
+    if (isUsersSheet) {
+      if (!hasPhotoCol && values[i].length > 11) {
+        var col12Val = String(values[i][11] || "").trim();
+        obj["photo_url"] = col12Val;
+      } else if (obj["photo_url"] === undefined) {
+        obj["photo_url"] = "";
+      }
+      if (obj["created_at"] && (String(obj["created_at"]).indexOf("http") === 0 || String(obj["created_at"]).indexOf("/uploads/") === 0)) {
+        if (!obj["photo_url"]) obj["photo_url"] = obj["created_at"];
+        obj["created_at"] = new Date().toISOString();
+      }
+    }
+
     if (hasValidData) {
       results.push(obj);
     }
@@ -948,6 +1009,7 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
     }
   }
 
+  var isDocPdf = (ext === "pdf" || mimeType === "application/pdf");
   var fileId = "";
   var fileUrl = "";
   var directThumbnailUrl = "";
@@ -1063,6 +1125,16 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
     var userSheet = ss ? ss.getSheetByName(SHEETS.USERS) : null;
     if (userSheet && userSheet.getLastRow() > 1) {
       var userRows = userSheet.getDataRange().getValues();
+      var userHeaders = userRows[0];
+      var userPhotoCol = userHeaders.indexOf("photo_url") + 1;
+      if (userPhotoCol <= 0) {
+        ensureAllSheetsExist(ss);
+        userRows = userSheet.getDataRange().getValues();
+        userHeaders = userRows[0];
+        userPhotoCol = userHeaders.indexOf("photo_url") + 1;
+        if (userPhotoCol <= 0) userPhotoCol = 12;
+      }
+
       var targetAccId = String(data.account_id || data.user_id || data.registration_number || "").trim();
       var targetAccName = String(data.account_name || data.student_name || "").trim();
       var targetReg = String(data.registration_number || "").trim();
@@ -1084,13 +1156,12 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
 
         if (matchesUser) {
           // Bersihkan file foto lama dari Drive jika ada
-          var prevUserPhoto = String(userRows[u][11] || "").trim();
+          var prevUserPhoto = String(userRows[u][userPhotoCol - 1] || "").trim();
           var prevUserPhotoId = extractDriveIdFromAnyUrl(prevUserPhoto);
           if (prevUserPhotoId && prevUserPhotoId.length > 5 && prevUserPhotoId !== fileId && prevUserPhotoId !== "LOCAL_STORAGE") {
             try { DriveApp.getFileById(prevUserPhotoId).setTrashed(true); } catch(e) {}
           }
-          // Kolom ke-12 adalah photo_url di Sheet Users
-          userSheet.getRange(u + 1, 12).setValue(directThumbnailUrl);
+          userSheet.getRange(u + 1, userPhotoCol).setValue(directThumbnailUrl);
           break;
         }
       }
@@ -1102,6 +1173,10 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
     var studentSheet = ss ? ss.getSheetByName(SHEETS.STUDENTS) : null;
     if (studentSheet && studentSheet.getLastRow() > 1) {
       var studentRows = studentSheet.getDataRange().getValues();
+      var stdHeaders = studentRows[0];
+      var stdPhotoCol = stdHeaders.indexOf("photo_url") + 1;
+      if (stdPhotoCol <= 0) stdPhotoCol = 19;
+
       var regTarget = String(data.registration_number || data.account_id || "").trim();
       for (var s = 1; s < studentRows.length; s++) {
         var sReg = String(studentRows[s][2]).trim();
@@ -1109,12 +1184,12 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
         if ((regTarget && (sReg === regTarget || sId === regTarget)) ||
             (cleanStudentName && String(studentRows[s][3] || "").trim().toLowerCase() === cleanStudentName.toLowerCase())) {
           // Bersihkan file foto murid lama dari Drive jika ada
-          var prevStdPhoto = String(studentRows[s][18] || "").trim();
+          var prevStdPhoto = String(studentRows[s][stdPhotoCol - 1] || "").trim();
           var prevStdPhotoId = extractDriveIdFromAnyUrl(prevStdPhoto);
           if (prevStdPhotoId && prevStdPhotoId.length > 5 && prevStdPhotoId !== fileId && prevStdPhotoId !== "LOCAL_STORAGE") {
             try { DriveApp.getFileById(prevStdPhotoId).setTrashed(true); } catch(e) {}
           }
-          studentSheet.getRange(s + 1, 19).setValue(directThumbnailUrl);
+          studentSheet.getRange(s + 1, stdPhotoCol).setValue(directThumbnailUrl);
           break;
         }
       }
@@ -1343,7 +1418,7 @@ function handleDeleteFile(data, spreadsheetId) {
   }
 
   // Jika foto profil akun / foto siswa yang dihapus, bersihkan di Sheet Users & Students
-  var isPhoto = isAccount || docType === "foto" || docType === "pas_foto" || docType === "foto_profil";
+  var isPhoto = isAccount || docType === "foto" || docType === "pas_foto" || docType === "foto_profil" || (driveFileId && driveFileId.length > 5);
   if (isPhoto) {
     var studentSheet = ss.getSheetByName(SHEETS.STUDENTS);
     if (studentSheet && studentSheet.getLastRow() > 1) {
@@ -1372,7 +1447,7 @@ function handleDeleteFile(data, spreadsheetId) {
   }
 
   // Jika logo madrasah dihapus, bersihkan di Sheet Schools
-  if (isSchool || docType === "logo_sekolah") {
+  if (isSchool || docType === "logo_sekolah" || (driveFileId && driveFileId.length > 5)) {
     var schSheet = ss.getSheetByName(SHEETS.SCHOOLS);
     if (schSheet && schSheet.getLastRow() > 1) {
       var scRows = schSheet.getDataRange().getValues();
@@ -1388,13 +1463,16 @@ function handleDeleteFile(data, spreadsheetId) {
   }
 
   // Jika logo aplikasi dihapus, bersihkan di Sheet Settings
-  if (isApp || docType === "logo_aplikasi") {
+  if (isApp || docType === "logo_aplikasi" || (driveFileId && driveFileId.length > 5)) {
     var settSheet = ss.getSheetByName(SHEETS.SETTINGS);
     if (settSheet && settSheet.getLastRow() > 1) {
       var settRows = settSheet.getDataRange().getValues();
       for (var st = 1; st < settRows.length; st++) {
         if (settRows[st][0] === "app_logo") {
-          settSheet.getRange(st + 1, 2).setValue("");
+          var currentAppLogo = String(settRows[st][1] || "").trim();
+          if (isApp || docType === "logo_aplikasi" || (driveFileId && currentAppLogo.indexOf(driveFileId) !== -1)) {
+            settSheet.getRange(st + 1, 2).setValue("");
+          }
           break;
         }
       }
@@ -1407,6 +1485,127 @@ function handleDeleteFile(data, spreadsheetId) {
     drive_file_id: driveFileId,
     deleted_from_drive: deleted
   };
+}
+
+/**
+ * 5b. AUTO-HEAL: VERIFIKASI & BERSIHKAN BERKAS YANG HILANG/DIHAPUS DARI DRIVE
+ * Memeriksa apakah berkas di Google Drive masih ada dan aktif (bukan di tong sampah/hilang).
+ * Jika berkas di Google Drive sudah tidak ada (dihapus langsung lewat Google Drive oleh pengguna/admin),
+ * sistem secara otomatis menghapus data referensi berkas dari seluruh Sheet (Documents, Users, Students, Schools, Settings)
+ * agar sistem bersih dan dapat langsung menerima berkas/gambar baru dan memasukkannya ke Google Drive.
+ */
+function verifyAndCleanMissingDriveFiles(ss) {
+  if (!ss) return { success: false, cleaned: 0 };
+  var cleanedCount = 0;
+  var checkedDriveIds = {};
+
+  function checkDriveActive(fid) {
+    if (!fid || fid === "LOCAL_STORAGE" || fid.length < 15) return false;
+    if (checkedDriveIds[fid] !== undefined) return checkedDriveIds[fid];
+    try {
+      var file = DriveApp.getFileById(fid);
+      var active = file && !file.isTrashed();
+      checkedDriveIds[fid] = active;
+      return active;
+    } catch (err) {
+      checkedDriveIds[fid] = false;
+      return false;
+    }
+  }
+
+  try {
+    // 1. Periksa Sheet Documents
+    var docSheet = ss.getSheetByName(SHEETS.DOCUMENTS);
+    if (docSheet && docSheet.getLastRow() > 1) {
+      var docRows = docSheet.getDataRange().getValues();
+      for (var d = docRows.length - 1; d >= 1; d--) {
+        var dFid = String(docRows[d][5] || "").trim();
+        if (dFid && dFid !== "LOCAL_STORAGE" && dFid.length > 15) {
+          if (!checkDriveActive(dFid)) {
+            docSheet.deleteRow(d + 1);
+            cleanedCount++;
+          }
+        }
+      }
+    }
+
+    // 2. Periksa Foto Profil di Sheet Users
+    var userSheet = ss.getSheetByName(SHEETS.USERS);
+    if (userSheet && userSheet.getLastRow() > 1) {
+      var uRows = userSheet.getDataRange().getValues();
+      var uHeaders = uRows[0];
+      var uPhotoCol = uHeaders.indexOf("photo_url") + 1;
+      if (uPhotoCol <= 0) uPhotoCol = 12;
+      for (var u = 1; u < uRows.length; u++) {
+        var uPhotoUrl = String(uRows[u][uPhotoCol - 1] || "").trim();
+        var uFid = extractDriveIdFromAnyUrl(uPhotoUrl);
+        if (uFid && uFid !== "LOCAL_STORAGE" && uFid.length > 15) {
+          if (!checkDriveActive(uFid)) {
+            userSheet.getRange(u + 1, uPhotoCol).setValue("");
+            cleanedCount++;
+          }
+        }
+      }
+    }
+
+    // 3. Periksa Pas Foto di Sheet Students
+    var stdSheet = ss.getSheetByName(SHEETS.STUDENTS);
+    if (stdSheet && stdSheet.getLastRow() > 1) {
+      var sRows = stdSheet.getDataRange().getValues();
+      var sHeaders = sRows[0];
+      var sPhotoCol = sHeaders.indexOf("photo_url") + 1;
+      if (sPhotoCol <= 0) sPhotoCol = 19;
+      for (var s = 1; s < sRows.length; s++) {
+        var sPhotoUrl = String(sRows[s][sPhotoCol - 1] || "").trim();
+        var sFid = extractDriveIdFromAnyUrl(sPhotoUrl);
+        if (sFid && sFid !== "LOCAL_STORAGE" && sFid.length > 15) {
+          if (!checkDriveActive(sFid)) {
+            stdSheet.getRange(s + 1, sPhotoCol).setValue("");
+            cleanedCount++;
+          }
+        }
+      }
+    }
+
+    // 4. Periksa Logo Resmi di Sheet Schools
+    var schSheet = ss.getSheetByName(SHEETS.SCHOOLS);
+    if (schSheet && schSheet.getLastRow() > 1) {
+      var schRows = schSheet.getDataRange().getValues();
+      for (var sc = 1; sc < schRows.length; sc++) {
+        var schLogoUrl = String(schRows[sc][23] || "").trim();
+        var scFid = extractDriveIdFromAnyUrl(schLogoUrl);
+        if (scFid && scFid !== "LOCAL_STORAGE" && scFid.length > 15) {
+          if (!checkDriveActive(scFid)) {
+            schSheet.getRange(sc + 1, 24).setValue("");
+            cleanedCount++;
+          }
+        }
+      }
+    }
+
+    // 5. Periksa Logo Aplikasi di Sheet Settings
+    var settSheet = ss.getSheetByName(SHEETS.SETTINGS);
+    if (settSheet && settSheet.getLastRow() > 1) {
+      var settRows = settSheet.getDataRange().getValues();
+      for (var st = 1; st < settRows.length; st++) {
+        if (settRows[st][0] === "app_logo") {
+          var appLogoUrl = String(settRows[st][1] || "").trim();
+          var aFid = extractDriveIdFromAnyUrl(appLogoUrl);
+          if (aFid && aFid !== "LOCAL_STORAGE" && aFid.length > 15) {
+            if (!checkDriveActive(aFid)) {
+              settSheet.getRange(st + 1, 2).setValue("");
+              cleanedCount++;
+            }
+          }
+          break;
+        }
+      }
+    }
+  } catch (scanErr) {
+    Logger.log("verifyAndCleanMissingDriveFiles warning: " + scanErr.toString());
+  }
+
+  return { success: true, cleaned: cleanedCount };
 }
 
 /**

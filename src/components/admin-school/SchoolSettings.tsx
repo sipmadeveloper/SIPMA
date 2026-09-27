@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Check, Save, School as SchoolIcon, Upload, Image as ImageIcon, Trash2, Calendar, Clock, MapPin, FileCheck, Info, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { School } from '../../types/sipma';
 import { normalizeImageUrl, handleImageError, compressAndResizeImage } from '../../utils/imageUrl';
@@ -42,6 +42,17 @@ export const SchoolSettings: React.FC<Props> = ({ school, onSave }) => {
   const [formData, setFormData] = useState<School>({ ...safeSchool });
   const [isSaved, setIsSaved] = useState<boolean>(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleDriveMissing = (e: any) => {
+      const missingId = e?.detail?.fileId;
+      if (missingId && formData.logo_url && (formData.logo_url.includes(missingId) || formData.logo_url === e?.detail?.currentSrc)) {
+        setFormData((prev) => ({ ...prev, logo_url: '' }));
+      }
+    };
+    window.addEventListener('sipma:drive_file_missing', handleDriveMissing);
+    return () => window.removeEventListener('sipma:drive_file_missing', handleDriveMissing);
+  }, [formData.logo_url]);
 
   const handleUploadSchoolLogo = async (file: File) => {
     if (!file) return;

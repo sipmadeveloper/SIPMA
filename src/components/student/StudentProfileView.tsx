@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   User as UserIcon,
   Camera,
@@ -77,6 +77,18 @@ export const StudentProfileView: React.FC<Props> = ({
   const [resetResultPassword, setResetResultPassword] = useState<string | null>(null);
   const [isResettingPassword, setIsResettingPassword] = useState<boolean>(false);
   const [copiedResetPassword, setCopiedResetPassword] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleDriveMissing = (e: any) => {
+      const missingId = e?.detail?.fileId;
+      if (missingId && photoUrl && (photoUrl.includes(missingId) || photoUrl === e?.detail?.currentSrc)) {
+        setPhotoUrl('');
+        setStudent((prev) => ({ ...prev, photo_url: '' }));
+      }
+    };
+    window.addEventListener('sipma:drive_file_missing', handleDriveMissing);
+    return () => window.removeEventListener('sipma:drive_file_missing', handleDriveMissing);
+  }, [photoUrl]);
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

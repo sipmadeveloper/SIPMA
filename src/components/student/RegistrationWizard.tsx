@@ -47,7 +47,7 @@ import { InteractiveLocationPicker } from '../map/InteractiveLocationPicker';
 import { formatDistanceIndonesian, formatCoordinates, checkZoningCompliance, evaluateApplicationZoning } from '../../utils/geo';
 import { DispensationLetterModal } from './DispensationLetterModal';
 import { downloadDocumentFile, formatStandardDocumentFileName } from '../../utils/fileDownload';
-import { compressAndResizeImage } from '../../utils/imageUrl';
+import { compressAndResizeImage, normalizeImageUrl, handleImageError } from '../../utils/imageUrl';
 
 interface Props {
   registrationNumber: string;
@@ -209,6 +209,23 @@ export const RegistrationWizard: React.FC<Props> = ({
   });
 
   const [documents, setDocuments] = useState<DocumentItem[]>(() => storageService.getDocumentsByRegistration(registrationNumber));
+
+  useEffect(() => {
+    const handleDriveMissing = (e: any) => {
+      const missingId = e?.detail?.fileId;
+      if (missingId) {
+        setStudent((prev) => {
+          if (prev?.photo_url && (prev.photo_url.includes(missingId) || prev.photo_url === e?.detail?.currentSrc)) {
+            return { ...prev, photo_url: '' };
+          }
+          return prev;
+        });
+        setDocuments((prev) => prev.filter((d) => !(d.drive_file_id === missingId || (d.drive_url && d.drive_url.includes(missingId)))));
+      }
+    };
+    window.addEventListener('sipma:drive_file_missing', handleDriveMissing);
+    return () => window.removeEventListener('sipma:drive_file_missing', handleDriveMissing);
+  }, []);
   const [schools, setSchools] = useState<School[]>(() => storageService.getSchools());
   const [activeRegNumber, setActiveRegNumber] = useState<string>(registrationNumber);
   const [schoolLevelFilter, setSchoolLevelFilter] = useState<'all' | 'MI' | 'MTs' | 'MA'>('all');
@@ -915,10 +932,11 @@ export const RegistrationWizard: React.FC<Props> = ({
                 <div className="w-24 h-32 rounded-xl border-2 border-dashed border-slate-300 overflow-hidden bg-white flex items-center justify-center shadow-xs">
                   {student.photo_url ? (
                     <img
-                      src={student.photo_url}
+                      src={normalizeImageUrl(student.photo_url)}
                       alt={student.name}
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
+                      onError={(e) => handleImageError(e)}
                     />
                   ) : (
                     <div className="text-center p-2 text-slate-400">

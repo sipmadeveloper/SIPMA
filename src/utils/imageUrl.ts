@@ -244,6 +244,18 @@ export function handleImageError(e: React.SyntheticEvent<HTMLImageElement, Event
       target.src = `/api/drive/image/${fileId}`;
       return;
     }
+    if (currentSrc.includes('/api/drive/image/')) {
+      // Step 5: All Google Drive endpoints failed - file is missing/deleted from Drive
+      clearImageUrlCache(fileId);
+      clearImageUrlCache(currentSrc);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('sipma:drive_file_missing', { detail: { fileId, currentSrc } }));
+      }
+      if (fallbackSrc && target.src !== fallbackSrc) {
+        target.src = fallbackSrc;
+      }
+      return;
+    }
   }
 
   // If local /uploads/ URL fails (e.g. on serverless Vercel cold-start where /tmp is wiped)
