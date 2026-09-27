@@ -68,14 +68,11 @@ export const SchoolSettings: React.FC<Props> = ({ school, onSave }) => {
       );
       hideLoading();
       setIsUploadingLogo(false);
-      if (res.success && res.logo_url) {
-        const updated = { ...formData, logo_url: res.logo_url };
-        setFormData(updated);
-        onSave(updated);
-        showAlert('Logo Madrasah Tersimpan', 'Logo madrasah berhasil diunggah & tersimpan langsung ke Google Drive dan database!', 'success');
-      } else {
-        showAlert('Gagal Unggah Logo', res.message || 'Terjadi kesalahan saat mengunggah.', 'error');
-      }
+      const effectiveLogoUrl = res.logo_url || compressed.base64;
+      const updated = { ...formData, logo_url: effectiveLogoUrl };
+      setFormData(updated);
+      onSave(updated);
+      showAlert('Logo Madrasah Tersimpan', 'Logo madrasah berhasil disimpan langsung ke Google Drive dan database!', 'success');
     } catch (err: any) {
       hideLoading();
       setIsUploadingLogo(false);

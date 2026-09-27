@@ -818,10 +818,13 @@ function normalizeDocumentTypeGAS(type) {
  * - Memperbarui baris data di Google Sheets (in-place update), tidak menambah baris ganda
  */
 function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
+  var isDocPdf = false;
+  var fileId = "";
+  var fileUrl = "";
+  var directThumbnailUrl = "";
+  var cleanFileName = "";
+  var docId = "DOC-" + Utilities.getUuid().substring(0, 8);
   var rootFolder = getOrOpenRootFolder(rootFolderId);
-  
-// Root folder resolved via getOrOpenRootFolder
-
   var ss = getOrOpenSpreadsheet(targetSpreadsheetId || SPREADSHEET_ID);
   ensureAllSheetsExist(ss);
 
@@ -1009,17 +1012,14 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
     }
   }
 
-  var isDocPdf = (ext === "pdf" || mimeType === "application/pdf");
-  var fileId = "";
-  var fileUrl = "";
-  var directThumbnailUrl = "";
-
   // Penamaan file rapi & terstandarisasi
-  var cleanStudentName = String(data.student_name || "Pendaftar").replace(/[^a-zA-Z0-9_ -]/g, "").trim().replace(/\\s+/g, "_") || "Pendaftar";
+  var cleanStudentName = String(data.student_name || "Pendaftar").replace(/[^a-zA-Z0-9_ -]/g, "").trim().replace(/\s+/g, "_") || "Pendaftar";
   var cleanReg = String(data.registration_number || "SIPMA").replace(/[^a-zA-Z0-9_\-]/g, "").trim() || "SIPMA";
-  var cleanDocType = String(docType || "Dokumen").replace(/[^a-zA-Z0-9_\-]/g, "").trim().replace(/\\s+/g, "_") || "Dokumen";
+  var cleanDocType = String(docType || "Dokumen").replace(/[^a-zA-Z0-9_\-]/g, "").trim().replace(/\s+/g, "_") || "Dokumen";
 
-  var cleanFileName = "";
+  var isDocPdf = (ext === "pdf" || mimeType === "application/pdf" || String(cleanDocType).toLowerCase().indexOf("pdf") > -1);
+
+  cleanFileName = "";
   if (isAccountFile) {
     var cleanAcc = String(data.account_name || data.student_name || "Pengguna").replace(/[^a-zA-Z0-9_ -]/g, "").trim().replace(/\\s+/g, "_");
     cleanFileName = "Foto_Profil_" + cleanAcc + "." + ext;
@@ -1242,6 +1242,7 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
     }
   }
 
+  var isPdfSafe = (typeof isDocPdf !== "undefined" && Boolean(isDocPdf));
   var realDriveUrl = fileUrl || (fileId ? ("https://drive.google.com/file/d/" + fileId + "/view?usp=drivesdk") : "");
   return {
     success: true,
@@ -1251,7 +1252,7 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
       file_name: cleanFileName,
       drive_file_id: fileId,
       drive_url: realDriveUrl,
-      view_url: isDocPdf ? realDriveUrl : (directThumbnailUrl || realDriveUrl),
+      view_url: isPdfSafe ? realDriveUrl : (directThumbnailUrl || realDriveUrl),
       thumbnail_url: directThumbnailUrl || realDriveUrl
     },
     data: {
@@ -1259,7 +1260,7 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
       file_name: cleanFileName,
       drive_file_id: fileId,
       drive_url: realDriveUrl,
-      view_url: isDocPdf ? realDriveUrl : (directThumbnailUrl || realDriveUrl),
+      view_url: isPdfSafe ? realDriveUrl : (directThumbnailUrl || realDriveUrl),
       thumbnail_url: directThumbnailUrl || realDriveUrl
     },
     logo_url: directThumbnailUrl || realDriveUrl

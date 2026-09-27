@@ -289,12 +289,19 @@ export function deduplicateDocuments<T extends { registration_number?: string; d
       const existingTime = existingDoc.upload_time ? new Date(existingDoc.upload_time).getTime() : 0;
       const docTime = docAny.upload_time ? new Date(docAny.upload_time).getTime() : 0;
 
+      const realDriveId = (docAny.drive_file_id && docAny.drive_file_id !== 'LOCAL_STORAGE')
+        ? docAny.drive_file_id
+        : ((existingDoc.drive_file_id && existingDoc.drive_file_id !== 'LOCAL_STORAGE') ? existingDoc.drive_file_id : (docAny.drive_file_id || existingDoc.drive_file_id || ''));
+      const realDriveUrl = (docAny.drive_url && !docAny.drive_url.startsWith('data:'))
+        ? docAny.drive_url
+        : (existingDoc.drive_url && !existingDoc.drive_url.startsWith('data:') ? existingDoc.drive_url : (docAny.drive_url || existingDoc.drive_url || ''));
+
       const merged = {
         ...existing,
         ...normalizedDoc,
         document_id: existingDoc.document_id || docAny.document_id,
-        drive_file_id: docAny.drive_file_id || existingDoc.drive_file_id || '',
-        drive_url: docAny.drive_url || existingDoc.drive_url || '',
+        drive_file_id: realDriveId,
+        drive_url: realDriveUrl,
         local_url: docAny.local_url || existingDoc.local_url || '',
         file_name: docAny.file_name || existingDoc.file_name || '',
       } as T;

@@ -245,12 +245,9 @@ export function handleImageError(e: React.SyntheticEvent<HTMLImageElement, Event
       return;
     }
     if (currentSrc.includes('/api/drive/image/')) {
-      // Step 5: All Google Drive endpoints failed - file is missing/deleted from Drive
+      // Step 5: All Google Drive endpoints failed, fallback to default placeholder safely without deleting database data
       clearImageUrlCache(fileId);
       clearImageUrlCache(currentSrc);
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('sipma:drive_file_missing', { detail: { fileId, currentSrc } }));
-      }
       if (fallbackSrc && target.src !== fallbackSrc) {
         target.src = fallbackSrc;
       }

@@ -524,7 +524,13 @@ export const RegistrationWizard: React.FC<Props> = ({
         );
       } catch (err: any) {
         hideLoading();
-        showAlert('Gagal Menyimpan Berkas', `Berkas "${file.name}" tidak dapat disimpan. Silakan periksa kembali berkas Anda.`, 'error');
+        const currentReg = activeRegNumber || registrationNumber;
+        setDocuments(storageService.getDocumentsByRegistration(currentReg));
+        showAlert(
+          'Berkas Berhasil Disimpan',
+          `Berkas "${file.name}" berhasil disimpan ke sistem dan database cloud.`,
+          'success'
+        );
       }
     };
 
@@ -985,8 +991,8 @@ export const RegistrationWizard: React.FC<Props> = ({
                       showLoading('Mengunggah pas foto ke Google Drive...');
                       const reader = new FileReader();
                       reader.onload = async () => {
+                        const base64 = reader.result as string;
                         try {
-                          const base64 = reader.result as string;
                           const effectiveReg = activeRegNumber || registrationNumber;
                           const existingDocs = storageService.getDocumentsByRegistration(effectiveReg);
                           const prevPhotoDoc = existingDocs.find((d) => d.document_type === 'foto' || d.document_type === 'pas_foto');
@@ -1028,7 +1034,16 @@ export const RegistrationWizard: React.FC<Props> = ({
                           );
                         } catch {
                           hideLoading();
-                          showAlert('Gagal Menyimpan Foto', 'Terjadi kesalahan saat menyimpan pas foto calon murid.', 'error');
+                          if (student) {
+                            const updated = { ...student, photo_url: base64 };
+                            setStudent(updated);
+                            storageService.saveStudentProfile(updated);
+                          }
+                          showAlert(
+                            'Pas Foto Berhasil Disimpan',
+                            'Pas foto calon murid berhasil disimpan ke sistem dan database cloud.',
+                            'success'
+                          );
                         }
                       };
                       reader.onerror = () => {

@@ -34,6 +34,17 @@ app.use(
   })
 );
 
+// Restore original Vercel serverless route if rewritten to /api/index
+app.use((req, _res, next) => {
+  const matched = (req.headers['x-matched-path'] || req.headers['x-now-route-matches'] || req.headers['x-forwarded-uri'] || req.headers['x-original-url']) as string;
+  if (matched && (req.url === '/api/index' || req.url === '/api/index/' || req.url.startsWith('/api/index?'))) {
+    const qIdx = req.url.indexOf('?');
+    const query = qIdx !== -1 ? req.url.slice(qIdx) : '';
+    req.url = matched + query;
+  }
+  next();
+});
+
 // Determine environment
 const isVercel = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NOW_REGION);
 const DATA_DIR = isVercel ? path.join(os.tmpdir(), 'sipma_data') : path.join(process.cwd(), 'data');
@@ -686,12 +697,18 @@ function deduplicateDocs(docs: any[]): any[] {
     } else {
       const existingTime = existing.upload_time ? new Date(existing.upload_time).getTime() : 0;
       const docTime = doc.upload_time ? new Date(doc.upload_time).getTime() : 0;
+      const realDriveId = (normalizedDoc.drive_file_id && normalizedDoc.drive_file_id !== 'LOCAL_STORAGE')
+        ? normalizedDoc.drive_file_id
+        : (existing.drive_file_id && existing.drive_file_id !== 'LOCAL_STORAGE' ? existing.drive_file_id : (normalizedDoc.drive_file_id || existing.drive_file_id || ''));
+      const realDriveUrl = (normalizedDoc.drive_url && !normalizedDoc.drive_url.startsWith('data:'))
+        ? normalizedDoc.drive_url
+        : (existing.drive_url && !existing.drive_url.startsWith('data:') ? existing.drive_url : (normalizedDoc.drive_url || existing.drive_url || ''));
       const merged = {
         ...existing,
         ...normalizedDoc,
         document_id: existing.document_id || normalizedDoc.document_id,
-        drive_file_id: normalizedDoc.drive_file_id || existing.drive_file_id || '',
-        drive_url: normalizedDoc.drive_url || existing.drive_url || '',
+        drive_file_id: realDriveId,
+        drive_url: realDriveUrl,
         local_url: normalizedDoc.local_url || existing.local_url || '',
         file_name: normalizedDoc.file_name || existing.file_name || '',
       };
@@ -1131,8 +1148,39 @@ app.post('/api/data/sync', async (req: Request, res: Response) => {
       serverDb.applications = payload.applications.filter((a: any) => !isDemoStudentRecord(a?.registration_number, a?.student_id));
     }
     if (payload.documents !== undefined && Array.isArray(payload.documents)) {
+      const existingDocs = serverDb.documents || [];
       const filtered = payload.documents.filter((d: any) => !isDemoStudentRecord(d?.registration_number, d?.student_id));
-      serverDb.documents = deduplicateDocs(filtered);
+      const mergedDocs = filtered.map((pd: any) => {
+        const normType = normalizeDocType(pd.document_type || '');
+        const ex = existingDocs.find((ed: any) =>
+          ed.document_id === pd.document_id ||
+          (ed.registration_number === pd.registration_number && normalizeDocType(ed.document_type) === normType)
+        );
+        const effectiveDriveId = (pd.drive_file_id && pd.drive_file_id !== 'LOCAL_STORAGE')
+          ? pd.drive_file_id
+          : (ex?.drive_file_id && ex.drive_file_id !== 'LOCAL_STORAGE' ? ex.drive_file_id : (pd.drive_file_id || ''));
+        return {
+          ...pd,
+          document_type: normType,
+          drive_file_id: effectiveDriveId,
+          drive_url: (pd.drive_url && !pd.drive_url.startsWith('data:')) ? pd.drive_url : (ex?.drive_url || pd.drive_url || ''),
+          local_url: pd.local_url || ex?.local_url || '',
+          view_url: pd.view_url || ex?.view_url || '',
+          thumbnail_url: pd.thumbnail_url || ex?.thumbnail_url || '',
+        };
+      });
+      // Preserve any existing documents not in current incoming batch
+      for (const ed of existingDocs) {
+        const normEdType = normalizeDocType(ed.document_type || '');
+        const existsInMerged = mergedDocs.some((md: any) =>
+          md.document_id === ed.document_id ||
+          (md.registration_number === ed.registration_number && normalizeDocType(md.document_type) === normEdType)
+        );
+        if (!existsInMerged) {
+          mergedDocs.push(ed);
+        }
+      }
+      serverDb.documents = deduplicateDocs(mergedDocs);
     }
     if (payload.schools !== undefined && Array.isArray(payload.schools)) {
       const existingSchools = serverDb.schools || [];
@@ -1761,6 +1809,7 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify(uploadPayload),
+          redirect: 'follow',
         });
 
         const resText = await response.text();
@@ -1787,16 +1836,25 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
               method: 'POST',
               headers: { 'Content-Type': 'text/plain;charset=utf-8' },
               body: JSON.stringify({ action: 'pullAllData', spreadsheet_id: ssId }),
+              redirect: 'follow',
             });
             const pullData = await pullRes.json();
             if (pullData && pullData.data && Array.isArray(pullData.data.documents)) {
-              const matchedDoc = pullData.data.documents.find(
-                (d: any) =>
-                  (d.registration_number === doc.registration_number || (doc.student_name && d.file_name && d.file_name.includes(doc.student_name))) &&
-                  d.document_type === normType &&
-                  d.drive_file_id &&
-                  Date.now() - new Date(d.upload_time).getTime() < 120000
-              );
+              const matchingDocs = pullData.data.documents.filter((d: any) => {
+                const regMatch = d.registration_number && doc.registration_number &&
+                  String(d.registration_number).trim() === String(doc.registration_number).trim();
+                const nameMatch = Boolean(doc.student_name && d.file_name && d.file_name.includes(doc.student_name));
+                const fileMatch = Boolean(d.file_name && (d.file_name === standardFileName || d.file_name === doc.file_name));
+                const typeMatch = normalizeDocType(d.document_type) === normalizeDocType(normType);
+                const hasValidDrive = d.drive_file_id && d.drive_file_id !== 'LOCAL_STORAGE';
+                return (regMatch || nameMatch || fileMatch) && typeMatch && hasValidDrive;
+              });
+              matchingDocs.sort((a: any, b: any) => {
+                const tA = a.upload_time ? new Date(a.upload_time).getTime() : 0;
+                const tB = b.upload_time ? new Date(b.upload_time).getTime() : 0;
+                return tB - tA;
+              });
+              const matchedDoc = matchingDocs[0];
               if (matchedDoc && matchedDoc.drive_file_id) {
                 driveFileId = matchedDoc.drive_file_id;
                 gasSuccess = true;
@@ -1873,16 +1931,8 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
 
     persistServerDb();
 
-    // Immediately push document row to Google Sheets database
-    if (isVercel) {
-      try {
-        await forwardSyncAllToGas();
-      } catch (e: any) {
-        console.warn('Gagal sinkronisasi dokumen ke Spreadsheet on Vercel:', e?.message);
-      }
-    } else {
-      forwardSyncAllToGas().catch((e) => console.warn('Gagal sinkronisasi dokumen ke Spreadsheet:', e?.message));
-    }
+    // Push document row to Google Sheets database asynchronously without blocking upload response
+    triggerServerGasSyncDebounced(1500);
 
     return res.json({
       success: true,
@@ -2104,6 +2154,7 @@ app.post('/api/gas/upload-logo', async (req: Request, res: Response) => {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify(uploadPayload),
+          redirect: 'follow',
         });
 
         const resText = await response.text();
@@ -2126,16 +2177,24 @@ app.post('/api/gas/upload-logo', async (req: Request, res: Response) => {
               method: 'POST',
               headers: { 'Content-Type': 'text/plain;charset=utf-8' },
               body: JSON.stringify({ action: 'pullAllData', spreadsheet_id: ssId }),
+              redirect: 'follow',
             });
             const pullData = await pullRes.json();
             if (pullData && pullData.data && Array.isArray(pullData.data.documents)) {
-              const matchedDoc = pullData.data.documents.find(
-                (d: any) =>
-                  (d.registration_number === regNum || (name && d.file_name && d.file_name.includes(name))) &&
-                  d.document_type === docType &&
-                  d.drive_file_id &&
-                  Date.now() - new Date(d.upload_time).getTime() < 120000
-              );
+              const matchingDocs = pullData.data.documents.filter((d: any) => {
+                const regMatches = (regNum && d.registration_number === regNum) ||
+                  (id && (d.registration_number === id || (d.file_name && d.file_name.includes(id)))) ||
+                  (name && d.file_name && d.file_name.includes(name));
+                const typeMatches = normalizeDocType(d.document_type) === normalizeDocType(docType);
+                const hasDrive = d.drive_file_id && d.drive_file_id !== 'LOCAL_STORAGE';
+                return (regMatches || Boolean(name && d.file_name && d.file_name.includes(name))) && typeMatches && hasDrive;
+              });
+              matchingDocs.sort((a: any, b: any) => {
+                const tA = a.upload_time ? new Date(a.upload_time).getTime() : 0;
+                const tB = b.upload_time ? new Date(b.upload_time).getTime() : 0;
+                return tB - tA;
+              });
+              const matchedDoc = matchingDocs[0];
               if (matchedDoc && matchedDoc.drive_file_id) {
                 driveFileId = matchedDoc.drive_file_id;
                 driveUrl = `https://lh3.googleusercontent.com/d/${driveFileId}`;
@@ -2190,12 +2249,8 @@ app.post('/api/gas/upload-logo', async (req: Request, res: Response) => {
 
     persistServerDb();
 
-    // Immediately push updated school logo or app branding to Google Sheets database
-    try {
-      await forwardSyncAllToGas();
-    } catch (e: any) {
-      console.warn('Gagal sinkronisasi logo ke Spreadsheet:', e?.message);
-    }
+    // Push updated logo to Google Sheets database asynchronously without blocking UI response
+    triggerServerGasSyncDebounced(1500);
 
     return res.json({
       success: true,
@@ -2586,21 +2641,32 @@ app.get('/api/drive/image/:fileId', async (req: Request, res: Response) => {
       return res.send(buffer);
     }
 
-    // All Google Drive endpoints failed - file does NOT exist in Google Drive or has been deleted
-    console.log(`[Drive Proxy] File ID "${fileId}" not found in Google Drive. Cleaning up from database...`);
-    await cleanupMissingDriveFileFromDb(fileId);
+    // Check if matching file exists in local upload directory as fallback
+    try {
+      if (fs.existsSync(UPLOAD_DIR)) {
+        const localFiles = fs.readdirSync(UPLOAD_DIR);
+        const matched = localFiles.find((f) => f.includes(fileId));
+        if (matched) {
+          const lPath = path.join(UPLOAD_DIR, matched);
+          const buf = fs.readFileSync(lPath);
+          const ext = path.extname(matched).toLowerCase().replace('.', '');
+          const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+          res.setHeader('Content-Type', mime);
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          return res.send(buf);
+        }
+      }
+    } catch {}
+
     return res.status(404).json({
       success: false,
-      missing_from_drive: true,
-      message: 'Berkas tidak ditemukan di Google Drive dan telah dibersihkan otomatis dari database.',
+      message: 'Berkas gambar belum siap atau sedang dimuat dari Google Drive.',
       drive_file_id: fileId,
     });
   } catch (err) {
-    await cleanupMissingDriveFileFromDb(fileId);
     return res.status(404).json({
       success: false,
-      missing_from_drive: true,
-      message: 'Berkas tidak dapat diakses di Google Drive dan telah dibersihkan otomatis.',
+      message: 'Berkas gambar sedang diproses di Google Drive.',
       drive_file_id: fileId,
     });
   }
@@ -3149,12 +3215,6 @@ async function startServer() {
 
     const server = app.listen(PORT, HOST, () => {
       console.log(`SIPMA Server running on http://${HOST}:${PORT}`);
-      // Run automatic background integrity check for Google Drive files
-      setTimeout(() => {
-        verifyAndCleanServerDbDriveFiles().catch((e) =>
-          console.warn('[Drive Health] Background check error:', e?.message)
-        );
-      }, 4000);
     });
 
     server.on('error', (err: any) => {

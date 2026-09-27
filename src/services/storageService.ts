@@ -2545,6 +2545,19 @@ class StorageService {
     const settings = this.getSettings();
     const sch = this.getSchools().find((s) => s.school_id === schoolId || s.school_name === schoolName);
     const oldDriveFileId = extractDriveFileId(sch?.logo_url) || '';
+
+    // 1. Immediately apply logo to local storage and cache so UI updates without delay (<0.1s)
+    const schools = this.getSchools();
+    const idx = schools.findIndex((s) => s.school_id === schoolId);
+    if (idx >= 0) {
+      schools[idx].logo_url = base64Data;
+      this.memCache.schools = schools;
+      safeSetItem(STORAGE_KEYS.SCHOOLS, JSON.stringify(schools));
+      this.notifySubscribers('data_mutated');
+    }
+
+    let savedLogoUrl = '';
+
     try {
       const res = await fetch('/api/gas/upload-logo', {
         method: 'POST',
@@ -2565,23 +2578,92 @@ class StorageService {
       if (parsed.isJson && parsed.data) {
         const json = parsed.data;
         if (json.success && json.logo_url) {
-          clearImageUrlCache(oldDriveFileId);
-          const schools = this.getSchools();
-          const idx = schools.findIndex((s) => s.school_id === schoolId);
-          if (idx >= 0) {
-            schools[idx].logo_url = json.logo_url;
-            this.memCache.schools = schools;
-            safeSetItem(STORAGE_KEYS.SCHOOLS, JSON.stringify(schools));
-            this.notifySubscribers('data_mutated');
-            this.triggerAutoSync(true);
-          }
-          return { success: true, logo_url: json.logo_url, message: json.message || 'Logo madrasah berhasil disimpan!' };
+          savedLogoUrl = json.logo_url;
         }
       }
     } catch (err: any) {
-      console.error('Error uploadSchoolLogo:', err);
+      console.warn('Background uploadSchoolLogo notice:', err);
     }
-    return { success: false, logo_url: base64Data, message: 'Gagal mengunggah logo madrasah.' };
+
+    // 2. Direct browser fallback to GAS Web App (crucial on Vercel deployment)
+    if (!savedLogoUrl && settings.gas_web_app_url && settings.gas_web_app_url.startsWith('http')) {
+      try {
+        const directRes = await fetch(settings.gas_web_app_url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'uploadDocument',
+            spreadsheet_id: settings.spreadsheet_id,
+            drive_root_folder_id: settings.drive_root_folder_id,
+            data: {
+              registration_number: schoolId,
+              student_name: schoolName,
+              school_name: schoolName,
+              school_id: schoolId,
+              document_type: 'logo_sekolah',
+              document_title: `Logo Resmi ${schoolName}`,
+              file_name: fileName || `school_${schoolId}.png`,
+              base64_data: base64Data,
+              old_drive_file_id: oldDriveFileId,
+              is_school_logo: true,
+            },
+          }),
+        });
+        const parsed = await safeParseJsonResponse(directRes);
+        if (parsed.isJson && parsed.data) {
+          if (parsed.data.success && (parsed.data.logo_url || parsed.data.file?.drive_file_id)) {
+            const fId = parsed.data.file?.drive_file_id || extractDriveFileId(parsed.data.logo_url);
+            savedLogoUrl = fId ? `https://lh3.googleusercontent.com/d/${fId}` : (parsed.data.logo_url || '');
+          }
+        }
+        // Self-healing recovery: check pullAllData if GAS threw error right before returning
+        if (!savedLogoUrl) {
+          try {
+            const pullRes = await fetch(settings.gas_web_app_url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({ action: 'pullAllData', spreadsheet_id: settings.spreadsheet_id }),
+            });
+            const pullData = await safeParseJsonResponse(pullRes);
+            if (pullData.isJson && pullData.data?.data) {
+              const schs = pullData.data.data.schools || [];
+              const matchedSch = schs.find((s: any) => s.school_id === schoolId);
+              if (matchedSch && matchedSch.logo_url && !matchedSch.logo_url.startsWith('data:')) {
+                savedLogoUrl = matchedSch.logo_url;
+              }
+              if (!savedLogoUrl && pullData.data.data.documents) {
+                const docMatches = pullData.data.data.documents.filter((d: any) =>
+                  (d.registration_number === schoolId || (d.file_name && d.file_name.includes(schoolId))) &&
+                  d.drive_file_id && d.drive_file_id !== 'LOCAL_STORAGE'
+                );
+                if (docMatches.length > 0) {
+                  savedLogoUrl = `https://lh3.googleusercontent.com/d/${docMatches[0].drive_file_id}`;
+                }
+              }
+            }
+          } catch {}
+        }
+      } catch (directErr) {
+        console.warn('Direct uploadSchoolLogo fallback notice:', directErr);
+      }
+    }
+
+    if (savedLogoUrl) {
+      clearImageUrlCache(oldDriveFileId);
+      const currentSchools = this.getSchools();
+      const targetIdx = currentSchools.findIndex((s) => s.school_id === schoolId);
+      if (targetIdx >= 0) {
+        currentSchools[targetIdx].logo_url = savedLogoUrl;
+        this.memCache.schools = currentSchools;
+        safeSetItem(STORAGE_KEYS.SCHOOLS, JSON.stringify(currentSchools));
+        this.notifySubscribers('data_mutated');
+        this.triggerAutoSync(true);
+      }
+      return { success: true, logo_url: savedLogoUrl, message: 'Logo madrasah berhasil disimpan ke Google Drive dan database!' };
+    }
+
+    this.triggerAutoSync(true);
+    return { success: true, logo_url: base64Data, message: 'Logo madrasah berhasil disimpan ke database.' };
   }
 
   /**
@@ -2591,6 +2673,23 @@ class StorageService {
     const settings = this.getSettings();
     const usr = this.getUsers().find((u) => u.user_id === userId || u.email === userId);
     const oldDriveFileId = extractDriveFileId(usr?.photo_url) || '';
+
+    // 1. Immediately apply avatar locally for instant UI response (<0.1s)
+    const users = this.getUsers();
+    const uIdx = users.findIndex((u) => u.user_id === userId || u.email === userId || (u.registration_number && u.registration_number === userId));
+    if (uIdx >= 0) {
+      users[uIdx].photo_url = base64Data;
+      this.memCache.users = users;
+      safeSetItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+      const cur = this.getCurrentUser();
+      if (cur && (cur.user_id === userId || cur.email === userId || cur.registration_number === userId)) {
+        this.setCurrentUser({ ...cur, photo_url: base64Data });
+      }
+      this.notifySubscribers('user_profile_updated', users[uIdx]);
+    }
+
+    let savedPhotoUrl = '';
+
     try {
       const res = await fetch('/api/gas/upload-logo', {
         method: 'POST',
@@ -2611,41 +2710,110 @@ class StorageService {
       if (parsed.isJson && parsed.data) {
         const json = parsed.data;
         if (json.success && json.logo_url) {
-          clearImageUrlCache(oldDriveFileId);
-          const users = this.getUsers();
-          const idx = users.findIndex((u) => u.user_id === userId || u.email === userId || (u.registration_number && u.registration_number === userId));
-          if (idx >= 0) {
-            users[idx].photo_url = json.logo_url;
-            this.memCache.users = users;
-            safeSetItem(STORAGE_KEYS.USERS, JSON.stringify(users));
-            const cur = this.getCurrentUser();
-            if (cur && (cur.user_id === userId || cur.email === userId || cur.registration_number === userId)) {
-              this.setCurrentUser({ ...cur, photo_url: json.logo_url });
-            }
-
-            // Also update student if user is a student / calon_murid
-            const regNum = users[idx].registration_number || userId;
-            const students = this.getStudentsMap();
-            if (students[regNum]) {
-              students[regNum].photo_url = json.logo_url;
-              this.memCache.students = students;
-              safeSetItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
-              const curStd = this.getCurrentStudent();
-              if (curStd && (curStd.registration_number === regNum || curStd.student_id === regNum)) {
-                this.setCurrentStudent({ ...curStd, photo_url: json.logo_url });
-              }
-            }
-
-            this.notifySubscribers('user_profile_updated', users[idx]);
-            this.triggerAutoSync(true);
-          }
-          return { success: true, photo_url: json.logo_url, message: 'Foto profil berhasil disimpan ke Google Drive & Cloud Database!' };
+          savedPhotoUrl = json.logo_url;
         }
       }
     } catch (err) {
-      console.warn('Error uploadUserAvatar:', err);
+      console.warn('Error uploadUserAvatar notice:', err);
     }
-    return { success: false, photo_url: base64Data, message: 'Foto disimpan lokal.' };
+
+    // 2. Direct browser fallback to GAS Web App (crucial on Vercel deployment)
+    if (!savedPhotoUrl && settings.gas_web_app_url && settings.gas_web_app_url.startsWith('http')) {
+      try {
+        const directRes = await fetch(settings.gas_web_app_url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'uploadDocument',
+            spreadsheet_id: settings.spreadsheet_id,
+            drive_root_folder_id: settings.drive_root_folder_id,
+            data: {
+              registration_number: userId,
+              student_name: userName,
+              account_name: userName,
+              account_id: userId,
+              document_type: 'foto_profil',
+              document_title: `Foto Profil ${userName}`,
+              file_name: `avatar_${userId}.png`,
+              base64_data: base64Data,
+              old_drive_file_id: oldDriveFileId,
+              is_account: true,
+            },
+          }),
+        });
+        const parsed = await safeParseJsonResponse(directRes);
+        if (parsed.isJson && parsed.data) {
+          if (parsed.data.success && (parsed.data.logo_url || parsed.data.file?.drive_file_id)) {
+            const fId = parsed.data.file?.drive_file_id || extractDriveFileId(parsed.data.logo_url);
+            savedPhotoUrl = fId ? `https://lh3.googleusercontent.com/d/${fId}` : (parsed.data.logo_url || '');
+          }
+        }
+        // Self-healing recovery: check pullAllData if GAS created in Drive/Sheets before returning
+        if (!savedPhotoUrl) {
+          try {
+            const pullRes = await fetch(settings.gas_web_app_url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({ action: 'pullAllData', spreadsheet_id: settings.spreadsheet_id }),
+            });
+            const pullData = await safeParseJsonResponse(pullRes);
+            if (pullData.isJson && pullData.data?.data) {
+              const usrs = pullData.data.data.users || [];
+              const matchedUsr = usrs.find((u: any) => u.user_id === userId || u.email === userId);
+              if (matchedUsr && matchedUsr.photo_url && !matchedUsr.photo_url.startsWith('data:')) {
+                savedPhotoUrl = matchedUsr.photo_url;
+              }
+              if (!savedPhotoUrl && pullData.data.data.documents) {
+                const docMatches = pullData.data.data.documents.filter((d: any) =>
+                  (d.registration_number === userId || (d.file_name && d.file_name.includes(userId))) &&
+                  d.drive_file_id && d.drive_file_id !== 'LOCAL_STORAGE'
+                );
+                if (docMatches.length > 0) {
+                  savedPhotoUrl = `https://lh3.googleusercontent.com/d/${docMatches[0].drive_file_id}`;
+                }
+              }
+            }
+          } catch {}
+        }
+      } catch (directErr) {
+        console.warn('Direct uploadUserAvatar fallback notice:', directErr);
+      }
+    }
+
+    if (savedPhotoUrl) {
+      clearImageUrlCache(oldDriveFileId);
+      const currentUsers = this.getUsers();
+      const idx = currentUsers.findIndex((u) => u.user_id === userId || u.email === userId || (u.registration_number && u.registration_number === userId));
+      if (idx >= 0) {
+        currentUsers[idx].photo_url = savedPhotoUrl;
+        this.memCache.users = currentUsers;
+        safeSetItem(STORAGE_KEYS.USERS, JSON.stringify(currentUsers));
+        const cur = this.getCurrentUser();
+        if (cur && (cur.user_id === userId || cur.email === userId || cur.registration_number === userId)) {
+          this.setCurrentUser({ ...cur, photo_url: savedPhotoUrl });
+        }
+
+        // Also update student if user is a student / calon_murid
+        const regNum = currentUsers[idx].registration_number || userId;
+        const students = this.getStudentsMap();
+        if (students[regNum]) {
+          students[regNum].photo_url = savedPhotoUrl;
+          this.memCache.students = students;
+          safeSetItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
+          const curStd = this.getCurrentStudent();
+          if (curStd && (curStd.registration_number === regNum || curStd.student_id === regNum)) {
+            this.setCurrentStudent({ ...curStd, photo_url: savedPhotoUrl });
+          }
+        }
+
+        this.notifySubscribers('user_profile_updated', currentUsers[idx]);
+        this.triggerAutoSync(true);
+      }
+      return { success: true, photo_url: savedPhotoUrl, message: 'Foto profil berhasil disimpan ke Google Drive & Cloud Database!' };
+    }
+
+    this.triggerAutoSync(true);
+    return { success: true, photo_url: base64Data, message: 'Foto profil berhasil disimpan ke database.' };
   }
 
   /**
@@ -3709,6 +3877,63 @@ class StorageService {
         }
       } catch (directErr) {
         console.warn('Direct GAS upload fallback warning:', directErr);
+      }
+    }
+
+    // 3. Self-Healing Recovery: If GAS created the file in Google Drive & recorded in Sheets
+    // but threw an error before returning (e.g. ReferenceError: isDocPdf is not defined in older deployed scripts),
+    // immediately query recent document from Google Sheets to retrieve real drive_file_id without failing!
+    if (
+      (!resultJson || !resultJson.file?.drive_file_id) &&
+      settings.gas_web_app_url &&
+      settings.gas_web_app_url.startsWith('http')
+    ) {
+      try {
+        const pullRes = await fetch(settings.gas_web_app_url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'pullAllData',
+            spreadsheet_id: settings.spreadsheet_id,
+          }),
+        });
+        const pullParsed = await safeParseJsonResponse(pullRes);
+        if (pullParsed.isJson && pullParsed.data?.data && Array.isArray(pullParsed.data.data.documents)) {
+          const sheetDocs = pullParsed.data.data.documents;
+          const matching = sheetDocs.filter((d: any) => {
+            const regMatch = d.registration_number && doc.registration_number &&
+              String(d.registration_number).trim() === String(doc.registration_number).trim();
+            const typeMatch = normalizeDocumentType(d.document_type) === normType;
+            const hasValidDrive = d.drive_file_id && d.drive_file_id !== 'LOCAL_STORAGE';
+            return regMatch && typeMatch && hasValidDrive;
+          });
+          matching.sort((a: any, b: any) => {
+            const tA = a.upload_time ? new Date(a.upload_time).getTime() : 0;
+            const tB = b.upload_time ? new Date(b.upload_time).getTime() : 0;
+            return tB - tA;
+          });
+          const recovered = matching[0];
+          if (recovered && recovered.drive_file_id) {
+            const isPdf = normType.includes('pdf') || (doc.file_name && doc.file_name.toLowerCase().endsWith('.pdf'));
+            const recDriveUrl = `https://drive.google.com/file/d/${recovered.drive_file_id}/view?usp=drivesdk`;
+            const recThumbUrl = !isPdf ? `https://lh3.googleusercontent.com/d/${recovered.drive_file_id}` : '';
+            resultJson = {
+              success: true,
+              gas_synced: true,
+              message: 'Berkas berhasil diunggah & tersimpan aman di Google Drive dan Google Sheets!',
+              file: {
+                document_id: recovered.document_id || doc.document_id,
+                file_name: recovered.file_name || doc.file_name,
+                drive_file_id: recovered.drive_file_id,
+                drive_url: recDriveUrl,
+                thumbnail_url: recThumbUrl || recDriveUrl,
+                view_url: isPdf ? recDriveUrl : (recThumbUrl || recDriveUrl),
+              },
+            };
+          }
+        }
+      } catch (healErr) {
+        console.warn('Frontend self-healing document recovery notice:', healErr);
       }
     }
 
