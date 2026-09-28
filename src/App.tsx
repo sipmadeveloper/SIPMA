@@ -123,6 +123,12 @@ export default function App() {
       if (parsed.printRegNumber) {
         setPrintRegNumber(parsed.printRegNumber);
       }
+      if (parsed.verifyRegNumber) {
+        setHighlightApplicantRegNumber(parsed.verifyRegNumber);
+        if (!user || user.role === 'calon_murid') {
+          sessionStorage.setItem('sipma_pending_verify_reg', parsed.verifyRegNumber);
+        }
+      }
     };
 
     window.addEventListener('popstate', handleLocationChange);
@@ -131,6 +137,8 @@ export default function App() {
     // Initial URL sync if hash is not set
     if (!window.location.hash) {
       navigateToRoute(currentRoute, true);
+    } else {
+      handleLocationChange();
     }
 
     return () => {
@@ -259,7 +267,13 @@ export default function App() {
       try {
         const initialApps = storageService.getApplications();
         initialApps.forEach((a) => knownRegNumbersRef.current.add(a.registration_number));
+        // Fast sync with server (cached in RAM, 1ms response)
         await storageService.syncWithServer(false);
+        // Also immediately pull directly from Google Sheets to ensure updates are detected immediately on Vercel
+        const s = storageService.getSettings();
+        if (s.gas_web_app_url && s.gas_web_app_url.startsWith('http')) {
+          await storageService.pullAllFromGAS();
+        }
       } catch (err) {
         console.warn('Initial server sync warning:', err);
       } finally {
@@ -349,6 +363,22 @@ export default function App() {
         localStorage.setItem('sipma_users', JSON.stringify(users));
         setCurrentUser(newUser);
         storageService.setCurrentUser(newUser);
+      }
+
+      const pendingVerify = sessionStorage.getItem('sipma_pending_verify_reg');
+      if (pendingVerify && (role === 'admin_pusat' || role === 'admin_sekolah' || role === 'operator_sekolah')) {
+        sessionStorage.removeItem('sipma_pending_verify_reg');
+        setHighlightApplicantRegNumber(pendingVerify);
+        navigate({
+          viewMode: 'app',
+          verifyRegNumber: pendingVerify,
+          centralTab: 'applicants',
+          schoolTab: 'applicants',
+        });
+        refreshData();
+        hideLoading();
+        showToast(`Membuka berkas ${pendingVerify} untuk verifikasi...`, 'info');
+        return;
       }
 
       updateViewMode('app');
@@ -876,6 +906,26 @@ export default function App() {
                   address={address}
                   school={school}
                   onBack={() => updateViewMode(currentUser ? 'app' : 'landing')}
+                  onTriggerVerification={(regNumber) => {
+                    setHighlightApplicantRegNumber(regNumber);
+                    if (currentUser && currentUser.role !== 'calon_murid') {
+                      navigate({
+                        viewMode: 'app',
+                        verifyRegNumber: regNumber,
+                        centralTab: 'applicants',
+                        schoolTab: 'applicants',
+                      });
+                      showToast(`Membuka verifikasi berkas ${regNumber}...`, 'info');
+                    } else {
+                      sessionStorage.setItem('sipma_pending_verify_reg', regNumber);
+                      updateViewMode('login');
+                      showAlert(
+                        'Pindai QR Berhasil',
+                        `QR Verifikasi untuk nomor pendaftaran ${regNumber} berhasil dikenali. Silakan login sebagai Panitia atau Admin Madrasah untuk memproses verifikasi berkas.`,
+                        'info'
+                      );
+                    }
+                  }}
                 />
               );
             })()}

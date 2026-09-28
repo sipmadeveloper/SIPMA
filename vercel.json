@@ -13,15 +13,15 @@
   "rewrites": [
     {
       "source": "/api",
-      "destination": "/api/index"
+      "destination": "/api/index?__vercel_route=/api"
     },
     {
       "source": "/api/(.*)",
-      "destination": "/api/index"
+      "destination": "/api/index?__vercel_route=/api/$1"
     },
     {
       "source": "/uploads/(.*)",
-      "destination": "/api/index"
+      "destination": "/api/index?__vercel_route=/uploads/$1"
     },
     {
       "source": "/(.*)",

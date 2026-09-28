@@ -32,23 +32,23 @@ export async function compressAndResizeImage(
   file: File,
   _maxWidth = 1600,
   _maxHeight = 1600,
-  _quality = 1.0,
+  _quality = 0.85,
   forceCompress = false
 ): Promise<{ base64: string; fileName: string; mimeType: string }> {
-  // Preserve 100% original quality without destructive compression
-  if (!forceCompress) {
+  // If SVG or non-image, return raw
+  if (file.type === 'image/svg+xml' || !file.type.startsWith('image/')) {
+    const orig = await readFileAsOriginalBase64(file);
+    return orig;
+  }
+
+  // If file is already tiny (< 300KB) and forceCompress is not requested, return raw
+  if (!forceCompress && file.size < 300 * 1024) {
     const orig = await readFileAsOriginalBase64(file);
     return {
       base64: orig.base64,
       fileName: orig.fileName,
       mimeType: orig.mimeType,
     };
-  }
-
-  // If SVG or non-image, return raw
-  if (file.type === 'image/svg+xml' || !file.type.startsWith('image/')) {
-    const orig = await readFileAsOriginalBase64(file);
-    return orig;
   }
 
   return new Promise((resolve, reject) => {

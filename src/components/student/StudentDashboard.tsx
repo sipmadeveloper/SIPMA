@@ -267,6 +267,9 @@ export const StudentDashboard: React.FC<Props> = ({
         address={address}
         school={safeSchool}
         onBack={() => setActiveTab('overview')}
+        onTriggerVerification={(regNumber) => {
+          window.location.hash = `#/verify?reg=${encodeURIComponent(regNumber)}`;
+        }}
       />
     );
   }

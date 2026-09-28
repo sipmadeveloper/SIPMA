@@ -134,7 +134,7 @@ export const StudentProfileView: React.FC<Props> = ({
         verification_status: 'menunggu',
       };
 
-      storageService.saveDocument(photoDoc, student.name, school?.school_name);
+      storageService.saveDocument(photoDoc, student.name, school?.school_name, false);
       const uploadRes = await storageService.uploadDocumentToDrive(
         photoDoc,
         student.name,
@@ -234,7 +234,7 @@ export const StudentProfileView: React.FC<Props> = ({
             verification_status: 'menunggu',
           };
         }
-        storageService.saveDocument(effectiveDoc, student.name, school?.school_name);
+        storageService.saveDocument(effectiveDoc, student.name, school?.school_name, false);
         const uploadRes = await storageService.uploadDocumentToDrive(
           effectiveDoc,
           student.name,
@@ -410,10 +410,12 @@ export const StudentProfileView: React.FC<Props> = ({
                       onError={(e) => handleImageError(e)}
                     />
                   ) : (
-                    <div className="text-center p-4 text-slate-400">
-                      <UserIcon className="w-12 h-12 mx-auto mb-1 opacity-50" />
-                      <span className="text-[11px] font-semibold">Belum Ada Foto</span>
-                      <span className="block text-[9px] text-slate-400 mt-0.5">Pas Foto 3 x 4</span>
+                    <div className="text-center p-4 text-slate-400 flex flex-col items-center justify-center">
+                      <div className="w-16 h-16 rounded-full bg-slate-200/80 flex items-center justify-center mb-2 text-slate-400 shadow-2xs">
+                        <UserIcon className="w-9 h-9" />
+                      </div>
+                      <span className="text-xs font-semibold text-slate-600">Belum Ada Foto</span>
+                      <span className="block text-[10px] text-slate-400 mt-0.5">Pas Foto 3 x 4 cm</span>
                     </div>
                   )}
                 </div>

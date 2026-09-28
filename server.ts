@@ -36,11 +36,27 @@ app.use(
 
 // Restore original Vercel serverless route if rewritten to /api/index
 app.use((req, _res, next) => {
-  const matched = (req.headers['x-matched-path'] || req.headers['x-now-route-matches'] || req.headers['x-forwarded-uri'] || req.headers['x-original-url']) as string;
-  if (matched && (req.url === '/api/index' || req.url === '/api/index/' || req.url.startsWith('/api/index?'))) {
-    const qIdx = req.url.indexOf('?');
-    const query = qIdx !== -1 ? req.url.slice(qIdx) : '';
-    req.url = matched + query;
+  if (req.url && req.url !== '/api/index' && req.url !== '/api/index/' && !req.url.startsWith('/api/index?')) {
+    return next();
+  }
+  const rawUrl = req.url || '';
+  const qIdx = rawUrl.indexOf('?');
+  const queryStr = qIdx !== -1 ? rawUrl.slice(qIdx + 1) : '';
+  const searchParams = new URLSearchParams(queryStr);
+  const vercelRoute = searchParams.get('__vercel_route');
+
+  if (vercelRoute) {
+    searchParams.delete('__vercel_route');
+    const rest = searchParams.toString();
+    req.url = vercelRoute + (rest ? `?${rest}` : '');
+    req.originalUrl = req.url;
+  } else {
+    const matched = (req.headers['x-forwarded-uri'] || req.headers['x-original-url']) as string;
+    if (matched && typeof matched === 'string' && (matched.startsWith('/api') || matched.startsWith('/uploads'))) {
+      const query = qIdx !== -1 ? rawUrl.slice(qIdx) : '';
+      req.url = matched + query;
+      req.originalUrl = req.url;
+    }
   }
   next();
 });
@@ -411,7 +427,7 @@ async function pullDataFromGasDirectly(gasUrl: string, spreadsheetId: string): P
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 18000);
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     // Try POST with action=pullAllData first
     const postRes = await fetch(gasUrl, {
@@ -422,6 +438,7 @@ async function pullDataFromGasDirectly(gasUrl: string, spreadsheetId: string): P
         spreadsheet_id: spreadsheetId,
       }),
       signal: controller.signal,
+      redirect: 'follow',
     });
     clearTimeout(timeoutId);
 
@@ -434,7 +451,7 @@ async function pullDataFromGasDirectly(gasUrl: string, spreadsheetId: string): P
 
     // Fallback to GET with query params
     const getUrl = `${gasUrl}?action=pullAllData&spreadsheet_id=${encodeURIComponent(spreadsheetId)}`;
-    const getRes = await fetch(getUrl, { signal: AbortSignal.timeout(15000) });
+    const getRes = await fetch(getUrl, { signal: AbortSignal.timeout(8000), redirect: 'follow' });
     if (getRes.ok) {
       const parsed = await parseGasJsonResponse(getRes);
       if (parsed.isJson && parsed.data && parsed.data.success && parsed.data.data) {
@@ -444,7 +461,7 @@ async function pullDataFromGasDirectly(gasUrl: string, spreadsheetId: string): P
 
     return { success: false, message: 'Google Apps Script tidak mengembalikan data valid (kemungkinan respons HTML/izin akses).' };
   } catch (err: any) {
-    return { success: false, message: `Gagal menarik data dari GAS: ${err?.message || 'Timeout / Network Error'}` };
+    return { success: false, message: `Status GAS: ${err?.message || 'Timeout / Network Error'}` };
   }
 }
 
@@ -603,6 +620,10 @@ function mergeGasDataIntoServerDb(gasData: any): boolean {
   }
   if (gasData.announcements && Array.isArray(gasData.announcements)) {
     serverDb.announcements = gasData.announcements;
+    mutated = true;
+  }
+  if (gasData.audit_logs && Array.isArray(gasData.audit_logs) && gasData.audit_logs.length > 0) {
+    serverDb.audit_logs = gasData.audit_logs;
     mutated = true;
   }
   if (gasData.settings && typeof gasData.settings === 'object' && Object.keys(gasData.settings).length > 0) {
@@ -772,6 +793,7 @@ async function forwardSyncAllToGas(retryCount = 1): Promise<{ success: boolean; 
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(gasPayload),
+      redirect: 'follow',
     });
 
     const parsed = await parseGasJsonResponse(gasRes);
@@ -835,7 +857,7 @@ let lastGasPullTimestamp = 0;
 let isGasPulling = false;
 let lastFileUploadTimestamp = 0;
 
-// Smart Auto-Pull: pulls fresh data from Google Sheets when accessed, throttled to 8 seconds
+// Smart Auto-Pull: pulls fresh data from Google Sheets when accessed, throttled to 15 seconds
 async function checkAndAutoPullFromGas(force = false): Promise<boolean> {
   const gasUrl = serverDb.settings?.gas_web_app_url;
   const ssId = serverDb.settings?.spreadsheet_id;
@@ -847,7 +869,10 @@ async function checkAndAutoPullFromGas(force = false): Promise<boolean> {
   if (!force && now - lastFileUploadTimestamp < 20000) {
     return false;
   }
-  if (!force && (now - lastGasPullTimestamp < 8000 || isGasPulling)) {
+  if (!force && (now - lastGasPullTimestamp < 15000 || isGasPulling)) {
+    return false;
+  }
+  if (isGasPulling) {
     return false;
   }
   isGasPulling = true;
@@ -859,7 +884,8 @@ async function checkAndAutoPullFromGas(force = false): Promise<boolean> {
       return changed;
     }
   } catch (err: any) {
-    console.warn('Auto-pull from GAS failed:', err?.message);
+    // Non-fatal background sync notice
+    console.log('[AutoPull Notice]:', err?.message || 'Sync idle');
   } finally {
     isGasPulling = false;
   }
@@ -872,18 +898,13 @@ if (!isVercel) {
     const gasUrl = serverDb.settings?.gas_web_app_url;
     const ssId = serverDb.settings?.spreadsheet_id;
     if (gasUrl && gasUrl.startsWith('http') && ssId && !ssId.includes('SampleID')) {
-      console.log('⚡ Menginisialisasi sinkronisasi awal server dengan Google Apps Script...');
-      const res = await pullDataFromGasDirectly(gasUrl, ssId);
-      if (res.success && res.data) {
-        const changed = mergeGasDataIntoServerDb(res.data);
-        console.log(`✓ Sinkronisasi awal GAS berhasil! Status perubahan data: ${changed}`);
-      }
+      checkAndAutoPullFromGas(false).catch(() => {});
     }
-  }, 2000);
+  }, 3000);
 
   setInterval(async () => {
-    await checkAndAutoPullFromGas(true);
-  }, 10000);
+    await checkAndAutoPullFromGas(false);
+  }, 45000);
 }
 
 // ================= API ROUTES =================
@@ -940,20 +961,9 @@ app.post('/api/settings', (req: Request, res: Response) => {
 // 3. Global Data Sync (Shared database state for multi-device sync)
 app.get('/api/data', async (req: Request, res: Response) => {
   const forcePull = req.query.force_pull_gas === 'true';
-  const shouldPullOnVercel = isVercel && (!serverDb.students || Object.keys(serverDb.students).length === 0 || Date.now() - lastGasPullTimestamp > 45000);
-  if (forcePull || shouldPullOnVercel) {
-    try {
-      await Promise.race([
-        checkAndAutoPullFromGas(true),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Sync timeout')), 3500)),
-      ]);
-    } catch (e) {
-      console.warn('Pull error or timeout in /api/data:', e);
-    }
-  } else {
-    // Non-blocking auto-pull in the background - responds in 1ms to user reload/boot
-    checkAndAutoPullFromGas(false).catch(() => {});
-  }
+
+  // Always handle pull non-blockingly in the background so API responds in <2ms
+  checkAndAutoPullFromGas(forcePull).catch(() => {});
 
   const etag = `"${serverDb.last_updated || 'initial'}"`;
   res.setHeader('ETag', etag);
@@ -1264,6 +1274,7 @@ app.post('/api/gas/proxy', async (req: Request, res: Response) => {
         'Content-Type': 'text/plain;charset=utf-8',
       },
       body: JSON.stringify(payload),
+      redirect: 'follow',
     });
 
     const parsed = await parseGasJsonResponse(response);
@@ -2434,6 +2445,7 @@ app.post('/api/notifications/send-status-email', async (req: Request, res: Respo
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify(emailPayload),
+          redirect: 'follow',
         });
         const parsed = await parseGasJsonResponse(gasRes);
         if (parsed.isJson && parsed.data && parsed.data.success) {
@@ -2982,6 +2994,7 @@ app.post('/api/data/delete-application', async (req: Request, res: Response) => 
               drive_file_ids: fileIdsToDelete,
             },
           }),
+          redirect: 'follow',
         });
         const parsed = await parseGasJsonResponse(gasRes);
         gasResult = parsed.data;
@@ -3065,6 +3078,7 @@ app.post('/api/data/delete-school', async (req: Request, res: Response) => {
             spreadsheet_id: ssId,
             data: { school_id, registration_numbers, drive_file_ids },
           }),
+          redirect: 'follow',
         });
       } catch (e) {}
     }
@@ -3101,6 +3115,7 @@ app.post('/api/data/delete-user', async (req: Request, res: Response) => {
             spreadsheet_id: ssId,
             data: { user_id, registration_number },
           }),
+          redirect: 'follow',
         });
       } catch (e) {}
     }
@@ -3156,6 +3171,7 @@ app.post('/api/data/reset-password', async (req: Request, res: Response) => {
               new_password,
             },
           }),
+          redirect: 'follow',
         });
       } catch (gasErr) {
         console.warn('Direct GAS resetPassword warning:', gasErr);

@@ -653,6 +653,7 @@ function handlePullAllData(spreadsheetId) {
     documents: readSheetAsObjects(ss.getSheetByName(SHEETS.DOCUMENTS)),
     schools: readSheetAsObjects(ss.getSheetByName(SHEETS.SCHOOLS)),
     announcements: readSheetAsObjects(ss.getSheetByName(SHEETS.ANNOUNCEMENTS)),
+    audit_logs: readSheetAsObjects(ss.getSheetByName(SHEETS.AUDIT_LOG)),
     settings: settingsMap,
     pulled_at: new Date().toISOString()
   };

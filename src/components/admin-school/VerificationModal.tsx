@@ -187,16 +187,24 @@ export const VerificationModal: React.FC<Props> = ({
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-start gap-4">
-                  {student?.photo_url && (
-                    <div className="flex flex-col items-center gap-1.5 shrink-0">
-                      <div className="w-24 h-32 rounded-xl overflow-hidden border border-slate-300 bg-white shadow-xs">
+                  <div className="flex flex-col items-center gap-1.5 shrink-0">
+                    <div className="w-24 h-32 rounded-xl overflow-hidden border border-slate-300 bg-slate-50 flex items-center justify-center shadow-xs">
+                      {student?.photo_url ? (
                         <img
                           src={normalizeImageUrl(student.photo_url)}
                           alt={student.name}
                           className="w-full h-full object-cover"
                           referrerPolicy="no-referrer"
                         />
-                      </div>
+                      ) : (
+                        <div className="text-center p-2 text-slate-400 flex flex-col items-center justify-center">
+                          <User className="w-10 h-10 text-slate-300 mb-1" />
+                          <span className="text-[10px] font-semibold text-slate-500">Belum Ada Foto</span>
+                          <span className="text-[8px] text-slate-400">Pas Foto 3 x 4</span>
+                        </div>
+                      )}
+                    </div>
+                    {student?.photo_url && (
                       <button
                         type="button"
                         onClick={() => {
@@ -213,8 +221,8 @@ export const VerificationModal: React.FC<Props> = ({
                         <Download className="w-3 h-3" />
                         <span>Unduh Foto</span>
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 flex-1">
                     <div>

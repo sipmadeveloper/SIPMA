@@ -923,17 +923,20 @@ class StorageService {
       // 8. Documents
       if (d.documents && Array.isArray(d.documents)) {
         const localDocs = this.getDocuments();
-        const docMap = new Map<string, DocumentItem>();
+        const localMap = new Map<string, DocumentItem>();
         for (const loc of localDocs) {
-          const key = loc.document_id || `${loc.registration_number}_${loc.document_type}`;
-          docMap.set(key, loc);
+          const key = loc.document_id || `${loc.registration_number}_${normalizeDocumentType(loc.document_type)}`;
+          localMap.set(key, loc);
         }
+        const docMap = new Map<string, DocumentItem>();
         for (const rem of d.documents) {
-          const key = rem.document_id || `${rem.registration_number}_${rem.document_type}`;
-          const loc = docMap.get(key);
+          const normType = normalizeDocumentType(rem.document_type || '');
+          const key = rem.document_id || `${rem.registration_number}_${normType}`;
+          const loc = localMap.get(key);
           docMap.set(key, {
             ...loc,
             ...rem,
+            document_type: normType,
             file_data_base64: loc?.file_data_base64 || rem.file_data_base64 || '',
             local_url: loc?.local_url || rem.local_url || '',
             drive_file_id: rem.drive_file_id || loc?.drive_file_id || '',
@@ -941,7 +944,18 @@ class StorageService {
             view_url: rem.drive_url || loc?.drive_url || loc?.local_url || rem.local_url || '',
           });
         }
-        const mergedDocs = Array.from(docMap.values());
+        // Retain local documents only if uploaded in last 2 minutes with pending base64
+        const now = Date.now();
+        for (const loc of localDocs) {
+          const key = loc.document_id || `${loc.registration_number}_${normalizeDocumentType(loc.document_type)}`;
+          if (!docMap.has(key)) {
+            const upTime = loc.upload_time ? new Date(loc.upload_time).getTime() : 0;
+            if (now - upTime < 120000 && loc.file_data_base64) {
+              docMap.set(key, loc);
+            }
+          }
+        }
+        const mergedDocs = deduplicateDocuments(Array.from(docMap.values()));
         const prevStr = localStorage.getItem(STORAGE_KEYS.DOCUMENTS);
         const newStr = JSON.stringify(mergedDocs);
         this.memCache.documents = mergedDocs;
@@ -2492,6 +2506,8 @@ class StorageService {
   async uploadAppLogo(base64Data: string, fileName?: string): Promise<{ success: boolean; logo_url: string; message: string }> {
     const settings = this.getSettings();
     const oldDriveFileId = extractDriveFileId(settings.app_logo) || '';
+    let savedLogoUrl = '';
+
     try {
       const res = await fetch('/api/gas/upload-logo', {
         method: 'POST',
@@ -2512,23 +2528,89 @@ class StorageService {
       if (parsed.isJson && parsed.data) {
         const json = parsed.data;
         if (json.success && json.logo_url) {
-          clearImageUrlCache(oldDriveFileId);
-          const updatedSettings = { ...this.getSettings(), app_logo: json.logo_url };
-          this.memCache.settings = updatedSettings;
-          safeSetItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updatedSettings));
-          updateAppFavicon(json.logo_url);
-          this.notifySubscribers('settings_updated', updatedSettings);
-          this.triggerAutoSync(true);
-          return {
-            success: true,
-            logo_url: json.logo_url,
-            message: json.message || 'Logo aplikasi berhasil disimpan ke Google Drive dan Google Sheets!',
-          };
+          savedLogoUrl = json.logo_url;
         }
       }
     } catch (err: any) {
-      console.error('Error uploadAppLogo:', err);
+      console.warn('Server uploadAppLogo notice:', err);
     }
+
+    // Direct browser fallback to GAS Web App (crucial on Vercel deployment)
+    if (!savedLogoUrl && settings.gas_web_app_url && settings.gas_web_app_url.startsWith('http')) {
+      try {
+        const directRes = await fetch(settings.gas_web_app_url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'uploadDocument',
+            spreadsheet_id: settings.spreadsheet_id,
+            drive_root_folder_id: settings.drive_root_folder_id,
+            data: {
+              registration_number: 'SYSTEM',
+              student_name: 'Logo SIPMA',
+              school_name: 'Branding SIPMA',
+              document_type: 'logo_aplikasi',
+              document_title: 'Logo Resmi Aplikasi SIPMA',
+              file_name: fileName || 'logo_sipma.png',
+              base64_data: base64Data,
+              old_drive_file_id: oldDriveFileId,
+              is_app_logo: true,
+            },
+          }),
+        });
+        const parsed = await safeParseJsonResponse(directRes);
+        if (parsed.isJson && parsed.data) {
+          if (parsed.data.success && (parsed.data.logo_url || parsed.data.file?.drive_file_id)) {
+            const fId = parsed.data.file?.drive_file_id || extractDriveFileId(parsed.data.logo_url);
+            savedLogoUrl = fId ? `https://lh3.googleusercontent.com/d/${fId}` : (parsed.data.logo_url || '');
+          }
+        }
+        // Self-healing recovery
+        if (!savedLogoUrl) {
+          try {
+            const pullRes = await fetch(settings.gas_web_app_url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({ action: 'pullAllData', spreadsheet_id: settings.spreadsheet_id }),
+            });
+            const pullData = await safeParseJsonResponse(pullRes);
+            if (pullData.isJson && pullData.data?.data) {
+              const sett = pullData.data.data.settings;
+              if (sett && sett.app_logo && !sett.app_logo.startsWith('data:')) {
+                savedLogoUrl = sett.app_logo;
+              }
+              if (!savedLogoUrl && pullData.data.data.documents) {
+                const docMatches = pullData.data.data.documents.filter((d: any) =>
+                  (d.registration_number === 'SYSTEM' || (d.file_name && d.file_name.includes('Logo_Resmi_SIPMA'))) &&
+                  d.drive_file_id && d.drive_file_id !== 'LOCAL_STORAGE'
+                );
+                if (docMatches.length > 0) {
+                  savedLogoUrl = `https://lh3.googleusercontent.com/d/${docMatches[0].drive_file_id}`;
+                }
+              }
+            }
+          } catch {}
+        }
+      } catch (directErr) {
+        console.warn('Direct uploadAppLogo fallback notice:', directErr);
+      }
+    }
+
+    if (savedLogoUrl) {
+      clearImageUrlCache(oldDriveFileId);
+      const updatedSettings = { ...this.getSettings(), app_logo: savedLogoUrl };
+      this.memCache.settings = updatedSettings;
+      safeSetItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updatedSettings));
+      updateAppFavicon(savedLogoUrl);
+      this.notifySubscribers('settings_updated', updatedSettings);
+      this.triggerAutoSync(true);
+      return {
+        success: true,
+        logo_url: savedLogoUrl,
+        message: 'Logo aplikasi berhasil disimpan ke Google Drive dan Google Sheets!',
+      };
+    }
+
     // Fallback: still save base64 locally and trigger background sync
     const fallbackSettings = { ...this.getSettings(), app_logo: base64Data };
     this.memCache.settings = fallbackSettings;
@@ -3751,7 +3833,7 @@ class StorageService {
     return this.getDocuments().filter((d) => d.registration_number === registrationNumber);
   }
 
-  saveDocument(doc: DocumentItem, studentName?: string, schoolName?: string): void {
+  saveDocument(doc: DocumentItem, studentName?: string, schoolName?: string, autoSync: boolean = true): void {
     try {
       const normType = normalizeDocumentType(doc.document_type);
       doc.document_type = normType;
@@ -3781,7 +3863,9 @@ class StorageService {
     }
     this.addAuditLog('UPLOAD_DOCUMENT', doc.registration_number, `Unggah berkas: ${doc.document_title} (${doc.file_name})`);
     this.notifySubscribers('data_mutated');
-    this.triggerAutoSync();
+    if (autoSync) {
+      this.triggerAutoSync();
+    }
   }
 
   async uploadDocumentToDrive(doc: DocumentItem, studentName?: string, schoolName?: string, options?: { isAccount?: boolean; accountName?: string; accountId?: string; schoolId?: string }): Promise<ApiResponse> {
@@ -3812,33 +3896,37 @@ class StorageService {
       clearImageUrlCache(effectiveOldDriveId);
     }
 
-    // 1. Try upload via server proxy (which handles local backup + GAS Drive dispatch)
-    try {
-      const res = await fetch('/api/gas/upload-file', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          doc,
-          student_name: studentName,
-          school_name: schoolName,
-          school_id: options?.schoolId,
-          application_year: appYear,
-          is_account: isAccount,
-          account_name: options?.accountName || studentName,
-          account_id: options?.accountId || doc.registration_number,
-          old_drive_file_id: effectiveOldDriveId || doc.drive_file_id || '',
-          gas_web_app_url: settings.gas_web_app_url,
-          spreadsheet_id: settings.spreadsheet_id,
-          drive_root_folder_id: settings.drive_root_folder_id,
-        }),
-      });
+    const isLargePayload = doc.file_data_base64 && doc.file_data_base64.length > 3.5 * 1024 * 1024;
 
-      const parsed = await safeParseJsonResponse(res);
-      if (parsed.isJson && parsed.data) {
-        resultJson = parsed.data;
+    // 1. Try upload via server proxy (if not exceeding Vercel 4.5MB request limit)
+    if (!isLargePayload) {
+      try {
+        const res = await fetch('/api/gas/upload-file', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            doc,
+            student_name: studentName,
+            school_name: schoolName,
+            school_id: options?.schoolId,
+            application_year: appYear,
+            is_account: isAccount,
+            account_name: options?.accountName || studentName,
+            account_id: options?.accountId || doc.registration_number,
+            old_drive_file_id: effectiveOldDriveId || doc.drive_file_id || '',
+            gas_web_app_url: settings.gas_web_app_url,
+            spreadsheet_id: settings.spreadsheet_id,
+            drive_root_folder_id: settings.drive_root_folder_id,
+          }),
+        });
+
+        const parsed = await safeParseJsonResponse(res);
+        if (parsed.isJson && parsed.data) {
+          resultJson = parsed.data;
+        }
+      } catch (err: any) {
+        console.warn('Server upload proxy failed, trying direct GAS fallback...', err);
       }
-    } catch (err: any) {
-      console.warn('Server upload proxy failed, trying direct GAS fallback...', err);
     }
 
     // 2. Direct browser fallback to GAS Web App if server proxy didn't return drive info
@@ -3881,7 +3969,7 @@ class StorageService {
     }
 
     // 3. Self-Healing Recovery: If GAS created the file in Google Drive & recorded in Sheets
-    // but threw an error before returning (e.g. ReferenceError: isDocPdf is not defined in older deployed scripts),
+    // but threw an error before returning (e.g. ReferenceError in deployed script),
     // immediately query recent document from Google Sheets to retrieve real drive_file_id without failing!
     if (
       (!resultJson || !resultJson.file?.drive_file_id) &&
@@ -3904,8 +3992,10 @@ class StorageService {
             const regMatch = d.registration_number && doc.registration_number &&
               String(d.registration_number).trim() === String(doc.registration_number).trim();
             const typeMatch = normalizeDocumentType(d.document_type) === normType;
+            const fileMatch = Boolean(d.file_name && doc.file_name && d.file_name === doc.file_name);
+            const nameMatch = Boolean(studentName && d.file_name && d.file_name.includes(studentName));
             const hasValidDrive = d.drive_file_id && d.drive_file_id !== 'LOCAL_STORAGE';
-            return regMatch && typeMatch && hasValidDrive;
+            return ((regMatch && typeMatch) || fileMatch || (regMatch && nameMatch)) && hasValidDrive;
           });
           matching.sort((a: any, b: any) => {
             const tA = a.upload_time ? new Date(a.upload_time).getTime() : 0;
@@ -5576,22 +5666,24 @@ class StorageService {
         localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(normalizedApps));
       }
 
-      // 7. Documents
+      // 7. Documents from Google Sheets (Authoritative cloud storage)
       if (d.documents && Array.isArray(d.documents)) {
         const localDocs = this.getDocuments();
-        const docMap = new Map<string, DocumentItem>();
+        const localMap = new Map<string, DocumentItem>();
         for (const loc of localDocs) {
-          const key = getDocumentUniqueKey(loc);
-          docMap.set(key, { ...loc, document_type: normalizeDocumentType(loc.document_type) });
+          localMap.set(getDocumentUniqueKey(loc), loc);
         }
+
+        const docMap = new Map<string, DocumentItem>();
         for (const rem of d.documents) {
-          const key = getDocumentUniqueKey(rem);
-          const loc = docMap.get(key);
+          const normType = normalizeDocumentType(rem.document_type || '');
+          const key = getDocumentUniqueKey({ ...rem, document_type: normType });
+          const loc = localMap.get(key);
           docMap.set(key, {
             ...loc,
             ...rem,
-            document_type: normalizeDocumentType(rem.document_type || loc?.document_type || ''),
-            document_id: loc?.document_id || rem.document_id,
+            document_type: normType,
+            document_id: rem.document_id || loc?.document_id,
             file_data_base64: loc?.file_data_base64 || rem.file_data_base64 || '',
             local_url: loc?.local_url || rem.local_url || '',
             drive_file_id: rem.drive_file_id || loc?.drive_file_id || '',
@@ -5599,6 +5691,19 @@ class StorageService {
             view_url: rem.drive_url || loc?.drive_url || loc?.local_url || rem.local_url || '',
           });
         }
+
+        // Keep local documents only if uploaded recently (< 2 minutes) with pending base64 upload
+        const now = Date.now();
+        for (const loc of localDocs) {
+          const key = getDocumentUniqueKey(loc);
+          if (!docMap.has(key)) {
+            const upTime = loc.upload_time ? new Date(loc.upload_time).getTime() : 0;
+            if (now - upTime < 120000 && loc.file_data_base64) {
+              docMap.set(key, loc);
+            }
+          }
+        }
+
         const mergedDocs = deduplicateDocuments(Array.from(docMap.values()));
         this.memCache.documents = mergedDocs;
         safeSetItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(mergedDocs));
@@ -5626,7 +5731,13 @@ class StorageService {
         localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENTS, JSON.stringify(normalizedAnc));
       }
 
-      // 10. Settings from Google Sheets
+      // 10. Audit Logs from Google Sheets
+      if (d.audit_logs && Array.isArray(d.audit_logs) && d.audit_logs.length > 0) {
+        this.memCache.audit_logs = d.audit_logs;
+        localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(d.audit_logs));
+      }
+
+      // 11. Settings from Google Sheets
       if (d.settings && typeof d.settings === 'object' && Object.keys(d.settings).length > 0) {
         const DEPRECATED_OLD_LOGO = 'https://cdn.phototourl.com/free/2026-09-01-6c787787-6585-4830-b0a6-9bfab3f1dba4.png';
         Object.assign(settings, d.settings);

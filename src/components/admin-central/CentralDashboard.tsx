@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Building2,
   Users,
@@ -112,6 +112,13 @@ export const CentralDashboard: React.FC<Props> = ({
       onTabChange(tab);
     }
   };
+
+  // Auto-switch to applicants tab when a registration number is highlighted (e.g. from QR scan)
+  useEffect(() => {
+    if (highlightRegNumber && activeTab !== 'applicants') {
+      handleTabSelect('applicants');
+    }
+  }, [highlightRegNumber, activeTab]);
 
   // Multi-school stats
   const totalSchools = schools.length;

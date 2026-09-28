@@ -331,11 +331,11 @@ export const AdminProfileModal: React.FC<Props> = ({
                     />
                   ) : (
                     <div
-                      className={`w-full h-full flex items-center justify-center font-bold text-lg text-white ${
+                      className={`w-full h-full flex items-center justify-center text-white ${
                         isAdminPusat ? 'bg-rose-600' : isCalonMurid ? 'bg-emerald-600' : 'bg-blue-600'
                       }`}
                     >
-                      {(name || currentUser.name || 'U').charAt(0).toUpperCase()}
+                      <User className="w-8 h-8 text-white/95" />
                     </div>
                   )}
                 </div>

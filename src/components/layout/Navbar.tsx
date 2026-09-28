@@ -8,6 +8,7 @@ import {
   GraduationCap,
   ChevronDown,
   UserCheck,
+  QrCode,
 } from 'lucide-react';
 import { User as UserType, School, SystemSettings } from '../../types/sipma';
 import { normalizeImageUrl, handleImageError } from '../../utils/imageUrl';
@@ -21,6 +22,7 @@ interface Props {
   onLogout: () => void;
   onNavigateHome: () => void;
   onOpenProfile?: () => void;
+  onOpenQRScanner?: () => void;
   notifications?: NewApplicantItem[];
   unreadNotificationsCount?: number;
   onOpenApplicantFromNotification?: (regNumber: string) => void;
@@ -34,6 +36,7 @@ export const Navbar: React.FC<Props> = ({
   onLogout,
   onNavigateHome,
   onOpenProfile,
+  onOpenQRScanner,
   notifications = [],
   unreadNotificationsCount = 0,
   onOpenApplicantFromNotification,
@@ -122,6 +125,19 @@ export const Navbar: React.FC<Props> = ({
         <div className="flex items-center gap-2 sm:gap-3">
           {currentUser ? (
             <div className="flex items-center gap-2">
+              {/* QR Scanner Quick Button for Admin & Operators */}
+              {currentUser.role !== 'calon_murid' && onOpenQRScanner && (
+                <button
+                  type="button"
+                  onClick={onOpenQRScanner}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/80 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer group"
+                  title="Pindai QR Bukti Pendaftaran untuk verifikasi berkas otomatis"
+                >
+                  <QrCode className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform" />
+                  <span className="hidden md:inline">Pindai QR</span>
+                </button>
+              )}
+
               {/* Notification Bell Dropdown for Admin & Operators */}
               {currentUser.role !== 'calon_murid' && onOpenApplicantFromNotification && onMarkAllNotificationsAsRead && (
                 <NotificationBellDropdown

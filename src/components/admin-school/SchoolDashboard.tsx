@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Users,
   MapPin,
@@ -105,6 +105,13 @@ export const SchoolDashboard: React.FC<Props> = ({
       onTabChange(tab);
     }
   };
+
+  // Auto-switch to applicants tab when a registration number is highlighted (e.g. from QR scan)
+  useEffect(() => {
+    if (highlightRegNumber && activeTab !== 'applicants') {
+      setActiveTab('applicants');
+    }
+  }, [highlightRegNumber, activeTab]);
 
   const activeSchool: School = school || storageService.getSchools()[0] || {
     school_id: '',

@@ -12,11 +12,18 @@ import {
   Check,
   ExternalLink,
   Info,
+  QrCode,
+  Sparkles,
+  User,
 } from 'lucide-react';
 import { Application, StudentProfile, ParentData, SchoolOrigin, AddressData, School } from '../../types/sipma';
 import { formatDistanceIndonesian, formatCoordinates } from '../../utils/geo';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { storageService } from '../../services/storageService';
+import {
+  generateVerificationToken,
+  generateVerificationUrl,
+} from '../../utils/qrVerification';
 
 interface Props {
   application?: Partial<Application> | null;
@@ -26,6 +33,7 @@ interface Props {
   address?: Partial<AddressData> | null;
   school?: Partial<School> | null;
   onBack: () => void;
+  onTriggerVerification?: (regNumber: string) => void;
 }
 
 export const PrintBuktiPendaftaran: React.FC<Props> = ({
@@ -36,9 +44,11 @@ export const PrintBuktiPendaftaran: React.FC<Props> = ({
   address,
   school,
   onBack,
+  onTriggerVerification,
 }) => {
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [copied, setCopied] = useState<boolean>(false);
+  const [copiedLink, setCopiedLink] = useState<boolean>(false);
   const [printAlert, setPrintAlert] = useState<string | null>(null);
   const printableRef = useRef<HTMLDivElement>(null);
 
@@ -110,23 +120,17 @@ export const PrintBuktiPendaftaran: React.FC<Props> = ({
     year: 'numeric',
   });
 
+  // Generate unique verification token & verification deep-link URL
+  const verificationToken = generateVerificationToken(regNumberSafe, studentNikSafe, studentNameSafe);
+  const verificationUrl = generateVerificationUrl(regNumberSafe, verificationToken);
+
   // Generate QR Code with safety
   useEffect(() => {
     try {
-      const qrPayload = JSON.stringify({
-        app: 'SIPMA-PPDB',
-        regNumber: regNumberSafe,
-        name: studentNameSafe,
-        school: schoolNameSafe,
-        pathway: pathwaySafe,
-        distance: `${distanceKmSafe.toFixed(2)} km`,
-        status: finalStatusSafe,
-        generated: new Date().toISOString(),
-      });
-
-      QRCode.toDataURL(qrPayload, {
-        width: 150,
+      QRCode.toDataURL(verificationUrl, {
+        width: 260,
         margin: 1,
+        errorCorrectionLevel: 'H',
         color: {
           dark: '#064e3b',
           light: '#ffffff',
@@ -139,7 +143,7 @@ export const PrintBuktiPendaftaran: React.FC<Props> = ({
     } catch (e) {
       console.warn('QR Exception:', e);
     }
-  }, [regNumberSafe, studentNameSafe, schoolNameSafe, pathwaySafe, distanceKmSafe, finalStatusSafe]);
+  }, [verificationUrl]);
 
   // Method 1: Standard Window Print with graceful fallback
   const handlePrint = () => {
@@ -259,16 +263,17 @@ export const PrintBuktiPendaftaran: React.FC<Props> = ({
       <td style="width: 50%; text-align: center; border: none;">
         <div>Ditetapkan di ${school?.address ? school.address.split(',')[0] : 'Madrasah'}, ${todayStr}</div>
         <div style="font-weight: bold;">Panitia PPDB ${schoolNameSafe}</div>
-        <div style="height: 15px;"></div>
+        <div style="height: 10px;"></div>
         <div class="stamp">✓ TERVERIFIKASI SIPMA</div>
-        <div style="height: 15px;"></div>
+        <div style="font-size: 8pt; font-family: monospace; color: #047857; margin-top: 4px;">KODE VERIFIKASI: ${verificationToken}</div>
+        <div style="height: 10px;"></div>
         <div>( ${schoolPrincipalSafe} )</div>
       </td>
     </tr>
   </table>
 
   <div style="margin-top: 20px; font-size: 8pt; color: #777; text-align: center; border-top: 1px dashed #ccc; padding-top: 8px;">
-    * Dokumen ini sah dan dicetak otomatis melalui Sistem Penerimaan Murid Baru Madrasah (SIPMA).
+    * Dokumen ini sah dan diverifikasi otomatis melalui QR Code SIPMA (${verificationToken}). Scan QR pada lembar resmi untuk validasi langsung.
   </div>
 </div>
 </body>
@@ -313,7 +318,10 @@ Waktu Cetak: ${todayStr}`;
 
     const photoTag = studentPhoto
       ? `<img src="${studentPhoto}" style="width: 120px; height: 160px; object-fit: cover; border-radius: 6px; border: 1px solid #cbd5e1;" />`
-      : `<div style="width: 120px; height: 160px; border: 1px dashed #cbd5e1; border-radius: 6px; display: flex; align-items: center; justify-content: center; background: #f8fafc; font-size: 11px; color: #94a3b8; text-align: center;">Pas Foto<br>3 x 4 cm</div>`;
+      : `<div style="width: 120px; height: 160px; border: 1.5px dashed #cbd5e1; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f8fafc; font-size: 10px; color: #64748b; text-align: center; gap: 4px;">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <span>Pas Foto<br>3 x 4 cm</span>
+        </div>`;
 
     const logoTag = schoolLogo
       ? `<img src="${schoolLogo}" style="width: 60px; height: 60px; object-fit: contain; border-radius: 8px;" />`
@@ -403,6 +411,15 @@ Waktu Cetak: ${todayStr}`;
         <div style="font-size: 9px; color: #64748b; text-align: center; font-family: monospace;">
           ID: ${regNumberSafe.split('-').pop() || 'SIPMA'}
         </div>
+
+        ${qrTag ? `
+        <div style="margin-top: 8px; border: 1.5px solid #059669; border-radius: 8px; padding: 6px 4px; background: #ecfdf5; text-align: center; width: 100%;">
+          ${qrTag}
+          <div style="font-size: 7.5px; font-weight: bold; color: #047857; margin-top: 3px; letter-spacing: 0.5px;">QR VERIFIKASI RESMI</div>
+          <div style="font-size: 8.5px; font-family: monospace; font-weight: bold; color: #064e3b; margin-top: 1px;">${verificationToken}</div>
+          <div style="font-size: 7px; color: #475569; margin-top: 1px;">Pindai untuk verifikasi panitia</div>
+        </div>
+        ` : ''}
       </div>
 
       <div class="data-col">
@@ -445,7 +462,8 @@ Waktu Cetak: ${todayStr}`;
         <div>Ditetapkan pada: ${todayStr}</div>
         <div style="font-weight: bold;">Panitia PPDB ${schoolNameSafe}</div>
         <div class="stamp">✓ DIVERIFIKASI RESMI SIPMA</div>
-        <div style="height: 10px;"></div>
+        <div style="font-size: 8px; font-family: monospace; color: #047857; font-weight: bold; margin-bottom: 4px;">KODE: ${verificationToken}</div>
+        <div style="height: 6px;"></div>
         <div style="font-weight: bold; border-bottom: 1px solid #475569; display: inline-block; min-width: 180px;">
           ( ${schoolPrincipalSafe} )
         </div>
@@ -482,6 +500,38 @@ Waktu Cetak: ${todayStr}`;
         </button>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Simulate Admin QR Scan / Trigger Verification Button */}
+          <button
+            type="button"
+            onClick={() => {
+              if (onTriggerVerification) {
+                onTriggerVerification(regNumberSafe);
+              } else {
+                window.location.hash = `#/verify?reg=${encodeURIComponent(regNumberSafe)}`;
+              }
+            }}
+            title="Picu proses verifikasi berkas oleh admin/panitia untuk nomor pendaftaran ini"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-gradient-to-r from-emerald-700 to-teal-800 hover:from-emerald-800 hover:to-teal-900 text-white rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer"
+          >
+            <QrCode className="w-3.5 h-3.5 text-emerald-200" />
+            <span>Uji Verifikasi QR</span>
+          </button>
+
+          {/* Copy Verification Deep-link URL */}
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard.writeText(verificationUrl);
+              setCopiedLink(true);
+              setTimeout(() => setCopiedLink(false), 2500);
+            }}
+            title="Salin tautan verifikasi online QR code"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+          >
+            {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <ExternalLink className="w-3.5 h-3.5" />}
+            <span>{copiedLink ? 'Link Tersalin!' : 'Salin Link QR'}</span>
+          </button>
+
           {/* Copy Summary Text */}
           <button
             type="button"
@@ -605,19 +655,56 @@ Waktu Cetak: ${todayStr}`;
                   referrerPolicy="no-referrer"
                 />
               ) : (
-                <div className="text-center p-3 text-slate-400 text-xs font-semibold">
-                  Pas Foto
-                  <br />
-                  3 x 4 cm
+                <div className="text-center p-3 text-slate-400 flex flex-col items-center justify-center">
+                  <User className="w-12 h-12 text-slate-300 mb-1" />
+                  <span className="text-xs font-semibold text-slate-500">Pas Foto</span>
+                  <span className="text-[10px] text-slate-400">3 x 4 cm</span>
                 </div>
               )}
             </div>
 
-            <div className="text-center">
-              {qrDataUrl && (
-                <img src={qrDataUrl} alt="QR Code Pendaftaran" className="w-24 h-24 mx-auto" />
-              )}
-              <div className="text-[10px] font-mono text-slate-500 mt-1">Scan untuk Validasi</div>
+            {/* Official Unique Verification QR Code */}
+            <div className="w-full text-center">
+              <div className="p-3 bg-emerald-50/70 border border-emerald-300/80 rounded-2xl shadow-xs">
+                {qrDataUrl ? (
+                  <img
+                    src={qrDataUrl}
+                    alt={`QR Code Verifikasi ${regNumberSafe}`}
+                    className="w-28 h-28 mx-auto rounded-xl bg-white p-1.5 border border-emerald-200 shadow-2xs"
+                  />
+                ) : (
+                  <div className="w-28 h-28 mx-auto bg-white rounded-xl flex items-center justify-center border border-dashed border-emerald-300">
+                    <QrCode className="w-8 h-8 text-emerald-600 animate-pulse" />
+                  </div>
+                )}
+                
+                <div className="mt-2 text-[10px] font-black uppercase tracking-wider text-emerald-800">
+                  QR Verifikasi Resmi
+                </div>
+                <div className="text-[11px] font-mono font-bold text-slate-800 tracking-tight mt-0.5">
+                  {verificationToken}
+                </div>
+                <div className="text-[9px] text-slate-500 mt-0.5 leading-tight">
+                  Pindai oleh Panitia PPDB untuk memproses verifikasi berkas otomatis
+                </div>
+
+                {/* Quick Trigger Button in On-Screen Preview */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onTriggerVerification) {
+                      onTriggerVerification(regNumberSafe);
+                    } else {
+                      window.location.hash = `#/verify?reg=${encodeURIComponent(regNumberSafe)}`;
+                    }
+                  }}
+                  className="print:hidden mt-2.5 w-full inline-flex items-center justify-center gap-1.5 px-2 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-[10px] font-bold transition-all shadow-2xs cursor-pointer"
+                  title="Simulasikan pemindaian QR oleh Admin untuk langsung membuka verifikasi pendaftar ini"
+                >
+                  <Sparkles className="w-3 h-3 text-emerald-300" />
+                  <span>Uji Scan Verifikasi</span>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -771,9 +858,12 @@ Waktu Cetak: ${todayStr}`;
           <div className="text-center">
             <div>{school?.address ? school.address.split(',')[0] : 'Madrasah'}, {todayStr}</div>
             <div className="font-semibold text-slate-800">Panitia PPDB {schoolNameSafe}</div>
-            <div className="h-20 flex items-center justify-center">
-              <div className="border border-emerald-600 text-emerald-800 text-[10px] font-bold px-3 py-1 rounded-sm uppercase tracking-wider rotate-[-5deg]">
+            <div className="h-20 flex flex-col items-center justify-center">
+              <div className="border border-emerald-600 text-emerald-800 text-[10px] font-bold px-3 py-1 rounded-sm uppercase tracking-wider rotate-[-3deg]">
                 ✓ DIVERIFIKASI DIGITAL SIPMA
+              </div>
+              <div className="text-[9px] font-mono font-bold text-emerald-700 mt-1">
+                KODE: {verificationToken}
               </div>
             </div>
             <div className="font-bold text-slate-900 border-b border-slate-400 inline-block px-8 pb-1">

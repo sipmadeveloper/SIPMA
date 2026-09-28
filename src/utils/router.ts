@@ -26,6 +26,7 @@ export interface AppRoute {
   schoolTab?: SchoolTab;
   studentTab?: StudentTab;
   printRegNumber?: string | null;
+  verifyRegNumber?: string | null;
 }
 
 const STORAGE_KEY = 'sipma_active_route';
@@ -37,6 +38,9 @@ const VIEW_MODE_KEY = 'sipma_view_mode';
 export function routeToHash(route: AppRoute): string {
   switch (route.viewMode) {
     case 'landing':
+      if (route.verifyRegNumber) {
+        return `#/verify?reg=${encodeURIComponent(route.verifyRegNumber)}`;
+      }
       return '#/landing';
     case 'login':
       return '#/login';
@@ -47,6 +51,9 @@ export function routeToHash(route: AppRoute): string {
         ? `#/print?reg=${encodeURIComponent(route.printRegNumber)}`
         : '#/print';
     case 'app':
+      if (route.verifyRegNumber) {
+        return `#/verify?reg=${encodeURIComponent(route.verifyRegNumber)}`;
+      }
       if (route.centralTab) {
         return `#/admin/${route.centralTab}`;
       }
@@ -97,6 +104,17 @@ export function hashToRoute(hashStr: string, userRole?: string): AppRoute {
     return {
       viewMode: 'print_preview',
       printRegNumber: reg,
+    };
+  }
+
+  // 3b. Verify QR Code Route (scanned by admin)
+  if (pathPart === 'verify' || pathPart === 'verifikasi') {
+    const reg = params.get('reg') || params.get('registration_number') || null;
+    return {
+      viewMode: 'app',
+      verifyRegNumber: reg,
+      centralTab: 'applicants',
+      schoolTab: 'applicants',
     };
   }
 

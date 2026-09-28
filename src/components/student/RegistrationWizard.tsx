@@ -495,7 +495,7 @@ export const RegistrationWizard: React.FC<Props> = ({
           verification_status: 'menunggu',
         };
 
-        storageService.saveDocument(newDoc, student?.name, effectiveSchool?.school_name);
+        storageService.saveDocument(newDoc, student?.name, effectiveSchool?.school_name, false);
         
         // Push directly to Google Drive via server proxy (mengganti berkas lama)
         const uploadRes = await storageService.uploadDocumentToDrive(newDoc, student?.name, effectiveSchool?.school_name);
@@ -945,10 +945,12 @@ export const RegistrationWizard: React.FC<Props> = ({
                       onError={(e) => handleImageError(e)}
                     />
                   ) : (
-                    <div className="text-center p-2 text-slate-400">
-                      <UserIcon className="w-8 h-8 mx-auto mb-1 opacity-50" />
-                      <span className="text-[10px] font-semibold">Pas Foto</span>
-                      <span className="block text-[8px] text-slate-400">3 x 4</span>
+                    <div className="text-center p-2 text-slate-400 flex flex-col items-center justify-center">
+                      <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mb-1 text-slate-400">
+                        <UserIcon className="w-7 h-7" />
+                      </div>
+                      <span className="text-[10px] font-semibold text-slate-600">Pas Foto</span>
+                      <span className="block text-[8px] text-slate-400">3 x 4 cm</span>
                     </div>
                   )}
                 </div>
@@ -1012,7 +1014,7 @@ export const RegistrationWizard: React.FC<Props> = ({
                             verification_status: 'menunggu',
                           };
 
-                          storageService.saveDocument(photoDoc, student?.name, effectiveSchool?.school_name);
+                          storageService.saveDocument(photoDoc, student?.name, effectiveSchool?.school_name, false);
                           const uploadRes = await storageService.uploadDocumentToDrive(
                             photoDoc,
                             student?.name,

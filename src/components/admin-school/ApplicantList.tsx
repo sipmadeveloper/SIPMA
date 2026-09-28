@@ -15,7 +15,11 @@ import {
   KeyRound,
   Trash2,
   AlertTriangle,
+  QrCode,
+  Scan,
+  User,
 } from 'lucide-react';
+import { normalizeImageUrl } from '../../utils/imageUrl';
 import {
   Application,
   StudentProfile,
@@ -31,6 +35,8 @@ import { formatDistanceIndonesian, formatCoordinates, checkZoningCompliance } fr
 import { VerificationModal } from './VerificationModal';
 import { ResetPasswordModal } from '../common/ResetPasswordModal';
 import { exportApplicantsToExcel } from '../../utils/excelExport';
+import { QRScannerModal } from '../common/QRScannerModal';
+import { storageService } from '../../services/storageService';
 
 interface Props {
   applications: Application[];
@@ -76,6 +82,33 @@ export const ApplicantList: React.FC<Props> = ({
   const [initialVerificationTab, setInitialVerificationTab] = useState<'profile' | 'location' | 'docs'>('profile');
   const [resetPasswordApp, setResetPasswordApp] = useState<Application | null>(null);
   const [appToDelete, setAppToDelete] = useState<Application | null>(null);
+  const [isScannerOpen, setIsScannerOpen] = useState<boolean>(false);
+
+  // Handle scanned registration number from QR Scanner
+  const handleScanSuccess = (scannedRegNumber: string) => {
+    const target = applications.find(
+      (a) => a.registration_number.toLowerCase() === scannedRegNumber.toLowerCase()
+    );
+    if (target) {
+      setPathwayFilter('all');
+      setVerificationFilter('all');
+      setSelectionFilter('all');
+      setSearchQuery('');
+      setSelectedAppForVerification(target);
+      setInitialVerificationTab('profile');
+    } else {
+      const allApps = storageService.getApplications();
+      const globalTarget = allApps.find(
+        (a) => a.registration_number.toLowerCase() === scannedRegNumber.toLowerCase()
+      );
+      if (globalTarget) {
+        setSelectedAppForVerification(globalTarget);
+        setInitialVerificationTab('profile');
+      } else {
+        alert(`Nomor pendaftaran "${scannedRegNumber}" tidak ditemukan.`);
+      }
+    }
+  };
 
   // Auto-select applicant for review when navigated from toast/banner
   useEffect(() => {
@@ -278,6 +311,17 @@ export const ApplicantList: React.FC<Props> = ({
             <option value="menunggu">⏳ Dalam Proses Seleksi</option>
           </select>
 
+          {/* QR Code Scanner Button */}
+          <button
+            type="button"
+            onClick={() => setIsScannerOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-700 to-teal-800 hover:from-emerald-800 hover:to-teal-900 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+            title="Pindai QR Code Bukti Pendaftaran calon murid untuk verifikasi berkas otomatis"
+          >
+            <QrCode className="w-3.5 h-3.5 text-emerald-200" />
+            <span>Pindai QR Bukti</span>
+          </button>
+
           {/* Export Excel Button with Dropdown & Modal */}
           <div className="relative inline-block text-left">
             <div className="inline-flex rounded-xl shadow-xs">
@@ -449,8 +493,23 @@ export const ApplicantList: React.FC<Props> = ({
                         )}
                       </td>
                       <td className="py-3.5 px-4">
-                        <div className="font-bold text-slate-900">{student?.name || '-'}</div>
-                        <div className="text-[11px] text-slate-500 font-mono">NIK: {student?.nik}</div>
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center shadow-2xs">
+                            {student?.photo_url ? (
+                              <img
+                                src={normalizeImageUrl(student.photo_url)}
+                                alt={student?.name || 'Calon Murid'}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <User className="w-4 h-4 text-slate-400" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-bold text-slate-900 truncate">{student?.name || '-'}</div>
+                            <div className="text-[11px] text-slate-500 font-mono">NIK: {student?.nik || '-'}</div>
+                          </div>
+                        </div>
                       </td>
                       <td className="py-3.5 px-4">
                         <span
@@ -825,6 +884,14 @@ export const ApplicantList: React.FC<Props> = ({
           onClose={() => setResetPasswordApp(null)}
         />
       )}
+
+      {/* QR Code Camera Scanner Modal */}
+      <QRScannerModal
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onScanSuccess={handleScanSuccess}
+        schoolId={school?.school_id}
+      />
 
       {/* Verification Modal */}
       {selectedAppForVerification && (
