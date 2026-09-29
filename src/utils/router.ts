@@ -16,7 +16,7 @@ export type CentralTab =
   | 'logs'
   | 'announcements';
 
-export type SchoolTab = 'overview' | 'applicants' | 'selection' | 'operators' | 'map' | 'settings';
+export type SchoolTab = 'overview' | 'applicants' | 'selection' | 'operators' | 'archives' | 'map' | 'settings';
 
 export type StudentTab = 'overview' | 'form' | 'print' | 'announcements' | 'profile';
 
@@ -144,7 +144,7 @@ export function hashToRoute(hashStr: string, userRole?: string): AppRoute {
   // 5. Admin Sekolah routes
   if (pathPart.startsWith('school/')) {
     const tab = pathPart.replace('school/', '') as SchoolTab;
-    const validTabs: SchoolTab[] = ['overview', 'applicants', 'selection', 'map', 'settings'];
+    const validTabs: SchoolTab[] = ['overview', 'applicants', 'selection', 'operators', 'archives', 'map', 'settings'];
     return {
       viewMode: 'app',
       schoolTab: validTabs.includes(tab) ? tab : 'overview',

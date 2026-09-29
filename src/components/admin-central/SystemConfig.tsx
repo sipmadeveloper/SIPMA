@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Settings,
   Database,
@@ -29,6 +29,10 @@ import {
   Maximize2,
   Minimize2,
   ShieldCheck,
+  Calendar,
+  Archive,
+  FolderCheck,
+  Sparkles,
 } from 'lucide-react';
 import { SystemSettings, ApiResponse } from '../../types/sipma';
 import { GAS_BACKEND_CODE, GAS_SETUP_STEPS } from '../../services/gasBackendCode';
@@ -69,6 +73,29 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
   const [isUploadingLogo, setIsUploadingLogo] = useState<boolean>(false);
   const [showFullscreenCode, setShowFullscreenCode] = useState<boolean>(false);
   const [realtimeHealth, setRealtimeHealth] = useState(storageService.getAutoSyncStatus());
+
+  // Rollover Academic Year States
+  const [showRolloverModal, setShowRolloverModal] = useState<boolean>(false);
+  const [newRolloverYear, setNewRolloverYear] = useState<string>(
+    String((parseInt(settings.application_year || '2026', 10) || 2026) + 1)
+  );
+  const [newRolloverYearLabel, setNewRolloverYearLabel] = useState<string>(
+    `${(parseInt(settings.application_year || '2026', 10) || 2026) + 1}/${(parseInt(settings.application_year || '2026', 10) || 2026) + 2}`
+  );
+  const [isExecutingRollover, setIsExecutingRollover] = useState<boolean>(false);
+
+  // Statistics for current academic year applicants
+  const allCurrentApps = useMemo(() => {
+    return storageService.getApplications();
+  }, [settings, isSaved, showRolloverModal]);
+
+  const acceptedAppsCount = useMemo(() => {
+    return allCurrentApps.filter((a) => a.final_status === 'lulus' || a.selection_status === 'lulus').length;
+  }, [allCurrentApps]);
+
+  const unacceptedAppsCount = useMemo(() => {
+    return allCurrentApps.length - acceptedAppsCount;
+  }, [allCurrentApps, acceptedAppsCount]);
 
   useEffect(() => {
     const unsubscribe = storageService.subscribe((event) => {
@@ -264,10 +291,46 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
     }
   };
 
+  const handleExecuteRollover = async () => {
+    if (!newRolloverYear.trim()) {
+      showToast('Masukkan tahun ajaran baru!', 'warning');
+      return;
+    }
+    setIsExecutingRollover(true);
+    showLoading(
+      'Membuka Tahun Pendaftaran Baru...',
+      'Mengarsipkan data & berkas pendaftar lolos ke Google Drive & Sheets, serta menghapus otomatis data pendaftar tidak lolos dari database...',
+      'save'
+    );
+    try {
+      const res = await storageService.openNewAcademicYear(newRolloverYear, newRolloverYearLabel);
+      hideLoading();
+      setIsExecutingRollover(false);
+      setShowRolloverModal(false);
+      if (res.success) {
+        showAlert('Tahun Pendaftaran Baru Berhasil Dibuka!', res.message, 'success');
+        const latest = storageService.getSettings();
+        setFormData(latest);
+        onSaveSettings(latest);
+      } else {
+        showAlert('Gagal Membuka Tahun Baru', res.message, 'error');
+      }
+    } catch (err: any) {
+      hideLoading();
+      setIsExecutingRollover(false);
+      showAlert('Error Rollover', err?.message || 'Terjadi kesalahan sistem saat proses rollover.', 'error');
+    }
+  };
+
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     showLoading('Menyimpan konfigurasi sistem...', 'Menyimpan konfigurasi aplikasi dan database ke server...', 'save');
     const current = storageService.getSettings();
+    const isYearChanged =
+      Boolean(formData.application_year) &&
+      Boolean(current.application_year) &&
+      String(formData.application_year).trim() !== String(current.application_year).trim();
+
     // ID Spreadsheet, Drive Folder, and GAS URL are permanent (paten) and cannot be changed through the app UI
     const updated: SystemSettings = {
       ...formData,
@@ -280,7 +343,16 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
     storageService.saveSettings(updated);
     hideLoading();
     setIsSaved(true);
-    showToast('Konfigurasi umum sistem berhasil disimpan', 'success');
+
+    if (isYearChanged) {
+      storageService
+        .openNewAcademicYear(formData.application_year, formData.academic_year_label)
+        .then((rollRes) => {
+          showAlert('Tahun Ajaran Baru Aktif', rollRes.message, 'success');
+        });
+    } else {
+      showToast('Konfigurasi umum sistem berhasil disimpan', 'success');
+    }
     setTimeout(() => setIsSaved(false), 3000);
   };
 
@@ -1038,6 +1110,65 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
                   <span className="text-[11px] text-slate-400">Maksimum ukuran tiap berkas pendaftaran calon murid</span>
                 </div>
               </div>
+
+              {/* Rollover & New Academic Year Management Box */}
+              <div className="bg-gradient-to-br from-emerald-950/5 via-teal-900/5 to-slate-50 p-5 rounded-2xl border border-emerald-300/80 shadow-xs space-y-3.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-800 to-teal-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                      <Archive className="w-5 h-5 text-emerald-100" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900">
+                        Buka Tahun Pendaftaran Baru & Rollover Arsip Kelulusan
+                      </h4>
+                      <p className="text-xs text-slate-500">
+                        Pendaftar lolos otomatis diarsipkan permanen ke Google Drive & Sheets, sedangkan pendaftar tidak lolos dihapus bersih saat tahun baru dibuka.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextY = String((parseInt(formData.application_year || '2026', 10) || 2026) + 1);
+                      setNewRolloverYear(nextY);
+                      setNewRolloverYearLabel(`${nextY}/${(parseInt(nextY, 10) || 2027) + 1}`);
+                      setShowRolloverModal(true);
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer shrink-0"
+                  >
+                    <FolderCheck className="w-4 h-4 text-emerald-300" />
+                    <span>Buka Tahun Baru...</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-emerald-100 text-xs">
+                  <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl flex items-start gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold text-emerald-950">
+                        {acceptedAppsCount} Pendaftar Lolos / Diterima
+                      </div>
+                      <div className="text-[11px] text-emerald-800 mt-0.5 leading-relaxed">
+                        Data dan berkas pendukung (KK, Akta, Ijazah) disimpan permanen sebagai arsip tahun {formData.academic_year_label || formData.application_year} di Google Drive & Sheets, serta dapat dibuka di menu arsip.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-rose-50/80 border border-rose-200 rounded-xl flex items-start gap-2.5">
+                    <Trash2 className="w-4 h-4 text-rose-700 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold text-rose-950">
+                        {unacceptedAppsCount} Pendaftar Tidak Lolos / Belum Diterima
+                      </div>
+                      <div className="text-[11px] text-rose-800 mt-0.5 leading-relaxed">
+                        Otomatis terhapus seluruh datanya dari database server, Google Sheet, dan seluruh berkasnya di Google Drive begitu tahun pendaftaran baru dibuka.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -1605,6 +1736,112 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
 
             <div className="p-3 border-t border-slate-800 bg-slate-900 text-center text-xs text-slate-400">
               Tekan <kbd className="px-1.5 py-0.5 bg-slate-800 text-slate-200 rounded border border-slate-700 text-[10px]">Esc</kbd> atau tombol di sudut kanan atas untuk menutup layar penuh.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rollover Academic Year Modal */}
+      {showRolloverModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
+                  <Calendar className="w-5 h-5 text-emerald-700" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Buka Tahun Pendaftaran Baru</h3>
+                  <p className="text-[11px] text-slate-500">Konfirmasi pembukaan tahun ajaran baru & arsip digital</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRolloverModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-lg p-1 cursor-pointer font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3.5">
+              <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 leading-relaxed flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="block font-bold">Ketentuan & Pembersihan Otomatis:</strong>
+                  Saat tahun baru dibuka oleh Admin Pusat:
+                  <ul className="list-disc pl-4 mt-1.5 space-y-1 text-[11px]">
+                    <li>
+                      <strong>{acceptedAppsCount} Murid Lolos Seleksi:</strong> Tersimpan permanen sebagai arsip tahun{' '}
+                      <strong>{formData.academic_year_label || formData.application_year}</strong> di Google Drive & Sheets, serta dapat dibuka di Menu Arsip.
+                    </li>
+                    <li>
+                      <strong>{unacceptedAppsCount} Pendaftar Tidak Lolos:</strong> Secara otomatis{' '}
+                      <span className="text-rose-700 font-bold underline">terhapus seluruh datanya</span> dari database server, Google Sheet, dan seluruh berkasnya di Google Drive.
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Tahun Ajaran Baru (Angka / Single Year)
+                </label>
+                <input
+                  type="text"
+                  value={newRolloverYear}
+                  onChange={(e) => {
+                    const ny = e.target.value;
+                    const nextY = (parseInt(ny, 10) || 2027) + 1;
+                    setNewRolloverYear(ny);
+                    setNewRolloverYearLabel(`${ny}/${nextY}`);
+                  }}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="2027"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Format Label Tahun Pelajaran di Portal & Surat Resmi
+                </label>
+                <input
+                  type="text"
+                  value={newRolloverYearLabel}
+                  onChange={(e) => setNewRolloverYearLabel(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-bold text-sm text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="2027/2028"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowRolloverModal(false)}
+                disabled={isExecutingRollover}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteRollover}
+                disabled={isExecutingRollover}
+                className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold cursor-pointer shadow-xs disabled:opacity-50"
+              >
+                {isExecutingRollover ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Memproses Rollover...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Buka Tahun Baru & Bersihkan Data</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

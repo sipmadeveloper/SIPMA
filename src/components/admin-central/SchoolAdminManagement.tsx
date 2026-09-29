@@ -161,53 +161,59 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
 
     showLoading(
       editingAdmin ? 'Menyimpan perubahan akun admin madrasah...' : 'Membuat akun admin madrasah baru...',
-      'Menyimpan data akun ke database server dan cloud...',
+      'Menyimpan data akun ke database server secara realtime...',
       'save'
     );
 
-    const res = storageService.saveSchoolAdminUser({
-      user_id: editingAdmin ? editingAdmin.user_id : undefined,
-      name: formData.name,
-      email: formData.email,
-      phone: formData.phone,
-      school_id: formData.school_id,
-      nip: formData.nip,
-      position: formData.position,
-      password: formData.password || undefined,
-      status: formData.status,
-    });
+    setTimeout(async () => {
+      const res = storageService.saveSchoolAdminUser({
+        user_id: editingAdmin ? editingAdmin.user_id : undefined,
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        school_id: formData.school_id,
+        nip: formData.nip,
+        position: formData.position,
+        password: formData.password || undefined,
+        status: formData.status,
+      });
 
-    hideLoading();
+      await storageService.pushToServerNow();
+      hideLoading();
 
-    if (res.success) {
-      setIsAddEditModalOpen(false);
-      if (onRefreshData) onRefreshData();
+      if (res.success) {
+        setIsAddEditModalOpen(false);
+        if (onRefreshData) onRefreshData();
 
-      if (!editingAdmin && res.user && res.generatedPassword) {
-        // Show credentials ready dialog
-        setResetResult({
-          password: res.generatedPassword,
-          admin: res.user,
-        });
+        if (!editingAdmin && res.user && res.generatedPassword) {
+          // Show credentials ready dialog
+          setResetResult({
+            password: res.generatedPassword,
+            admin: res.user,
+          });
+        } else {
+          showToast(res.message, 'success', 'Berhasil Disimpan');
+        }
       } else {
-        showToast(res.message, 'success', 'Berhasil Disimpan');
+        showAlert('Gagal Menyimpan Akun', res.message, 'error');
       }
-    } else {
-      showAlert('Gagal Menyimpan Akun', res.message, 'error');
-    }
+    }, 400);
   };
 
   // Toggle status
   const handleToggleStatus = (admin: UserType) => {
-    showLoading('Memperbarui status akses admin...', 'Menyimpan status aktif ke database...', 'save');
-    const res = storageService.toggleUserStatus(admin.user_id);
-    hideLoading();
-    if (res.success) {
-      showToast(res.message, 'info', 'Status Akses Diperbarui');
-      if (onRefreshData) onRefreshData();
-    } else {
-      showAlert('Gagal Mengubah Status', res.message, 'error');
-    }
+    showLoading('Memperbarui status akses admin...', 'Menyimpan status aktif ke database server realtime...', 'save');
+    setTimeout(async () => {
+      const res = storageService.toggleUserStatus(admin.user_id);
+      await storageService.pushToServerNow();
+      hideLoading();
+      if (res.success) {
+        showToast(res.message, 'info', 'Status Akses Diperbarui');
+        if (onRefreshData) onRefreshData();
+      } else {
+        showAlert('Gagal Mengubah Status', res.message, 'error');
+      }
+    }, 350);
   };
 
   // Submit reset password
@@ -215,42 +221,48 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
     e.preventDefault();
     if (!resetModalAdmin) return;
 
-    showLoading('Mereset kata sandi admin...', 'Menyimpan kata sandi baru ke database...', 'save');
+    showLoading('Mereset kata sandi admin...', 'Menyimpan kata sandi baru ke database server realtime...', 'save');
 
-    const res = storageService.resetSchoolAdminPassword(
-      resetModalAdmin.user_id,
-      customNewPass.trim() || undefined,
-      'Admin Pusat'
-    );
+    setTimeout(async () => {
+      const res = storageService.resetSchoolAdminPassword(
+        resetModalAdmin.user_id,
+        customNewPass.trim() || undefined,
+        'Admin Pusat'
+      );
 
-    hideLoading();
+      await storageService.pushToServerNow();
+      hideLoading();
 
-    if (res.success && res.newPassword && res.user) {
-      setResetResult({
-        password: res.newPassword,
-        admin: res.user,
-      });
-      setResetModalAdmin(null);
-      setCustomNewPass('');
-      if (onRefreshData) onRefreshData();
-    } else {
-      showAlert('Gagal Mereset Password', res.message, 'error');
-    }
+      if (res.success && res.newPassword && res.user) {
+        setResetResult({
+          password: res.newPassword,
+          admin: res.user,
+        });
+        setResetModalAdmin(null);
+        setCustomNewPass('');
+        if (onRefreshData) onRefreshData();
+      } else {
+        showAlert('Gagal Mereset Password', res.message, 'error');
+      }
+    }, 400);
   };
 
   // Delete admin
   const handleDeleteAdmin = () => {
     if (!adminToDelete) return;
-    showLoading('Menghapus akun admin...', 'Menghapus data akun dari database...', 'delete');
-    const res = storageService.deleteUserAccount(adminToDelete.user_id);
-    hideLoading();
-    if (res.success) {
-      showToast(res.message, 'success', 'Akun Terhapus');
-      setAdminToDelete(null);
-      if (onRefreshData) onRefreshData();
-    } else {
-      showAlert('Gagal Menghapus', res.message, 'error');
-    }
+    showLoading('Menghapus akun admin...', 'Menghapus data akun dari database secara realtime...', 'delete');
+    setTimeout(async () => {
+      const res = storageService.deleteUserAccount(adminToDelete.user_id);
+      await storageService.pushToServerNow();
+      hideLoading();
+      if (res.success) {
+        showToast(res.message, 'success', 'Akun Terhapus');
+        setAdminToDelete(null);
+        if (onRefreshData) onRefreshData();
+      } else {
+        showAlert('Gagal Menghapus', res.message, 'error');
+      }
+    }, 450);
   };
 
   // Copy credentials format

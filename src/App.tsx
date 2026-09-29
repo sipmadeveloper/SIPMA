@@ -441,59 +441,64 @@ export default function App() {
 
   // Verification from admin
   const handleVerify = (regNumber: string, status: VerificationStatus, notes: string) => {
-    showLoading('Menyimpan status verifikasi berkas...', 'Memperbarui catatan dan hasil validasi dokumen ke database...', 'save');
-    setTimeout(() => {
+    showLoading('Menyimpan status verifikasi berkas...', 'Memperbarui catatan dan hasil validasi dokumen ke database realtime...', 'save');
+    setTimeout(async () => {
       if (status !== 'menunggu') {
         storageService.verifyApplication(regNumber, status, notes, currentUser?.email || 'admin@madrasah.sch.id');
+        await storageService.pushToServerNow();
       }
       refreshData();
       hideLoading();
-      showToast('Status verifikasi berkas pendaftar berhasil diperbarui.', 'success');
-    }, 300);
+      showToast('Status verifikasi berkas pendaftar berhasil diperbarui di database.', 'success');
+    }, 400);
   };
 
   // Selection update
   const handleUpdateSelection = (regNumber: string, status: 'lulus' | 'tidak_lulus' | 'menunggu') => {
-    showLoading('Memperbarui status seleksi akhir...', 'Menyimpan kelulusan pendaftar ke basis data madrasah...', 'save');
-    setTimeout(() => {
+    showLoading('Memperbarui status seleksi akhir...', 'Menyimpan kelulusan pendaftar ke basis data realtime...', 'save');
+    setTimeout(async () => {
       storageService.updateSelectionStatus(regNumber, status, currentUser?.email || 'admin@madrasah.sch.id');
+      await storageService.pushToServerNow();
       refreshData();
       hideLoading();
-      showToast('Status seleksi pendaftar berhasil diperbarui.', 'success');
-    }, 300);
+      showToast('Status seleksi pendaftar berhasil diperbarui di database.', 'success');
+    }, 400);
   };
 
   const handleBulkSelection = (updates: { regNumber: string; status: 'lulus' | 'tidak_lulus' }[]) => {
     showLoading(
       `Menyimpan kelulusan ${updates.length} calon murid...`,
-      'Menyimpan keputusan seleksi masal ke database madrasah...',
+      'Menyimpan keputusan seleksi masal ke database realtime...',
       'save'
     );
-    setTimeout(() => {
+    setTimeout(async () => {
       updates.forEach((u) => {
         storageService.updateSelectionStatus(u.regNumber, u.status, currentUser?.email || 'admin@madrasah.sch.id');
       });
+      await storageService.pushToServerNow();
       refreshData();
       hideLoading();
-      showToast(`Status seleksi masal untuk ${updates.length} pendaftar berhasil disimpan!`, 'success');
+      showToast(`Status seleksi masal untuk ${updates.length} pendaftar berhasil disimpan ke database!`, 'success');
     }, 450);
   };
 
   // School profile update & delete
   const handleSaveSchool = (updatedSchool: School) => {
-    showLoading('Menyimpan data madrasah...', 'Memperbarui informasi profil, lokasi koordinat, dan kuota zonasi...', 'save');
-    setTimeout(() => {
+    showLoading('Menyimpan data madrasah...', 'Memperbarui informasi profil, lokasi koordinat, dan kuota zonasi ke database realtime...', 'save');
+    setTimeout(async () => {
       storageService.saveSchool(updatedSchool);
+      await storageService.pushToServerNow();
       refreshData();
       hideLoading();
-      showToast('Profil madrasah dan kuota zonasi berhasil disimpan!', 'success');
-    }, 350);
+      showToast('Profil madrasah dan kuota zonasi berhasil disimpan ke database!', 'success');
+    }, 400);
   };
 
   const handleDeleteSchool = (schoolId: string) => {
-    showLoading('Menghapus data madrasah...', 'Menghapus data satuan pendidikan dari database...', 'delete');
-    setTimeout(() => {
+    showLoading('Menghapus data madrasah...', 'Menghapus data satuan pendidikan dan data terikat dari database realtime...', 'delete');
+    setTimeout(async () => {
       const res = storageService.deleteSchool(schoolId);
+      await storageService.pushToServerNow();
       refreshData();
       hideLoading();
       if (res.success) {
@@ -501,14 +506,15 @@ export default function App() {
       } else {
         showAlert('Gagal Menghapus', res.message, 'error');
       }
-    }, 300);
+    }, 450);
   };
 
   // Applicant Deletion
   const handleDeleteApplicant = (regNumber: string) => {
-    showLoading('Menghapus data pendaftar...', 'Menghapus berkas lampiran dan data pendaftar dari sistem...', 'delete');
-    setTimeout(() => {
+    showLoading('Menghapus data pendaftar...', 'Menghapus berkas lampiran dan data pendaftar dari database realtime...', 'delete');
+    setTimeout(async () => {
       const res = storageService.deleteApplication(regNumber);
+      await storageService.pushToServerNow();
       refreshData();
       hideLoading();
       if (res.success) {
@@ -516,7 +522,7 @@ export default function App() {
       } else {
         showAlert('Gagal Menghapus', res.message, 'error');
       }
-    }, 350);
+    }, 450);
   };
 
   // Announcements

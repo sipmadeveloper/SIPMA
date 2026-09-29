@@ -146,53 +146,13 @@ export const CentralDashboard: React.FC<Props> = ({
   return (
     <div className="space-y-6" id="sipma-central-dashboard">
       {/* Top Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-teal-950 text-white p-6 rounded-2xl shadow-md border border-emerald-800/40 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-[11px] font-extrabold uppercase tracking-wider text-emerald-300">
-            Panel Administrator Wilayah
-          </div>
-          <h1 className="text-xl sm:text-2xl font-black tracking-tight mt-1 text-white">
-            SIPMA Central Command Center
-          </h1>
-          <p className="text-xs text-emerald-100/80 mt-1 max-w-xl">
-            Monitoring terpusat penerimaan murid baru madrasah se-wilayah dan kontrol multi-satuan pendidikan secara terpadu.
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {(onExportExcel || onExportCsv) && (
-            <button
-              type="button"
-              onClick={onExportExcel || onExportCsv}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600/30 hover:bg-emerald-600/50 text-white border border-emerald-400/30 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs"
-              title="Unduh rekapitulasi data pendaftar seluruh madrasah dalam format Excel (.xlsx)"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-300" />
-              <span>Export Excel Wilayah (.xlsx)</span>
-            </button>
-          )}
-
-          {onOpenProfile && (
-            <button
-              type="button"
-              onClick={onOpenProfile}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-bold transition-all cursor-pointer"
-              title="Buka Pengaturan Profil & Ganti Password Admin Pusat"
-            >
-              <User className="w-3.5 h-3.5 text-rose-300" />
-              <span>Profil Admin</span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={() => handleTabSelect('config')}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm"
-          >
-            <Settings className="w-3.5 h-3.5" />
-            <span>Pengaturan Sinkronisasi</span>
-          </button>
-        </div>
+      <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-teal-950 text-white p-6 rounded-2xl shadow-md border border-emerald-800/40">
+        <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
+          Selamat Datang di SIPMA
+        </h1>
+        <p className="text-xs text-emerald-100/80 mt-1 max-w-2xl leading-relaxed">
+          Monitoring penerimaan murid baru madrasah se-wilayah dan pengelolaan data terpadu.
+        </p>
       </div>
 
       {/* Navigation Sub-Tabs */}

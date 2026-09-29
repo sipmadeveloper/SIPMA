@@ -298,6 +298,10 @@ function doPost(e) {
       case "deleteUser":
         response = handleDeleteUser(payload.data, targetSpreadsheetId);
         break;
+      case "openNewAcademicYear":
+      case "rolloverAcademicYear":
+        response = handleOpenNewAcademicYear(payload.data, targetSpreadsheetId, payload.drive_root_folder_id || DRIVE_ROOT_FOLDER_ID);
+        break;
       case "cleanMissingDriveFiles":
       case "verifyDriveFiles":
         var targetSS = SpreadsheetApp.openById(targetSpreadsheetId);
@@ -869,6 +873,11 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
 
         if (isSchoolLogo) {
           destFolder = schoolFolder;
+        } else if (data.use_category_folder === true || data.archive_mode === "category") {
+          // Hirarki Terstruktur Berdasarkan Kategori Dokumen (KK, Akta, Ijazah, dsb.)
+          var categoryFolderLabel = getCategoryFolderLabel(docType);
+          var archivesRootFolder = getOrCreateFolder(schoolFolder, "ARSIP DIGITAL BERDASARKAN KATEGORI");
+          destFolder = getOrCreateFolder(archivesRootFolder, categoryFolderLabel);
         } else {
           // 3. Folder sesuai nama setiap murid yang mendaftar
           destFolder = getOrCreateApplicantFolder(schoolFolder, data.registration_number, data.student_name);
@@ -1362,6 +1371,75 @@ function handleDeleteApplication(data, spreadsheetId, rootFolderId) {
     success: true,
     message: "Data pendaftaran " + regNumber + " dan seluruh file di Google Drive serta database Sheets berhasil dihapus permanen secara otomatis.",
     registration_number: regNumber,
+    deleted_files_count: deletedFilesCount
+  };
+}
+
+/**
+ * 4b. BUKA TAHUN PENDAFTARAN BARU & AUTO-PURGE PENDAFTAR TIDAK LOLOS
+ * - Pendaftar berstatus lolos/diterima diarsipkan permanen sesuai tahun ajaran
+ * - Pendaftar yang TIDAK lolos otomatis dihapus seluruh berkasnya dari Google Drive & database Sheets
+ */
+function handleOpenNewAcademicYear(data, targetSpreadsheetId, rootFolderId) {
+  var ss = getOrOpenSpreadsheet(targetSpreadsheetId);
+  ensureAllSheetsExist(ss);
+
+  var newYear = (data && data.new_application_year) ? String(data.new_application_year).trim() : "2027";
+  var newYearLabel = (data && data.new_academic_year_label) ? String(data.new_academic_year_label).trim() : (newYear + "/" + (parseInt(newYear, 10) + 1));
+  
+  var appSheet = ss.getSheetByName(SHEETS.APPLICATIONS);
+  var unacceptedRegNumbers = [];
+  var unacceptedStudentIds = [];
+  var acceptedRegNumbers = [];
+  
+  if (appSheet && appSheet.getLastRow() > 1) {
+    var rows = appSheet.getDataRange().getValues();
+    for (var r = 1; r < rows.length; r++) {
+      var reg = String(rows[r][1] || "").trim();
+      var sId = String(rows[r][3] || "").trim();
+      var selStatus = String(rows[r][14] || "").trim().toLowerCase();
+      var finStatus = String(rows[r][15] || "").trim().toLowerCase();
+      
+      var isLolos = (selStatus === "lulus" || finStatus === "lulus");
+      if (isLolos) {
+        if (reg) acceptedRegNumbers.push(reg);
+      } else {
+        if (reg) unacceptedRegNumbers.push(reg);
+        if (sId) unacceptedStudentIds.push(sId);
+      }
+    }
+  }
+
+  // 1. Bersihkan seluruh file dan data dari pendaftar tidak lolos dari Drive & Sheets
+  var deletedFilesCount = 0;
+  for (var u = 0; u < unacceptedRegNumbers.length; u++) {
+    var unreg = unacceptedRegNumbers[u];
+    var unsid = unacceptedStudentIds[u] || "";
+    var res = handleDeleteApplication({ registration_number: unreg, student_id: unsid }, targetSpreadsheetId, rootFolderId);
+    deletedFilesCount += (res && res.deleted_files_count) || 0;
+  }
+
+  // 2. Perbarui Setting Tahun Ajaran Baru di Sheet Settings
+  var settSheet = ss.getSheetByName(SHEETS.SETTINGS);
+  if (settSheet && settSheet.getLastRow() > 1) {
+    var sRows = settSheet.getDataRange().getValues();
+    for (var s = 1; s < sRows.length; s++) {
+      var key = String(sRows[s][0] || "").trim();
+      if (key === "application_year") {
+        settSheet.getRange(s + 1, 2).setValue(newYear);
+      } else if (key === "academic_year_label") {
+        settSheet.getRange(s + 1, 2).setValue(newYearLabel);
+      } else if (key === "registration_open") {
+        settSheet.getRange(s + 1, 2).setValue("true");
+      }
+    }
+  }
+
+  return {
+    success: true,
+    message: "Tahun ajaran baru " + newYearLabel + " berhasil dibuka. " + unacceptedRegNumbers.length + " pendaftar tidak lolos telah otomatis dihapus dari Google Drive dan database Sheets. " + acceptedRegNumbers.length + " pendaftar lolos berhasil disimpan sebagai arsip permanen.",
+    archived_accepted_count: acceptedRegNumbers.length,
+    purged_unaccepted_count: unacceptedRegNumbers.length,
     deleted_files_count: deletedFilesCount
   };
 }
@@ -2407,6 +2485,23 @@ function getOrCreateYearFolder(rootFolder, rawYear) {
   }
 
   return getOrCreateFolder(rootFolder, targetName);
+}
+
+/**
+ * Label Kategori Folder Arsip Digital Google Drive Terstruktur
+ * Mengelompokkan dokumen ke subfolder:
+ * 01_KARTU_KELUARGA_KK, 02_AKTA_KELAHIRAN, 03_IJAZAH_SKL, dll.
+ */
+function getCategoryFolderLabel(docType) {
+  var t = String(docType || "").toLowerCase().trim().replace(/[\s-]+/g, "_");
+  if (t === "kk" || t === "kartu_keluarga") return "01_KARTU_KELUARGA_KK";
+  if (t === "akta" || t === "akta_kelahiran" || t === "akta_lahir") return "02_AKTA_KELAHIRAN";
+  if (t === "ijazah" || t === "skl" || t === "ijazah_skl") return "03_IJAZAH_SKL";
+  if (t === "foto" || t === "pas_foto" || t === "foto_murid" || t === "pas_foto_3x4") return "04_PAS_FOTO";
+  if (t === "kip" || t === "pkh" || t === "kks" || t === "kartu_afirmasi" || t === "afirmasi") return "05_DOKUMEN_AFIRMASI";
+  if (t === "prestasi" || t === "sertifikat" || t === "sertifikat_prestasi" || t === "piagam") return "06_SERTIFIKAT_PRESTASI";
+  if (t === "mutasi" || t === "surat_mutasi" || t === "penugasan") return "07_SURAT_MUTASI";
+  return "08_DOKUMEN_PENDUKUNG_LAINNYA";
 }
 
 /**

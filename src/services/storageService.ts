@@ -13,6 +13,7 @@ import {
   ApiResponse,
   PathwayType,
   UserRole,
+  VerificationStatus,
 } from '../types/sipma';
 import {
   calculateHaversineDistance,
@@ -296,6 +297,43 @@ class StorageService {
             this.notifySubscribers('auto_sync_status', { status: 'idle' });
           });
       }, 700);
+    }
+  }
+
+  /**
+   * Immediately pushes all current tables to the centralized database server and awaits response.
+   * Guarantees real-time persistence across all connected devices and browsers.
+   */
+  async pushToServerNow(isSettingsUpdate: boolean = false): Promise<boolean> {
+    try {
+      this.hasSyncedWithServer = true;
+      this.notifySubscribers('data_mutated');
+
+      const dataPayload = {
+        users: this.getUsers(),
+        students: this.getStudentsMap(),
+        parents: this.getParentsMap(),
+        school_origins: this.getSchoolOriginsMap(),
+        addresses: this.getAddressesMap(),
+        applications: this.getApplications(),
+        documents: this.getDocuments(),
+        schools: this.getSchools(),
+        announcements: this.getAnnouncements(),
+        audit_logs: this.getAuditLogs(),
+        settings: this.getSettings(),
+        is_settings_update: isSettingsUpdate,
+        forwardToGas: true,
+        waitGas: false,
+      };
+
+      const res = await fetch('/api/data/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dataPayload),
+      });
+      return res.ok;
+    } catch {
+      return false;
     }
   }
 
@@ -805,13 +843,6 @@ class StorageService {
           };
         });
 
-        // Also ensure any locally created user not yet in server is preserved
-        for (const lu of localUsers) {
-          if (!mergedUsers.some((mu) => mu.user_id === lu.user_id || (lu.email && mu.email && lu.email.toLowerCase() === mu.email.toLowerCase()))) {
-            mergedUsers.push(lu);
-          }
-        }
-
         const prevStr = localStorage.getItem(STORAGE_KEYS.USERS);
         const newStr = JSON.stringify(mergedUsers);
         this.memCache.users = mergedUsers;
@@ -845,12 +876,6 @@ class StorageService {
             sProfile.photo_url = localS.photo_url;
           }
         }
-        for (const [reg, localS] of Object.entries(localStudents)) {
-          if (!mergedStudents[reg]) {
-            mergedStudents[reg] = localS;
-          }
-        }
-
         const prevStr = localStorage.getItem(STORAGE_KEYS.STUDENTS);
         const newStr = JSON.stringify(mergedStudents);
         this.memCache.students = mergedStudents;
@@ -1097,6 +1122,157 @@ class StorageService {
     this.addAuditLog('SETTINGS_UPDATE', 'System Settings', `Pengaturan sistem diperbarui. Tahun ajaran: ${settings.academic_year_label || settings.application_year}`);
     this.notifySubscribers('settings_updated', settings);
     this.triggerAutoSync(true);
+  }
+
+  /**
+   * Buka Tahun Pendaftaran Baru & Rollover Arsip Kelulusan
+   * - Pendaftar berstatus Lolos / Diterima diarsipkan permanen (tersimpan di Sheet & Drive dan tampil di Menu Arsip)
+   * - Pendaftar yang TIDAK Lolos otomatis dihapus dari Database, Google Drive, dan Google Sheets
+   */
+  async openNewAcademicYear(newYear: string, newYearLabel?: string): Promise<{
+    success: boolean;
+    message: string;
+    archived_accepted_count?: number;
+    purged_unaccepted_count?: number;
+    deleted_drive_files_count?: number;
+  }> {
+    const effectiveYear = String(newYear || '2027').trim();
+    const effectiveYearLabel = String(
+      newYearLabel || `${effectiveYear}/${(parseInt(effectiveYear, 10) || 2027) + 1}`
+    ).trim();
+
+    const currentSettings = this.getSettings();
+    const oldYear = currentSettings.application_year || '2026';
+    const oldYearLabel = currentSettings.academic_year_label || `${oldYear}/${(parseInt(oldYear, 10) || 2026) + 1}`;
+
+    const apps = this.getApplications();
+    const acceptedApps: Application[] = [];
+    const unacceptedApps: Application[] = [];
+
+    for (const app of apps) {
+      const isAccepted = app.final_status === 'lulus' || app.selection_status === 'lulus';
+      if (isAccepted) {
+        acceptedApps.push(app);
+      } else {
+        unacceptedApps.push(app);
+      }
+    }
+
+    // 1. Simpan Pendaftar Lolos: Tetapkan admission_year permanen
+    for (const app of acceptedApps) {
+      if (!app.admission_year) {
+        app.admission_year = oldYearLabel || oldYear;
+      }
+    }
+
+    // Berikan label tahun ajaran & penanda arsip permanen pada seluruh berkas pendaftar lolos
+    const acceptedRegSet = new Set(acceptedApps.map((a) => a.registration_number));
+    const allDocs = this.getDocuments();
+    allDocs.forEach((doc) => {
+      if (acceptedRegSet.has(doc.registration_number)) {
+        const matchingApp = acceptedApps.find((a) => a.registration_number === doc.registration_number);
+        doc.academic_year = matchingApp?.admission_year || oldYearLabel || oldYear;
+        doc.is_archived = true;
+      }
+    });
+
+    // 2. Kumpulkan data pendaftar TIDAK LOLOS untuk dihapus bersih
+    const unacceptedRegSet = new Set(unacceptedApps.map((a) => a.registration_number));
+    const unacceptedStudentIds = new Set<string>();
+    unacceptedApps.forEach((a) => {
+      if (a.student_id) unacceptedStudentIds.add(a.student_id);
+    });
+
+    // Hapus dokumen pendaftar tidak lolos dari cache & local storage
+    const preservedDocs = allDocs.filter((d) => !unacceptedRegSet.has(d.registration_number));
+    this.memCache.documents = preservedDocs;
+    localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(preservedDocs));
+
+    // Hapus aplikasi pendaftar tidak lolos
+    this.memCache.applications = acceptedApps;
+    localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(acceptedApps));
+
+    // Hapus biodata siswa tidak lolos
+    const studentsMap = this.getStudentsMap();
+    unacceptedRegSet.forEach((reg) => {
+      if (studentsMap[reg]) delete studentsMap[reg];
+    });
+    this.memCache.students = studentsMap;
+    localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(studentsMap));
+
+    // Hapus data orang tua, sekolah asal, dan alamat siswa tidak lolos
+    const parentsMap = this.getParentsMap();
+    const originsMap = this.getSchoolOriginsMap();
+    const addressesMap = this.getAddressesMap();
+    unacceptedStudentIds.forEach((sId) => {
+      if (parentsMap[sId]) delete parentsMap[sId];
+      if (originsMap[sId]) delete originsMap[sId];
+      if (addressesMap[sId]) delete addressesMap[sId];
+    });
+    this.memCache.parents = parentsMap;
+    this.memCache.school_origins = originsMap;
+    this.memCache.addresses = addressesMap;
+    localStorage.setItem(STORAGE_KEYS.PARENTS, JSON.stringify(parentsMap));
+    localStorage.setItem(STORAGE_KEYS.SCHOOL_ORIGINS, JSON.stringify(originsMap));
+    localStorage.setItem(STORAGE_KEYS.ADDRESSES, JSON.stringify(addressesMap));
+
+    // Hapus akun siswa pendaftar tidak lolos
+    const users = this.getUsers();
+    const filteredUsers = users.filter((u) => {
+      if (u.role === 'calon_murid' && u.registration_number && unacceptedRegSet.has(u.registration_number)) {
+        return false;
+      }
+      return true;
+    });
+    this.memCache.users = filteredUsers;
+    localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(filteredUsers));
+
+    // Perbarui setting tahun ajaran baru
+    const updatedSettings: SystemSettings = {
+      ...currentSettings,
+      application_year: effectiveYear,
+      academic_year_label: effectiveYearLabel,
+      registration_open: true,
+    };
+    this.memCache.settings = updatedSettings;
+    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updatedSettings));
+
+    // Catat log audit
+    this.addAuditLog(
+      'BUKA_TAHUN_PENDAFTARAN_BARU',
+      effectiveYearLabel,
+      `Tahun ajaran baru ${effectiveYearLabel} dibuka. ${unacceptedApps.length} pendaftar tidak lolos dihapus bersih, ${acceptedApps.length} pendaftar lolos diarsipkan permanen.`
+    );
+
+    // Kirim permintaan rollover ke backend server
+    let serverResData: any = null;
+    try {
+      const res = await fetch('/api/settings/open-new-academic-year', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          new_application_year: effectiveYear,
+          new_academic_year_label: effectiveYearLabel,
+        }),
+      });
+      serverResData = await res.json();
+    } catch (err) {
+      console.warn('Server openNewAcademicYear error:', err);
+    }
+
+    this.notifySubscribers('settings_updated', updatedSettings);
+    this.notifySubscribers('data_mutated');
+    this.triggerAutoSync(true);
+
+    return {
+      success: true,
+      message:
+        serverResData?.message ||
+        `Tahun pendaftaran baru ${effectiveYearLabel} berhasil dibuka. Seluruh ${unacceptedApps.length} pendaftar tidak lolos telah otomatis dihapus dari database, Google Drive, dan Google Sheets. ${acceptedApps.length} pendaftar lolos berhasil disimpan sebagai arsip permanen.`,
+      archived_accepted_count: acceptedApps.length,
+      purged_unaccepted_count: unacceptedApps.length,
+      deleted_drive_files_count: serverResData?.deleted_drive_files_count || 0,
+    };
   }
 
   // ================= USERS & AUTH =================
@@ -1743,6 +1919,7 @@ class StorageService {
         );
       }
 
+      this.memCache.users = users;
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
       this.notifySubscribers('data_mutated');
       this.triggerAutoSync();
@@ -1810,6 +1987,7 @@ class StorageService {
       }
 
       const filtered = users.filter((u) => u.user_id !== userId);
+      this.memCache.users = filtered;
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(filtered));
 
       // Asynchronously trigger server & GAS deletion
@@ -1946,6 +2124,7 @@ class StorageService {
         );
       }
 
+      this.memCache.users = users;
       localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(users));
       this.notifySubscribers('data_mutated');
       this.triggerAutoSync();
@@ -3265,6 +3444,14 @@ class StorageService {
 
       // 7. Remove school from school list
       const remainingSchools = schools.filter((s) => s.school_id !== schoolId);
+      this.memCache.schools = remainingSchools;
+      this.memCache.applications = remainingApplications;
+      this.memCache.documents = remainingDocs;
+      this.memCache.users = remainingUsers;
+      this.memCache.students = studentsMap;
+      this.memCache.parents = parentsMap;
+      this.memCache.school_origins = originsMap;
+      this.memCache.addresses = addressesMap;
       localStorage.setItem(STORAGE_KEYS.SCHOOLS, JSON.stringify(remainingSchools));
 
       // 8. Log cascade deletion to audit log
@@ -4244,6 +4431,109 @@ class StorageService {
 
   deleteDocument(documentId: string): void {
     this.deleteDocumentPermanently(documentId).catch(() => {});
+  }
+
+  // ================= DIGITAL ARCHIVES MANAGEMENT =================
+  /**
+   * Mengambil semua berkas arsip dokumen milik murid yang mendaftar ke madrasah tertentu
+   */
+  getSchoolArchives(schoolId?: string): DocumentItem[] {
+    const allDocs = this.getDocuments();
+    if (!schoolId) return allDocs;
+    const apps = this.getApplications().filter((a) => a.school_id === schoolId);
+    const validRegs = new Set(apps.map((a) => a.registration_number));
+    return allDocs.filter((d) => validRegs.has(d.registration_number));
+  }
+
+  /**
+   * Pengarsipan otomatis batch berkas calon murid ke Google Drive secara terstruktur
+   * Berdasarkan kategori (KK, Akta, Ijazah, Foto, Afirmasi/Prestasi/Mutasi)
+   */
+  async autoArchiveToGoogleDrive(options: {
+    schoolId?: string;
+    category?: string;
+    forceAll?: boolean;
+  }): Promise<{
+    success: boolean;
+    total: number;
+    archived: number;
+    already_archived: number;
+    failed: number;
+    results: any[];
+    message?: string;
+  }> {
+    try {
+      const res = await fetch('/api/archives/auto-archive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          school_id: options.schoolId || '',
+          category: options.category || 'all',
+          force_all: options.forceAll || false,
+        }),
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        // Trigger local sync to refresh documents
+        await this.syncWithServer(false);
+        this.notifySubscribers('data_mutated');
+        return json;
+      }
+      return {
+        success: false,
+        total: 0,
+        archived: 0,
+        already_archived: 0,
+        failed: 0,
+        results: [],
+        message: 'Gagal menghubungi server arsip.',
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        total: 0,
+        archived: 0,
+        already_archived: 0,
+        failed: 0,
+        results: [],
+        message: err?.message || 'Terjadi kesalahan sistem saat pengarsipan.',
+      };
+    }
+  }
+
+  /**
+   * Memperbarui status verifikasi dan catatan dokumen arsip
+   */
+  async updateArchiveVerification(
+    documentId: string,
+    status: VerificationStatus,
+    notes: string = ''
+  ): Promise<boolean> {
+    try {
+      const docs = this.getDocuments();
+      const target = docs.find((d) => d.document_id === documentId);
+      if (target) {
+        target.verification_status = status;
+        target.notes = notes;
+        this.saveDocument(target, undefined, undefined, false);
+      }
+
+      await fetch('/api/archives/verify-doc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          document_id: documentId,
+          verification_status: status,
+          notes,
+        }),
+      });
+
+      this.triggerAutoSync();
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   // ================= VERIFICATION, SELECTION & EMAIL NOTIFICATIONS =================

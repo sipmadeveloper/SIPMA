@@ -3,11 +3,8 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import compression from 'compression';
-import { fileURLToPath } from 'url';
 
-const currentDir = typeof __dirname !== 'undefined'
-  ? __dirname
-  : (typeof import.meta !== 'undefined' && import.meta.url ? path.dirname(fileURLToPath(import.meta.url)) : process.cwd());
+const currentDir = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
 
 const app = express();
 
@@ -932,10 +929,195 @@ app.get('/api/settings', (req: Request, res: Response) => {
   });
 });
 
-app.post('/api/settings', (req: Request, res: Response) => {
+// Helper: Eksekusi Rollover Tahun Pendaftaran Baru & Auto-Purge Berkas/Data Pendaftar Tidak Lolos
+async function executeAcademicYearRollover(newYear: string, newYearLabel?: string) {
+  const effectiveNewYear = String(newYear || '2027').trim();
+  const effectiveNewYearLabel = String(
+    newYearLabel || `${effectiveNewYear}/${(parseInt(effectiveNewYear, 10) || 2027) + 1}`
+  ).trim();
+  const oldYear = serverDb.settings?.application_year || '2026';
+  const oldYearLabel = serverDb.settings?.academic_year_label || `${oldYear}/${(parseInt(oldYear, 10) || 2026) + 1}`;
+
+  const allApps = serverDb.applications || [];
+  const acceptedApps: any[] = [];
+  const unacceptedApps: any[] = [];
+
+  for (const app of allApps) {
+    const isAccepted = app.final_status === 'lulus' || app.selection_status === 'lulus';
+    if (isAccepted) {
+      acceptedApps.push(app);
+    } else {
+      unacceptedApps.push(app);
+    }
+  }
+
+  // 1. Amankan Pendaftar Lolos: Pastikan admission_year tersimpan sesuai tahun pendaftarannya
+  for (const app of acceptedApps) {
+    if (!app.admission_year) {
+      app.admission_year = oldYearLabel || oldYear;
+    }
+  }
+
+  // Berikan label tahun ajaran & penanda arsip permanen pada seluruh dokumen pendaftar lolos
+  const acceptedRegSet = new Set(acceptedApps.map((a) => a.registration_number));
+  if (serverDb.documents) {
+    serverDb.documents.forEach((doc: any) => {
+      if (acceptedRegSet.has(doc.registration_number)) {
+        const matchingApp = acceptedApps.find((a) => a.registration_number === doc.registration_number);
+        doc.academic_year = matchingApp?.admission_year || oldYearLabel || oldYear;
+        doc.is_archived = true;
+      }
+    });
+  }
+
+  // 2. Kumpulkan seluruh data pendaftar TIDAK LOLOS untuk dihapus bersih
+  const unacceptedRegSet = new Set(unacceptedApps.map((a) => a.registration_number));
+  const unacceptedStudentIds = new Set<string>();
+  unacceptedApps.forEach((a) => {
+    if (a.student_id) unacceptedStudentIds.add(a.student_id);
+  });
+
+  const driveFileIdsToDelete: string[] = [];
+  const localFilesToDelete: string[] = [];
+
+  if (serverDb.documents) {
+    serverDb.documents.forEach((doc: any) => {
+      if (unacceptedRegSet.has(doc.registration_number)) {
+        if (doc.drive_file_id && !driveFileIdsToDelete.includes(doc.drive_file_id)) {
+          driveFileIdsToDelete.push(doc.drive_file_id);
+        }
+        if (doc.local_url) {
+          const fileName = path.basename(doc.local_url);
+          localFilesToDelete.push(fileName);
+        }
+      }
+    });
+
+    // Hapus berkas pendaftar tidak lolos dari database server
+    serverDb.documents = serverDb.documents.filter((d: any) => !unacceptedRegSet.has(d.registration_number));
+  }
+
+  // Hapus berkas lokal dari direktori uploads
+  for (const fileName of localFilesToDelete) {
+    const filePath = path.join(UPLOAD_DIR, fileName);
+    if (fs.existsSync(filePath)) {
+      try {
+        fs.unlinkSync(filePath);
+      } catch (e) {}
+    }
+  }
+
+  // Hapus aplikasi tidak lolos dari database
+  serverDb.applications = acceptedApps;
+
+  // Hapus profil siswa tidak lolos
+  if (serverDb.students) {
+    unacceptedRegSet.forEach((reg) => {
+      if (serverDb.students[reg]) {
+        delete serverDb.students[reg];
+      }
+    });
+  }
+
+  // Hapus data orang tua, sekolah asal, dan alamat pendaftar tidak lolos
+  unacceptedStudentIds.forEach((sId) => {
+    if (serverDb.parents && serverDb.parents[sId]) delete serverDb.parents[sId];
+    if (serverDb.school_origins && serverDb.school_origins[sId]) delete serverDb.school_origins[sId];
+    if (serverDb.addresses && serverDb.addresses[sId]) delete serverDb.addresses[sId];
+  });
+
+  // Hapus akun pengguna pendaftar tidak lolos (role calon_murid)
+  if (serverDb.users) {
+    serverDb.users = serverDb.users.filter((u: any) => {
+      if (u.role === 'calon_murid' && u.registration_number && unacceptedRegSet.has(u.registration_number)) {
+        return false;
+      }
+      return true;
+    });
+  }
+
+  // 3. Update Settings ke Tahun Ajaran Baru dan buka pendaftaran
+  serverDb.settings = {
+    ...serverDb.settings,
+    application_year: effectiveNewYear,
+    academic_year_label: effectiveNewYearLabel,
+    registration_open: true,
+  };
+
+  // Log Audit
+  if (!serverDb.audit_logs) serverDb.audit_logs = [];
+  serverDb.audit_logs.unshift({
+    log_id: `LOG-ROLLOVER-${Date.now()}`,
+    action: 'BUKA_TAHUN_PENDAFTARAN_BARU',
+    actor: 'Admin Pusat (Pengaturan Sistem)',
+    details: `Tahun pendaftaran baru ${effectiveNewYearLabel} resmi dibuka. Sebanyak ${unacceptedApps.length} pendaftar tidak lolos beserta berkasnya telah otomatis dihapus dari database, Google Drive, dan Google Sheets. ${acceptedApps.length} pendaftar lolos diarsipkan permanen.`,
+    timestamp: new Date().toISOString(),
+  });
+
+  persistServerDb();
+
+  // 4. Bersihkan Google Drive & Google Sheets melalui Google Apps Script (GAS)
+  const gasUrl = serverDb.settings?.gas_web_app_url;
+  const ssId = serverDb.settings?.spreadsheet_id;
+  const driveId = serverDb.settings?.drive_root_folder_id;
+
+  if (gasUrl && gasUrl.startsWith('http')) {
+    try {
+      await fetch(gasUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'openNewAcademicYear',
+          spreadsheet_id: ssId,
+          drive_root_folder_id: driveId,
+          data: {
+            new_application_year: effectiveNewYear,
+            new_academic_year_label: effectiveNewYearLabel,
+            drive_file_ids_to_trash: driveFileIdsToDelete,
+            unaccepted_reg_numbers: Array.from(unacceptedRegSet),
+          },
+        }),
+        redirect: 'follow',
+      });
+    } catch (gasErr) {
+      console.warn('GAS openNewAcademicYear notice:', gasErr);
+    }
+
+    // Selalu sinkronkan state database bersih ke Google Sheets agar sinkron 100%
+    await forwardSyncAllToGas().catch(() => {});
+  }
+
+  // Siarkan mutasi realtime ke seluruh browser klien
+  broadcastServerDbChange('academic_year_rollover');
+
+  return {
+    success: true,
+    message: `Tahun pendaftaran baru ${effectiveNewYearLabel} berhasil dibuka. Seluruh ${unacceptedApps.length} pendaftar tidak lolos telah otomatis dihapus dari database, Google Drive, dan Google Sheets. Sebanyak ${acceptedApps.length} pendaftar yang lolos seleksi berhasil disimpan permanen sebagai arsip tahun ${oldYearLabel} dan dapat dibuka di menu arsip.`,
+    archived_accepted_count: acceptedApps.length,
+    purged_unaccepted_count: unacceptedApps.length,
+    deleted_drive_files_count: driveFileIdsToDelete.length,
+    settings: serverDb.settings,
+  };
+}
+
+app.post('/api/settings', async (req: Request, res: Response) => {
   try {
     const newSettings = req.body;
     if (newSettings && typeof newSettings === 'object') {
+      const oldYear = serverDb.settings?.application_year;
+      const incomingYear = newSettings.application_year;
+      const isNewYearRollover =
+        newSettings.open_new_academic_year === true ||
+        (incomingYear && oldYear && String(incomingYear).trim() !== String(oldYear).trim());
+
+      if (isNewYearRollover) {
+        const rolloverResult = await executeAcademicYearRollover(
+          incomingYear || oldYear || '2027',
+          newSettings.academic_year_label
+        );
+        return res.json(rolloverResult);
+      }
+
       serverDb.settings = {
         ...serverDb.settings,
         ...newSettings,
@@ -955,6 +1137,20 @@ app.post('/api/settings', (req: Request, res: Response) => {
     }
   } catch (err: any) {
     res.status(500).json({ success: false, message: err?.message || 'Gagal menyimpan settings.' });
+  }
+});
+
+// Dedicated Endpoint: Buka Tahun Pendaftaran Baru & Rollover Arsip Kelulusan
+app.post('/api/settings/open-new-academic-year', async (req: Request, res: Response) => {
+  try {
+    const { new_application_year, new_academic_year_label } = req.body;
+    const result = await executeAcademicYearRollover(new_application_year, new_academic_year_label);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      message: `Gagal membuka tahun ajaran baru: ${err?.message || 'Terjadi kesalahan sistem'}`,
+    });
   }
 });
 
@@ -1813,6 +2009,9 @@ app.post('/api/gas/upload-file', async (req: Request, res: Response) => {
             is_account: isAccount,
             account_name: req.body.account_name || student_name || 'Pengguna',
             account_id: req.body.account_id || doc.registration_number || '',
+            archive_mode: req.body.archive_mode || 'category',
+            use_category_folder: req.body.use_category_folder !== false,
+            school_id: req.body.school_id || doc.school_id || '',
           },
         };
 
@@ -2064,6 +2263,299 @@ app.get('/api/files/download', async (req: Request, res: Response) => {
 
   // Fallback 404
   res.status(404).json({ success: false, message: 'Berkas tidak ditemukan di penyimpanan server.' });
+});
+
+// 5b. Digital Archive Auto-Archiving System to Google Drive by Category (KK, Akta, Ijazah)
+app.post('/api/archives/auto-archive', async (req: Request, res: Response) => {
+  lastFileUploadTimestamp = Date.now();
+  const settings = serverDb.settings || {};
+  const gasUrl = (settings.gas_web_app_url && settings.gas_web_app_url.startsWith('http'))
+    ? settings.gas_web_app_url
+    : (req.body.gas_web_app_url || '');
+  const ssId = settings.spreadsheet_id || req.body.spreadsheet_id || '';
+  const driveId = settings.drive_root_folder_id || req.body.drive_root_folder_id || '';
+
+  const { school_id, category, force_all } = req.body;
+  const targetSchoolId = school_id || '';
+  const targetCategory = category ? normalizeDocType(category) : '';
+  const forceAll = Boolean(force_all);
+
+  try {
+    const apps = serverDb.applications || [];
+    const schoolApps = targetSchoolId ? apps.filter((a: any) => a.school_id === targetSchoolId) : apps;
+    const allowedRegs = new Set(schoolApps.map((a: any) => String(a.registration_number || '').trim()));
+
+    // Target school name
+    const schoolObj = (serverDb.schools || []).find((s: any) => s.school_id === targetSchoolId);
+    const schoolName = schoolObj?.school_name || 'Madrasah';
+
+    const allDocs = serverDb.documents || [];
+    const targetDocs = allDocs.filter((d: any) => {
+      const reg = String(d.registration_number || '').trim();
+      const belongsToSchool = allowedRegs.has(reg) || (!targetSchoolId && reg.startsWith('REG-'));
+      if (!belongsToSchool) return false;
+      if (targetCategory && targetCategory !== 'all') {
+        return normalizeDocType(d.document_type) === targetCategory;
+      }
+      return true;
+    });
+
+    const results: any[] = [];
+    let archivedCount = 0;
+    let alreadyArchivedCount = 0;
+    let failedCount = 0;
+
+    for (const doc of targetDocs) {
+      const reg = String(doc.registration_number || '').trim();
+      const normType = normalizeDocType(doc.document_type || '');
+      const studentProfile = serverDb.students ? serverDb.students[reg] : null;
+      const studentName = studentProfile?.name || doc.student_name || 'Calon Murid';
+
+      const hasValidDrive = doc.drive_file_id && doc.drive_file_id.length > 5 && doc.drive_file_id !== 'LOCAL_STORAGE';
+
+      if (hasValidDrive && !forceAll) {
+        alreadyArchivedCount++;
+        results.push({
+          document_id: doc.document_id,
+          registration_number: reg,
+          student_name: studentName,
+          document_type: normType,
+          file_name: doc.file_name,
+          status: 'already_archived',
+          drive_file_id: doc.drive_file_id,
+          drive_url: doc.drive_url,
+          message: 'Berkas telah terarsip di Google Drive.',
+        });
+        continue;
+      }
+
+      // Check for file content (base64 or local disk file)
+      let base64Data = doc.file_data_base64 || '';
+      let detectedMime = doc.mime_type || '';
+
+      if (!base64Data && doc.file_name && fs.existsSync(UPLOAD_DIR)) {
+        const filePath = path.join(UPLOAD_DIR, doc.file_name);
+        if (fs.existsSync(filePath)) {
+          try {
+            const buf = fs.readFileSync(filePath);
+            base64Data = buf.toString('base64');
+          } catch {}
+        }
+      }
+      if (!base64Data && doc.local_url && fs.existsSync(UPLOAD_DIR)) {
+        const baseName = path.basename(doc.local_url);
+        const filePath = path.join(UPLOAD_DIR, baseName);
+        if (fs.existsSync(filePath)) {
+          try {
+            const buf = fs.readFileSync(filePath);
+            base64Data = buf.toString('base64');
+          } catch {}
+        }
+      }
+
+      if (!base64Data) {
+        failedCount++;
+        results.push({
+          document_id: doc.document_id,
+          registration_number: reg,
+          student_name: studentName,
+          document_type: normType,
+          file_name: doc.file_name,
+          status: 'missing_data',
+          message: 'Konten berkas tidak ditemukan di server untuk diarsipkan.',
+        });
+        continue;
+      }
+
+      // Standardize filename
+      const standardFileName = doc.file_name || formatStandardFileName({
+        accountName: studentName,
+        registrationNumber: reg,
+        documentType: normType,
+        documentTitle: doc.document_title,
+        mimeType: detectedMime,
+      });
+
+      if (!gasUrl || !gasUrl.startsWith('http')) {
+        failedCount++;
+        results.push({
+          document_id: doc.document_id,
+          registration_number: reg,
+          student_name: studentName,
+          document_type: normType,
+          file_name: standardFileName,
+          status: 'no_gas_url',
+          message: 'URL Google Apps Script belum dikonfigurasi.',
+        });
+        continue;
+      }
+
+      try {
+        const uploadPayload = {
+          action: 'uploadDocument',
+          spreadsheet_id: ssId,
+          drive_root_folder_id: driveId,
+          data: {
+            registration_number: reg,
+            student_name: studentName,
+            school_name: schoolName,
+            school_id: targetSchoolId,
+            application_year: settings.academic_year_label || settings.application_year || '2026/2027',
+            document_type: normType,
+            document_title: doc.document_title || normType,
+            file_name: standardFileName,
+            file_size_kb: doc.file_size_kb || 0,
+            file_size_bytes: doc.file_size_bytes || 0,
+            mime_type: doc.mime_type || detectedMime,
+            base64_data: base64Data,
+            old_drive_file_id: doc.drive_file_id || '',
+            archive_mode: 'category',
+            use_category_folder: true,
+          },
+        };
+
+        const response = await fetch(gasUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(uploadPayload),
+          redirect: 'follow',
+        });
+
+        const resText = await response.text();
+        let gasResult: any = null;
+        try {
+          gasResult = JSON.parse(resText);
+        } catch {}
+
+        if (gasResult && gasResult.success) {
+          const fInfo = gasResult.file || gasResult.data || {};
+          const driveFileId = fInfo.drive_file_id || '';
+          const isPdf = (detectedMime && detectedMime.includes('pdf')) || standardFileName.toLowerCase().endsWith('.pdf');
+          const realDriveViewUrl = driveFileId ? `https://drive.google.com/file/d/${driveFileId}/view?usp=drivesdk` : '';
+          const directThumbUrl = (driveFileId && !isPdf) ? `https://lh3.googleusercontent.com/d/${driveFileId}` : '';
+          const effectiveDriveUrl = (driveFileId && !isPdf) ? directThumbUrl : (realDriveViewUrl || fInfo.drive_url || doc.local_url);
+          const effectiveViewUrl = isPdf ? (realDriveViewUrl || doc.local_url) : (directThumbUrl || effectiveDriveUrl || doc.local_url);
+
+          doc.drive_file_id = driveFileId;
+          doc.drive_url = effectiveDriveUrl;
+          doc.view_url = effectiveViewUrl;
+          doc.thumbnail_url = directThumbUrl || effectiveDriveUrl;
+          doc.file_name = standardFileName;
+
+          archivedCount++;
+          results.push({
+            document_id: doc.document_id,
+            registration_number: reg,
+            student_name: studentName,
+            document_type: normType,
+            file_name: standardFileName,
+            status: 'success',
+            drive_file_id: driveFileId,
+            drive_url: effectiveDriveUrl,
+            message: 'Berhasil diarsipkan ke Google Drive dalam folder kategori terstruktur.',
+          });
+        } else {
+          failedCount++;
+          results.push({
+            document_id: doc.document_id,
+            registration_number: reg,
+            student_name: studentName,
+            document_type: normType,
+            file_name: standardFileName,
+            status: 'failed',
+            message: gasResult?.message || 'Gagal mengunggah berkas ke Google Drive.',
+          });
+        }
+      } catch (uploadErr: any) {
+        failedCount++;
+        results.push({
+          document_id: doc.document_id,
+          registration_number: reg,
+          student_name: studentName,
+          document_type: normType,
+          file_name: standardFileName,
+          status: 'error',
+          message: uploadErr?.message || 'Terjadi kesalahan jaringan saat mengarsipkan.',
+        });
+      }
+    }
+
+    if (archivedCount > 0) {
+      persistServerDb();
+      triggerServerGasSyncDebounced(1500);
+    }
+
+    res.json({
+      success: true,
+      total: targetDocs.length,
+      archived: archivedCount,
+      already_archived: alreadyArchivedCount,
+      failed: failedCount,
+      results,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: `Gagal proses pengarsipan: ${err?.message || 'Error'}` });
+  }
+});
+
+// Update document verification status and notes directly from Digital Archive Management
+app.post('/api/archives/verify-doc', async (req: Request, res: Response) => {
+  const { document_id, verification_status, notes } = req.body;
+  if (!document_id) {
+    return res.status(400).json({ success: false, message: 'Document ID diperlukan.' });
+  }
+
+  const docs = serverDb.documents || [];
+  const targetDoc = docs.find((d: any) => d.document_id === document_id);
+  if (!targetDoc) {
+    return res.status(404).json({ success: false, message: 'Dokumen arsip tidak ditemukan.' });
+  }
+
+  if (verification_status) {
+    targetDoc.verification_status = verification_status;
+  }
+  if (notes !== undefined) {
+    targetDoc.notes = notes;
+  }
+
+  persistServerDb();
+  triggerServerGasSyncDebounced(1500);
+
+  res.json({
+    success: true,
+    message: 'Status verifikasi dokumen arsip berhasil diperbarui.',
+    document: targetDoc,
+  });
+});
+
+// Delete an archive document
+app.post('/api/archives/delete-doc', async (req: Request, res: Response) => {
+  const { document_id } = req.body;
+  if (!document_id) {
+    return res.status(400).json({ success: false, message: 'Document ID diperlukan.' });
+  }
+
+  const docs = serverDb.documents || [];
+  const index = docs.findIndex((d: any) => d.document_id === document_id);
+  if (index < 0) {
+    return res.status(404).json({ success: false, message: 'Dokumen tidak ditemukan.' });
+  }
+
+  const removed = docs.splice(index, 1)[0];
+  if (removed && removed.file_name && fs.existsSync(UPLOAD_DIR)) {
+    try {
+      const p = path.join(UPLOAD_DIR, removed.file_name);
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+    } catch {}
+  }
+
+  persistServerDb();
+  triggerServerGasSyncDebounced(1500);
+
+  res.json({
+    success: true,
+    message: 'Dokumen arsip berhasil dihapus.',
+  });
 });
 
 // 5b. Upload Branding Logo (Madrasah / App Logo) to Google Drive & Server DB

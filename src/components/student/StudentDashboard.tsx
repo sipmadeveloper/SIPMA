@@ -305,10 +305,7 @@ export const StudentDashboard: React.FC<Props> = ({
             </button>
 
             <div className="min-w-0">
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-[11px] font-extrabold uppercase tracking-wider text-emerald-300">
-                Dashboard Calon Peserta Didik
-              </div>
-              <h1 className="text-lg sm:text-2xl font-black tracking-tight mt-1 truncate text-white">
+              <h1 className="text-lg sm:text-2xl font-black tracking-tight truncate text-white">
                 Selamat Datang, {student.name}!
               </h1>
               <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mt-1.5 text-xs text-emerald-100/90">

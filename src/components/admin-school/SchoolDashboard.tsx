@@ -15,6 +15,7 @@ import {
   TrendingUp,
   User,
   UserCheck,
+  Archive,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -42,6 +43,7 @@ import { ApplicantList } from './ApplicantList';
 import { SelectionManagement } from './SelectionManagement';
 import { SchoolSettings } from './SchoolSettings';
 import { SchoolOperatorManagement } from './SchoolOperatorManagement';
+import { DigitalArchiveManagement } from './DigitalArchiveManagement';
 import { ApplicantDistributionMap } from '../map/ApplicantDistributionMap';
 import { formatDistanceIndonesian } from '../../utils/geo';
 import { storageService } from '../../services/storageService';
@@ -177,80 +179,24 @@ export const SchoolDashboard: React.FC<Props> = ({
     return storageService.getSchoolOperators(activeSchool.school_id);
   }, [activeSchool.school_id]);
 
+  // Count of documents belonging to students registered for this school
+  const schoolDocsCount = useMemo(() => {
+    const regSet = new Set(schoolApps.map((a) => a.registration_number));
+    return documents.filter((d) => regSet.has(d.registration_number)).length;
+  }, [schoolApps, documents]);
+
   const isOperator = currentUser?.role === 'operator_sekolah';
 
   return (
     <div className="space-y-6" id="sipma-school-dashboard">
       {/* Top Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-teal-950 text-white p-6 rounded-2xl shadow-md border border-emerald-800/40 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div>
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-[11px] font-extrabold uppercase tracking-wider text-emerald-300">
-            {isOperator ? 'Panel Operator Madrasah' : 'Panel Administrator Madrasah'}
-          </div>
-          <h1 className="text-xl sm:text-2xl font-black tracking-tight mt-1 text-white">
-            {isOperator
-              ? `Selamat Datang, Operator ${activeSchool.school_name}`
-              : `Selamat Datang, Admin ${activeSchool.school_name}`}
-          </h1>
-          <p className="text-xs text-emerald-100/80 mt-1 max-w-xl">
-            {isOperator
-              ? 'Bantu verifikasi berkas persyaratan pendaftar, keabsahan dokumen, dan proses pemeringkatan seleksi calon peserta didik baru.'
-              : 'Kelola data calon murid baru, akun tim operator madrasah, verifikasi berkas persyaratan, perhitungan zonasi koordinat, dan proses seleksi.'}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {!isOperator && (
-            <button
-              type="button"
-              onClick={() => setActiveTab('operators')}
-              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm ${
-                activeTab === 'operators'
-                  ? 'bg-teal-600 text-white ring-2 ring-teal-400/40'
-                  : 'bg-teal-800/70 hover:bg-teal-700 text-white border border-teal-500/40'
-              }`}
-              title="Kelola Akun Operator Madrasah"
-            >
-              <UserCheck className="w-3.5 h-3.5 text-teal-200" />
-              <span>Tim Operator ({operators.length})</span>
-            </button>
-          )}
-
-          {(onExportExcel || onExportCsv) && (
-            <button
-              type="button"
-              onClick={onExportExcel || onExportCsv}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600/30 hover:bg-emerald-600/50 text-white border border-emerald-400/30 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs"
-              title="Unduh seluruh rekap pendaftar madrasah ini dalam format Excel (.xlsx)"
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-300" />
-              <span>Export Excel (.xlsx)</span>
-            </button>
-          )}
-
-          {onOpenProfile && (
-            <button
-              type="button"
-              onClick={onOpenProfile}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-bold transition-all cursor-pointer"
-              title={isOperator ? 'Profil Operator Madrasah' : 'Profil Admin Madrasah'}
-            >
-              <User className="w-3.5 h-3.5 text-emerald-300" />
-              <span>{isOperator ? 'Profil Operator' : 'Profil Admin'}</span>
-            </button>
-          )}
-
-          {!isOperator && (
-            <button
-              type="button"
-              onClick={() => setActiveTab('settings')}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm"
-            >
-              <Settings className="w-3.5 h-3.5" />
-              <span>Pengaturan Madrasah</span>
-            </button>
-          )}
-        </div>
+      <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-teal-950 text-white p-6 rounded-2xl shadow-md border border-emerald-800/40">
+        <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
+          Selamat Datang, {activeSchool.school_name}
+        </h1>
+        <p className="text-xs text-emerald-100/80 mt-1 max-w-2xl leading-relaxed">
+          Kelola data calon murid baru, verifikasi berkas persyaratan, perhitungan zonasi koordinat, dan proses seleksi penerimaan murid.
+        </p>
       </div>
 
       {/* Navigation Sub-Tabs */}
@@ -259,6 +205,7 @@ export const SchoolDashboard: React.FC<Props> = ({
           { id: 'overview', label: 'Ringkasan & Statistik', icon: TrendingUp },
           { id: 'applicants', label: `Data Pendaftar (${schoolApps.length})`, icon: Users },
           { id: 'selection', label: 'Proses Seleksi & Kelulusan', icon: Award },
+          { id: 'archives', label: `Arsip Digital (${schoolDocsCount})`, icon: Archive },
           { id: 'operators', label: `Tim Operator (${operators.length})`, icon: UserCheck },
           { id: 'map', label: 'Peta Sebaran Murid', icon: MapPin },
           ...(!isOperator
@@ -435,6 +382,19 @@ export const SchoolDashboard: React.FC<Props> = ({
           schoolOrigins={schoolOrigins}
           onUpdateStatus={onUpdateSelection}
           onBulkUpdate={onBulkSelection}
+        />
+      )}
+
+      {/* ================= TAB: DIGITAL ARCHIVES ================= */}
+      {activeTab === 'archives' && (
+        <DigitalArchiveManagement
+          school={activeSchool}
+          applications={applications}
+          students={students}
+          parents={parents}
+          documents={documents}
+          currentUser={currentUser}
+          onRefreshData={onRefreshData}
         />
       )}
 

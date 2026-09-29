@@ -148,6 +148,8 @@ export interface DocumentItem {
   upload_time: string;
   verification_status: VerificationStatus;
   notes?: string;
+  academic_year?: string;
+  is_archived?: boolean;
 }
 
 export interface Application {

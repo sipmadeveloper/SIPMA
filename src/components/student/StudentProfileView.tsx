@@ -55,7 +55,7 @@ export const StudentProfileView: React.FC<Props> = ({
   onRefresh,
   onBack,
 }) => {
-  const { showAlert } = useFeedback();
+  const { showAlert, showLoading, hideLoading } = useFeedback();
   const [activeTab, setActiveTab] = useState<'profile' | 'password'>(initialTab);
   const [student, setStudent] = useState<StudentProfile>({ ...initialStudent });
   const [photoUrl, setPhotoUrl] = useState<string>(student.photo_url || currentUser?.photo_url || '');

@@ -141,57 +141,63 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
 
     showLoading(
       editingOperator ? 'Menyimpan data operator madrasah...' : 'Membuat akun operator baru...',
-      'Menyimpan data akun ke database server dan cloud...',
+      'Menyimpan data akun ke database server secara realtime...',
       'save'
     );
 
-    const res = storageService.saveSchoolOperatorUser(
-      {
-        user_id: editingOperator ? editingOperator.user_id : undefined,
-        name: formData.name,
-        email: formData.email,
-        phone: formData.phone,
-        school_id: school.school_id,
-        nip: formData.nip,
-        position: formData.position,
-        password: formData.password || undefined,
-        status: formData.status,
-      },
-      currentUser?.name || 'Admin Madrasah'
-    );
+    setTimeout(async () => {
+      const res = storageService.saveSchoolOperatorUser(
+        {
+          user_id: editingOperator ? editingOperator.user_id : undefined,
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          school_id: school.school_id,
+          nip: formData.nip,
+          position: formData.position,
+          password: formData.password || undefined,
+          status: formData.status,
+        },
+        currentUser?.name || 'Admin Madrasah'
+      );
 
-    hideLoading();
+      await storageService.pushToServerNow();
+      hideLoading();
 
-    if (res.success && res.user) {
-      setIsAddEditModalOpen(false);
-      if (onRefreshData) onRefreshData();
+      if (res.success && res.user) {
+        setIsAddEditModalOpen(false);
+        if (onRefreshData) onRefreshData();
 
-      if (!editingOperator) {
-        // Show credentials ready dialog with copyable login info
-        setCredentialsModal({
-          operator: res.user,
-          password: res.generatedPassword,
-          isNew: true,
-        });
+        if (!editingOperator) {
+          // Show credentials ready dialog with copyable login info
+          setCredentialsModal({
+            operator: res.user,
+            password: res.generatedPassword,
+            isNew: true,
+          });
+        } else {
+          showToast(res.message, 'success', 'Berhasil Disimpan');
+        }
       } else {
-        showToast(res.message, 'success', 'Berhasil Disimpan');
+        showAlert('Gagal Menyimpan Akun', res.message, 'error');
       }
-    } else {
-      showAlert('Gagal Menyimpan Akun', res.message, 'error');
-    }
+    }, 400);
   };
 
   // Toggle status
   const handleToggleStatus = (operator: UserType) => {
-    showLoading('Memperbarui status operator...', 'Menyimpan status aktif akun di database...', 'save');
-    const res = storageService.toggleUserStatus(operator.user_id);
-    hideLoading();
-    if (res.success) {
-      showToast(res.message, 'info', 'Status Operator Diperbarui');
-      if (onRefreshData) onRefreshData();
-    } else {
-      showAlert('Gagal Mengubah Status', res.message, 'error');
-    }
+    showLoading('Memperbarui status operator...', 'Menyimpan status aktif akun di database server realtime...', 'save');
+    setTimeout(async () => {
+      const res = storageService.toggleUserStatus(operator.user_id);
+      await storageService.pushToServerNow();
+      hideLoading();
+      if (res.success) {
+        showToast(res.message, 'info', 'Status Operator Diperbarui');
+        if (onRefreshData) onRefreshData();
+      } else {
+        showAlert('Gagal Mengubah Status', res.message, 'error');
+      }
+    }, 350);
   };
 
   // Perform Reset Password
@@ -199,28 +205,31 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
     e.preventDefault();
     if (!resetModalOperator) return;
 
-    showLoading('Mereset kata sandi operator...', 'Menyimpan kredensial baru ke database...', 'save');
+    showLoading('Mereset kata sandi operator...', 'Menyimpan kredensial baru ke database server realtime...', 'save');
 
-    const res = storageService.resetSchoolOperatorPassword(
-      resetModalOperator.user_id,
-      customNewPass.trim() || undefined,
-      currentUser?.name || 'Admin Madrasah'
-    );
+    setTimeout(async () => {
+      const res = storageService.resetSchoolOperatorPassword(
+        resetModalOperator.user_id,
+        customNewPass.trim() || undefined,
+        currentUser?.name || 'Admin Madrasah'
+      );
 
-    hideLoading();
+      await storageService.pushToServerNow();
+      hideLoading();
 
-    if (res.success && res.user && res.newPassword) {
-      setCredentialsModal({
-        operator: res.user,
-        password: res.newPassword,
-        isNew: false,
-      });
-      setResetModalOperator(null);
-      setCustomNewPass('');
-      if (onRefreshData) onRefreshData();
-    } else {
-      showAlert('Gagal Mereset Kata Sandi', res.message, 'error');
-    }
+      if (res.success && res.user && res.newPassword) {
+        setCredentialsModal({
+          operator: res.user,
+          password: res.newPassword,
+          isNew: false,
+        });
+        setResetModalOperator(null);
+        setCustomNewPass('');
+        if (onRefreshData) onRefreshData();
+      } else {
+        showAlert('Gagal Mereset Kata Sandi', res.message, 'error');
+      }
+    }, 400);
   };
 
   // Delete operator
@@ -229,15 +238,18 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
       'Hapus Akun Operator',
       `Apakah Anda yakin ingin menghapus akun operator "${operator.name}" (${operator.email})? Operator tidak akan dapat lagi masuk untuk membantu verifikasi dan seleksi pendaftar.`,
       () => {
-        showLoading('Menghapus akun operator...', 'Menghapus data akun dari database...', 'delete');
-        const res = storageService.deleteUserAccount(operator.user_id);
-        hideLoading();
-        if (res.success) {
-          showToast(res.message, 'success', 'Akun Operator Dihapus');
-          if (onRefreshData) onRefreshData();
-        } else {
-          showAlert('Gagal Menghapus Akun', res.message, 'error');
-        }
+        showLoading('Menghapus akun operator...', 'Menghapus data akun dan akses dari database secara realtime...', 'delete');
+        setTimeout(async () => {
+          const res = storageService.deleteUserAccount(operator.user_id);
+          await storageService.pushToServerNow();
+          hideLoading();
+          if (res.success) {
+            showToast(res.message, 'success', 'Akun Operator Dihapus');
+            if (onRefreshData) onRefreshData();
+          } else {
+            showAlert('Gagal Menghapus Akun', res.message, 'error');
+          }
+        }, 450);
       },
       {
         type: 'warning',
