@@ -187,49 +187,37 @@ export const SchoolDashboard: React.FC<Props> = ({
 
   const isOperator = currentUser?.role === 'operator_sekolah';
 
+  const currentTabInfo = useMemo(() => {
+    switch (activeTab) {
+      case 'applicants':
+        return { label: 'Data Pendaftar', icon: Users, count: schoolApps.length };
+      case 'selection':
+        return { label: 'Proses Seleksi & Kelulusan', icon: Award };
+      case 'archives':
+        return { label: 'Arsip Digital Dokumen', icon: Archive, count: schoolDocsCount };
+      case 'operators':
+        return { label: 'Tim Operator Madrasah', icon: UserCheck, count: operators.length };
+      case 'map':
+        return { label: 'Peta Sebaran Murid', icon: MapPin };
+      case 'settings':
+        return { label: 'Pengaturan & Zonasi', icon: Settings };
+      default:
+        return { label: 'Ringkasan & Statistik', icon: TrendingUp };
+    }
+  }, [activeTab, schoolApps.length, schoolDocsCount, operators.length]);
+
+  const CurrentTabIcon = currentTabInfo.icon;
+
   return (
     <div className="space-y-6" id="sipma-school-dashboard">
       {/* Top Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-teal-950 text-white p-6 rounded-2xl shadow-md border border-emerald-800/40">
-        <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
+      <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-teal-950 text-white p-4 sm:p-6 rounded-2xl shadow-md border border-emerald-800/40 w-full overflow-hidden">
+        <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white break-words">
           Selamat Datang, {activeSchool.school_name}
         </h1>
-        <p className="text-xs text-emerald-100/80 mt-1 max-w-2xl leading-relaxed">
+        <p className="text-xs text-emerald-100/80 mt-1 max-w-2xl leading-relaxed break-words">
           Kelola data calon murid baru, verifikasi berkas persyaratan, perhitungan zonasi koordinat, dan proses seleksi penerimaan murid.
         </p>
-      </div>
-
-      {/* Navigation Sub-Tabs */}
-      <div className="flex bg-slate-200/70 backdrop-blur-xs p-1.5 rounded-2xl border border-slate-300/80 shadow-xs overflow-x-auto text-xs font-bold gap-1">
-        {[
-          { id: 'overview', label: 'Ringkasan & Statistik', icon: TrendingUp },
-          { id: 'applicants', label: `Data Pendaftar (${schoolApps.length})`, icon: Users },
-          { id: 'selection', label: 'Proses Seleksi & Kelulusan', icon: Award },
-          { id: 'archives', label: `Arsip Digital (${schoolDocsCount})`, icon: Archive },
-          { id: 'operators', label: `Tim Operator (${operators.length})`, icon: UserCheck },
-          { id: 'map', label: 'Peta Sebaran Murid', icon: MapPin },
-          ...(!isOperator
-            ? [{ id: 'settings', label: 'Pengaturan Madrasah & Lokasi', icon: Settings }]
-            : []),
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl whitespace-nowrap transition-all font-bold ${
-                isActive
-                  ? 'bg-emerald-900 text-white shadow-sm ring-1 ring-emerald-800'
-                  : 'text-slate-700 hover:text-slate-950 hover:bg-white/80'
-              }`}
-            >
-              <Icon className={`w-4 h-4 ${isActive ? 'text-emerald-300' : 'text-slate-500'}`} />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
       </div>
 
       {/* ================= TAB 1: OVERVIEW ================= */}

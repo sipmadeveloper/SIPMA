@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   User,
-  LogOut,
   Bell,
   Building2,
   ShieldCheck,
@@ -19,7 +18,6 @@ interface Props {
   currentUser: UserType | null;
   currentSchool?: School | null;
   settings?: SystemSettings | null;
-  onLogout: () => void;
   onNavigateHome: () => void;
   onOpenProfile?: () => void;
   onOpenQRScanner?: () => void;
@@ -33,7 +31,6 @@ export const Navbar: React.FC<Props> = ({
   currentUser,
   currentSchool,
   settings,
-  onLogout,
   onNavigateHome,
   onOpenProfile,
   onOpenQRScanner,
@@ -79,32 +76,32 @@ export const Navbar: React.FC<Props> = ({
 
   return (
     <header className="bg-white/95 backdrop-blur-md border-b border-emerald-100/80 sticky top-0 z-40 shadow-xs">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Brand - Dynamic App Logo & Name across all pages */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             type="button"
             onClick={onNavigateHome}
-            className="flex items-center gap-2.5 text-left group cursor-pointer"
+            className="flex items-center gap-2.5 text-left group cursor-pointer min-w-0"
           >
             {appLogo ? (
               <img
                 src={normalizeImageUrl(appLogo)}
                 alt={appName}
-                className="w-9 h-9 object-contain rounded-xl border border-emerald-200/80 shadow-xs group-hover:scale-105 transition-transform bg-white p-0.5"
+                className="w-9 h-9 object-contain rounded-xl border border-emerald-200/80 shadow-xs group-hover:scale-105 transition-transform bg-white p-0.5 shrink-0"
                 referrerPolicy="no-referrer"
                 onError={(e) => handleImageError(e)}
               />
             ) : (
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-800 to-teal-600 text-white flex items-center justify-center font-black text-lg shadow-xs group-hover:scale-105 transition-transform">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-800 to-teal-600 text-white flex items-center justify-center font-black text-lg shadow-xs group-hover:scale-105 transition-transform shrink-0">
                 {appName.charAt(0) || 'S'}
               </div>
             )}
-            <div>
-              <div className="font-black text-base tracking-tight text-slate-900 leading-none group-hover:text-emerald-800 transition-colors">
+            <div className="min-w-0">
+              <div className="font-black text-sm sm:text-base tracking-tight text-slate-900 leading-none group-hover:text-emerald-800 transition-colors truncate max-w-[140px] sm:max-w-none">
                 {appName}
               </div>
-              <div className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider">
+              <div className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider truncate max-w-[140px] sm:max-w-none">
                 {appTagline}
               </div>
             </div>
@@ -112,17 +109,17 @@ export const Navbar: React.FC<Props> = ({
 
           {/* Active Role Pill */}
           {currentUser && (
-            <div className="hidden sm:flex items-center gap-1.5 ml-4 pl-4 border-l border-slate-200">
+            <div className="hidden md:flex items-center gap-1.5 ml-3 pl-3 border-l border-slate-200">
               <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-2xs ${roleInfo.bg}`}>
-                <RoleIcon className="w-3.5 h-3.5" />
-                <span className="truncate max-w-[200px]">{roleInfo.label}</span>
+                <RoleIcon className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate max-w-[180px]">{roleInfo.label}</span>
               </span>
             </div>
           )}
         </div>
 
         {/* User Right Menu */}
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {currentUser ? (
             <div className="flex items-center gap-2">
               {/* QR Scanner Quick Button for Admin & Operators */}
@@ -130,10 +127,10 @@ export const Navbar: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={onOpenQRScanner}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/80 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer group"
+                  className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/80 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer group"
                   title="Pindai QR Bukti Pendaftaran untuk verifikasi berkas otomatis"
                 >
-                  <QrCode className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform" />
+                  <QrCode className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform shrink-0" />
                   <span className="hidden md:inline">Pindai QR</span>
                 </button>
               )}
@@ -148,49 +145,41 @@ export const Navbar: React.FC<Props> = ({
                 />
               )}
 
+              {/* Profile Image & User Info - Untouched & Uncluttered */}
               <button
                 type="button"
                 onClick={onOpenProfile}
-                className="flex items-center gap-2.5 p-1 sm:px-2 sm:py-1 rounded-xl hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-all text-left cursor-pointer group"
+                className="flex items-center gap-2 p-1 sm:px-2.5 sm:py-1.5 rounded-xl hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-all text-left cursor-pointer group shrink-0"
                 title="Buka Pengaturan Profil & Kata Sandi Akun"
               >
                 {currentUser.photo_url ? (
                   <img
                     src={normalizeImageUrl(currentUser.photo_url)}
                     alt={currentUser.name}
-                    className="w-8 h-8 rounded-xl object-cover border border-emerald-300 shadow-xs group-hover:border-emerald-500"
+                    className="w-8 h-8 rounded-xl object-cover border border-emerald-300 shadow-xs group-hover:border-emerald-500 shrink-0"
                     referrerPolicy="no-referrer"
                     onError={(e) => handleImageError(e)}
                   />
                 ) : (
-                  <div className="w-8 h-8 rounded-xl bg-slate-100 group-hover:bg-emerald-50 border border-slate-200 group-hover:border-emerald-200 flex items-center justify-center text-slate-600 group-hover:text-emerald-700 transition-colors">
+                  <div className="w-8 h-8 rounded-xl bg-slate-100 group-hover:bg-emerald-50 border border-slate-200 group-hover:border-emerald-200 flex items-center justify-center text-slate-600 group-hover:text-emerald-700 transition-colors shrink-0">
                     <User className="w-4 h-4" />
                   </div>
                 )}
 
-                <div className="text-right hidden sm:block">
-                  <div className="text-xs font-bold text-slate-900 group-hover:text-emerald-900 transition-colors">
+                <div className="text-right hidden sm:block min-w-0">
+                  <div className="text-xs font-bold text-slate-900 group-hover:text-emerald-900 transition-colors truncate max-w-[120px] md:max-w-[170px]">
                     {currentUser.name}
                   </div>
-                  <div className="text-[11px] text-slate-400 group-hover:text-slate-600 font-mono">
+                  <div className="text-[10px] text-slate-400 group-hover:text-slate-600 font-mono truncate max-w-[120px] md:max-w-[170px]">
                     {currentUser.role === 'admin_pusat'
                       ? 'Admin Pusat'
                       : currentUser.role === 'admin_sekolah'
                       ? 'Panitia PPDB'
                       : currentUser.role === 'operator_sekolah'
                       ? 'Operator Madrasah'
-                      : 'Calon Murid'} &bull; Profil
+                      : 'Calon Murid'}
                   </div>
                 </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={onLogout}
-                className="p-2 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
-                title="Keluar (Logout)"
-              >
-                <LogOut className="w-4 h-4" />
               </button>
             </div>
           ) : (

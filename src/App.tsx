@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   User as UserType,
   StudentProfile,
@@ -41,9 +41,12 @@ import { exportApplicantsToExcel } from './utils/excelExport';
 import { updateAppFavicon } from './utils/favicon';
 import { preloadImages } from './utils/imageUrl';
 import { useFeedback } from './context/FeedbackContext';
+import { SidebarMenu, SidebarStats } from './components/layout/SidebarMenu';
 import {
   AppRoute,
   CentralTab,
+  SchoolTab,
+  StudentTab,
   getInitialRoute,
   hashToRoute,
   navigateToRoute,
@@ -170,6 +173,28 @@ export default function App() {
   const [applicantNotificationQueue, setApplicantNotificationQueue] = useState<NewApplicantItem[]>([]);
   const [applicantNotificationHistory, setApplicantNotificationHistory] = useState<NewApplicantItem[]>([]);
   const [highlightApplicantRegNumber, setHighlightApplicantRegNumber] = useState<string | null>(null);
+
+  // Left Sidebar Toggle Menu State for All Accounts
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('sipma_sidebar_open');
+      if (saved !== null) {
+        return saved === 'true';
+      }
+      return window.innerWidth >= 1024;
+    }
+    return true;
+  });
+
+  const handleToggleSidebar = useCallback(() => {
+    setIsSidebarOpen((prev) => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('sipma_sidebar_open', String(next));
+      }
+      return next;
+    });
+  }, []);
 
   // Set of known registration numbers to avoid false notifications on initial mount
   const knownRegNumbersRef = useRef<Set<string>>(new Set());
@@ -626,6 +651,51 @@ export default function App() {
     schools[0] ||
     storageService.getSchools()[0];
 
+  const currentActiveTab = useMemo(() => {
+    if (currentUser?.role === 'admin_pusat') {
+      return currentRoute.centralTab || 'overview';
+    }
+    if (currentUser?.role === 'admin_sekolah' || currentUser?.role === 'operator_sekolah') {
+      return currentRoute.schoolTab || 'overview';
+    }
+    return currentRoute.studentTab || 'overview';
+  }, [currentUser?.role, currentRoute]);
+
+  const handleSelectTab = useCallback(
+    (tabId: string) => {
+      if (currentUser?.role === 'admin_pusat') {
+        navigate({ centralTab: tabId as CentralTab });
+      } else if (currentUser?.role === 'admin_sekolah' || currentUser?.role === 'operator_sekolah') {
+        navigate({ schoolTab: tabId as SchoolTab });
+      } else if (currentUser?.role === 'calon_murid') {
+        navigate({ studentTab: tabId as StudentTab });
+      }
+    },
+    [currentUser?.role, navigate]
+  );
+
+  const sidebarStats: SidebarStats = useMemo(() => {
+    const currentSchoolId = currentSchool?.school_id || currentUser?.school_id;
+    const schoolApps = applications.filter((a) => a.school_id === currentSchoolId);
+    const schoolDocs = documents.filter((d) => {
+      const app = applications.find((a) => a.registration_number === d.registration_number);
+      return app?.school_id === currentSchoolId;
+    });
+    const allUsers = storageService.getUsers();
+    const schoolOperators = allUsers.filter(
+      (u) => u.school_id === currentSchoolId && (u.role === 'operator_sekolah' || u.role === 'admin_sekolah')
+    );
+
+    return {
+      totalSchools: schools.length,
+      totalApps: applications.length,
+      totalAuditLogs: auditLogs.length,
+      schoolAppsCount: schoolApps.length,
+      schoolDocsCount: schoolDocs.length,
+      operatorsCount: schoolOperators.length,
+    };
+  }, [schools.length, applications, documents, auditLogs.length, currentSchool?.school_id, currentUser?.school_id]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-100 via-emerald-50/25 to-teal-50/30 flex flex-col font-sans selection:bg-emerald-600 selection:text-white text-slate-800">
       {/* App Splash Screen on initial boot / sync */}
@@ -650,7 +720,6 @@ export default function App() {
           currentUser={currentUser}
           currentSchool={currentSchool}
           settings={settings}
-          onLogout={handleLogout}
           onNavigateHome={() => updateViewMode(currentUser ? 'app' : 'landing')}
           onOpenProfile={() => {
             setProfileModalTab('profile');
@@ -701,134 +770,157 @@ export default function App() {
 
         {/* ================= 4. AUTHENTICATED APP PORTAL ================= */}
         {viewMode === 'app' && currentUser && (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            {/* Calon Murid Dashboard */}
-            {currentUser.role === 'calon_murid' && (
-              (() => {
-                const regNum = currentUser.registration_number || '';
-                const student: StudentProfile = (regNum && students[regNum]) ? students[regNum] : {
-                  student_id: '',
-                  user_id: currentUser.user_id,
-                  registration_number: regNum,
-                  nik: '',
-                  nisn: '',
-                  name: currentUser.name,
-                  birth_place: '',
-                  birth_date: '',
-                  gender: 'L',
-                  religion: 'Islam',
-                  family_card_number: '',
-                  child_order: 1,
-                  total_siblings: 0,
-                  family_status: 'Anak Kandung',
-                  phone: currentUser.phone || '',
-                  email: currentUser.email,
-                };
-                const app: Application = (regNum && applications.find((a) => a.registration_number === regNum)) || {
-                  application_id: '',
-                  registration_number: regNum,
-                  user_id: currentUser.user_id,
-                  student_id: student.student_id,
-                  school_id: currentUser.school_id || schools[0]?.school_id || '',
-                  admission_year: String(settings.application_year || '2027'),
-                  pathway: 'zonasi',
-                  distance_km: 0,
-                  max_distance_km: 5.0,
-                  zoning_status: 'memenuhi',
-                  verification_status: 'menunggu',
-                  selection_status: 'menunggu',
-                  final_status: 'draft',
-                  step_completed: 1,
-                  is_locked: false,
-                  latitude: schools[0]?.latitude || -6.964,
-                  longitude: schools[0]?.longitude || 109.056,
-                  created_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString(),
-                };
-                const parent = parents[regNum];
-                const schoolOrigin = schoolOrigins[regNum];
-                const address = addresses[regNum];
-                const school =
-                  schools.find((s) => s.school_id === app.school_id) ||
-                  schools[0] ||
-                  storageService.getSchools()[0];
+          <div className="flex min-h-[calc(100vh-4rem)] bg-slate-50/60 relative w-full overflow-x-hidden">
+            {/* Left Collapsible Toggle Sidebar for all accounts */}
+            <SidebarMenu
+              isOpen={isSidebarOpen}
+              onClose={() => setIsSidebarOpen(false)}
+              onToggle={handleToggleSidebar}
+              currentUser={currentUser}
+              currentSchool={currentSchool}
+              settings={settings}
+              activeTab={currentActiveTab}
+              onSelectTab={handleSelectTab}
+              stats={sidebarStats}
+              onLogout={handleLogout}
+              onOpenProfile={() => {
+                setProfileModalTab('profile');
+                setIsProfileModalOpen(true);
+              }}
+            />
 
-                return (
-                  <StudentDashboard
-                    student={student}
-                    application={app}
-                    parent={parent}
-                    schoolOrigin={schoolOrigin}
-                    address={address}
-                    school={school}
-                    announcements={announcements}
-                    onRefresh={refreshData}
-                    activeTab={currentRoute.studentTab || 'overview'}
-                    onTabChange={(tab) => navigate({ studentTab: tab })}
+            {/* Main Content Workspace */}
+            <div className="flex-1 min-w-0 transition-all duration-300 w-full overflow-x-hidden">
+              <div className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 py-4 sm:py-6 w-full">
+                {/* Calon Murid Dashboard */}
+                {currentUser.role === 'calon_murid' && (
+                  (() => {
+                    const regNum = currentUser.registration_number || '';
+                    const student: StudentProfile = (regNum && students[regNum]) ? students[regNum] : {
+                      student_id: '',
+                      user_id: currentUser.user_id,
+                      registration_number: regNum,
+                      nik: '',
+                      nisn: '',
+                      name: currentUser.name,
+                      birth_place: '',
+                      birth_date: '',
+                      gender: 'L',
+                      religion: 'Islam',
+                      family_card_number: '',
+                      child_order: 1,
+                      total_siblings: 0,
+                      family_status: 'Anak Kandung',
+                      phone: currentUser.phone || '',
+                      email: currentUser.email,
+                    };
+                    const app: Application = (regNum && applications.find((a) => a.registration_number === regNum)) || {
+                      application_id: '',
+                      registration_number: regNum,
+                      user_id: currentUser.user_id,
+                      student_id: student.student_id,
+                      school_id: currentUser.school_id || schools[0]?.school_id || '',
+                      admission_year: String(settings.application_year || '2027'),
+                      pathway: 'zonasi',
+                      distance_km: 0,
+                      max_distance_km: 5.0,
+                      zoning_status: 'memenuhi',
+                      verification_status: 'menunggu',
+                      selection_status: 'menunggu',
+                      final_status: 'draft',
+                      step_completed: 1,
+                      is_locked: false,
+                      latitude: schools[0]?.latitude || -6.964,
+                      longitude: schools[0]?.longitude || 109.056,
+                      created_at: new Date().toISOString(),
+                      updated_at: new Date().toISOString(),
+                    };
+                    const parent = parents[regNum];
+                    const schoolOrigin = schoolOrigins[regNum];
+                    const address = addresses[regNum];
+                    const school =
+                      schools.find((s) => s.school_id === app.school_id) ||
+                      schools[0] ||
+                      storageService.getSchools()[0];
+
+                    return (
+                      <StudentDashboard
+                        student={student}
+                        application={app}
+                        parent={parent}
+                        schoolOrigin={schoolOrigin}
+                        address={address}
+                        school={school}
+                        announcements={announcements}
+                        onRefresh={refreshData}
+                        activeTab={currentRoute.studentTab || 'overview'}
+                        onTabChange={(tab) => navigate({ studentTab: tab })}
+                      />
+                    );
+                  })()
+                )}
+
+                {/* Admin Sekolah & Operator Madrasah Dashboard */}
+                {(currentUser.role === 'admin_sekolah' || currentUser.role === 'operator_sekolah') && (
+                  <SchoolDashboard
+                    school={currentSchool}
+                    applications={applications}
+                    students={students}
+                    parents={parents}
+                    schoolOrigins={schoolOrigins}
+                    addresses={addresses}
+                    documents={documents}
+                    currentUser={currentUser}
+                    onVerify={handleVerify}
+                    onUpdateSelection={handleUpdateSelection}
+                    onBulkSelection={handleBulkSelection}
+                    onSaveSchool={handleSaveSchool}
+                    onViewPrint={handleViewPrint}
+                    onExportCsv={handleExportExcel}
+                    onExportExcel={handleExportExcel}
+                    onOpenProfile={() => setIsProfileModalOpen(true)}
+                    onDeleteApplicant={handleDeleteApplicant}
+                    onRefreshData={refreshData}
+                    activeTab={currentRoute.schoolTab || 'overview'}
+                    onTabChange={(tab) => navigate({ schoolTab: tab })}
+                    highlightRegNumber={highlightApplicantRegNumber}
+                    onClearHighlight={() => setHighlightApplicantRegNumber(null)}
                   />
-                );
-              })()
-            )}
+                )}
 
-            {/* Admin Sekolah & Operator Madrasah Dashboard */}
-            {(currentUser.role === 'admin_sekolah' || currentUser.role === 'operator_sekolah') && (
-              <SchoolDashboard
-                school={currentSchool}
-                applications={applications}
-                students={students}
-                parents={parents}
-                schoolOrigins={schoolOrigins}
-                addresses={addresses}
-                documents={documents}
-                currentUser={currentUser}
-                onVerify={handleVerify}
-                onUpdateSelection={handleUpdateSelection}
-                onBulkSelection={handleBulkSelection}
-                onSaveSchool={handleSaveSchool}
-                onViewPrint={handleViewPrint}
-                onExportCsv={handleExportExcel}
-                onExportExcel={handleExportExcel}
-                onOpenProfile={() => setIsProfileModalOpen(true)}
-                onDeleteApplicant={handleDeleteApplicant}
-                onRefreshData={refreshData}
-                activeTab={currentRoute.schoolTab || 'overview'}
-                onTabChange={(tab) => navigate({ schoolTab: tab })}
-                highlightRegNumber={highlightApplicantRegNumber}
-                onClearHighlight={() => setHighlightApplicantRegNumber(null)}
-              />
-            )}
-
-            {/* Admin Pusat Dashboard */}
-            {currentUser.role === 'admin_pusat' && (
-              <CentralDashboard
-                schools={schools}
-                applications={applications}
-                students={students}
-                parents={parents}
-                schoolOrigins={schoolOrigins}
-                addresses={addresses}
-                documents={documents}
-                auditLogs={auditLogs}
-                announcements={announcements}
-                settings={settings}
-                onSaveSchool={handleSaveSchool}
-                onDeleteSchool={handleDeleteSchool}
-                onSaveSettings={handleSaveSettings}
-                onAddAnnouncement={handleAddAnnouncement}
-                onDeleteAnnouncement={handleDeleteAnnouncement}
-                onVerify={handleVerify}
-                onViewPrint={handleViewPrint}
-                onExportCsv={handleExportExcel}
-                onExportExcel={handleExportExcel}
-                onOpenProfile={() => setIsProfileModalOpen(true)}
-                onDeleteApplicant={handleDeleteApplicant}
-                onRefreshData={refreshData}
-                activeTab={(currentRoute.centralTab as CentralTab) || 'overview'}
-                onTabChange={(tab) => navigate({ centralTab: tab })}
-                highlightRegNumber={highlightApplicantRegNumber}
-                onClearHighlight={() => setHighlightApplicantRegNumber(null)}
-              />
-            )}
+                {/* Admin Pusat Dashboard */}
+                {currentUser.role === 'admin_pusat' && (
+                  <CentralDashboard
+                    schools={schools}
+                    applications={applications}
+                    students={students}
+                    parents={parents}
+                    schoolOrigins={schoolOrigins}
+                    addresses={addresses}
+                    documents={documents}
+                    auditLogs={auditLogs}
+                    announcements={announcements}
+                    settings={settings}
+                    onSaveSchool={handleSaveSchool}
+                    onDeleteSchool={handleDeleteSchool}
+                    onSaveSettings={handleSaveSettings}
+                    onAddAnnouncement={handleAddAnnouncement}
+                    onDeleteAnnouncement={handleDeleteAnnouncement}
+                    onVerify={handleVerify}
+                    onViewPrint={handleViewPrint}
+                    onExportCsv={handleExportExcel}
+                    onExportExcel={handleExportExcel}
+                    onOpenProfile={() => setIsProfileModalOpen(true)}
+                    onDeleteApplicant={handleDeleteApplicant}
+                    onRefreshData={refreshData}
+                    activeTab={(currentRoute.centralTab as CentralTab) || 'overview'}
+                    onTabChange={(tab) => navigate({ centralTab: tab })}
+                    highlightRegNumber={highlightApplicantRegNumber}
+                    onClearHighlight={() => setHighlightApplicantRegNumber(null)}
+                  />
+                )}
+              </div>
+            </div>
           </div>
         )}
 

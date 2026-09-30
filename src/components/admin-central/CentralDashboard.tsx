@@ -113,6 +113,21 @@ export const CentralDashboard: React.FC<Props> = ({
     }
   };
 
+  // Active Tab Info for Section Header
+  const tabInfoMap: Record<string, { label: string; icon: any; count?: number }> = {
+    overview: { label: 'Ringkasan & Analitik Penerimaan', icon: TrendingUp },
+    schools: { label: 'Data Satuan Pendidikan Madrasah', icon: Building2, count: schools.length },
+    admins: { label: 'Manajemen Akun Admin Madrasah', icon: ShieldCheck },
+    applicants: { label: 'Data Seluruh Pendaftar Murid', icon: Users, count: applications.length },
+    map: { label: 'Peta Sebaran Wilayah Calon Murid', icon: MapPin },
+    config: { label: 'Sinkronisasi Backend & Pengaturan', icon: Settings },
+    logs: { label: 'Audit Log & Riwayat Aktivitas', icon: History, count: auditLogs.length },
+    announcements: { label: 'Pengumuman Resmi Portal', icon: Bell, count: announcements.length },
+  };
+
+  const currentTabInfo = tabInfoMap[activeTab] || { label: 'Menu Utama', icon: TrendingUp };
+  const CurrentTabIcon = currentTabInfo.icon;
+
   // Auto-switch to applicants tab when a registration number is highlighted (e.g. from QR scan)
   useEffect(() => {
     if (highlightRegNumber && activeTab !== 'applicants') {
@@ -146,45 +161,13 @@ export const CentralDashboard: React.FC<Props> = ({
   return (
     <div className="space-y-6" id="sipma-central-dashboard">
       {/* Top Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-teal-950 text-white p-6 rounded-2xl shadow-md border border-emerald-800/40">
-        <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
+      <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-teal-950 text-white p-4 sm:p-6 rounded-2xl shadow-md border border-emerald-800/40 w-full overflow-hidden">
+        <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white break-words">
           Selamat Datang di SIPMA
         </h1>
-        <p className="text-xs text-emerald-100/80 mt-1 max-w-2xl leading-relaxed">
+        <p className="text-xs text-emerald-100/80 mt-1 max-w-2xl leading-relaxed break-words">
           Monitoring penerimaan murid baru madrasah se-wilayah dan pengelolaan data terpadu.
         </p>
-      </div>
-
-      {/* Navigation Sub-Tabs */}
-      <div className="flex bg-slate-200/70 backdrop-blur-xs p-1.5 rounded-2xl border border-slate-300/80 shadow-xs overflow-x-auto text-xs font-bold gap-1">
-        {[
-          { id: 'overview', label: 'Ringkasan & Analitik', icon: TrendingUp },
-          { id: 'schools', label: `Madrasah (${schools.length})`, icon: Building2 },
-          { id: 'admins', label: 'Akun Admin Madrasah', icon: ShieldCheck },
-          { id: 'applicants', label: `Semua Pendaftar (${applications.length})`, icon: Users },
-          { id: 'map', label: 'Peta Sebaran Wilayah', icon: MapPin },
-          { id: 'config', label: 'Sinkronisasi Backend API', icon: Settings },
-          { id: 'logs', label: `Audit Log (${auditLogs.length})`, icon: History },
-          { id: 'announcements', label: 'Pengumuman Resmi', icon: Bell },
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => handleTabSelect(tab.id as any)}
-              className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl whitespace-nowrap transition-all font-bold ${
-                isActive
-                  ? 'bg-emerald-900 text-white shadow-sm ring-1 ring-emerald-800'
-                  : 'text-slate-700 hover:text-slate-950 hover:bg-white/80'
-              }`}
-            >
-              <Icon className={`w-4 h-4 ${isActive ? 'text-emerald-300' : 'text-slate-500'}`} />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
       </div>
 
       {/* ================= TAB 1: OVERVIEW ================= */}
