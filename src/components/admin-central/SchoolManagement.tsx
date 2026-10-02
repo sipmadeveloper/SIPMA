@@ -127,17 +127,26 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
         </button>
       </div>
 
-      {/* Search */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
+      {/* Search Bar (Compact & Practical) */}
+      <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between">
         <div className="w-full sm:w-80 relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cari nama madrasah, NSM, NPSN..."
-            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+            className="w-full pl-8 pr-7 h-8.5 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
           />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
+            >
+              ✕
+            </button>
+          )}
         </div>
       </div>
 
@@ -154,7 +163,7 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
                 <th className="py-3.5 px-4">Radius Zonasi</th>
                 <th className="py-3.5 px-4">Kuota (Zon/Afir/Pres/Mut)</th>
                 <th className="py-3.5 px-4">Status</th>
-                <th className="py-3.5 px-4 text-center">Aksi</th>
+                <th className="py-3.5 px-4 text-center whitespace-nowrap min-w-[130px]">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -213,27 +222,27 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
                       {s.status === 'active' ? 'Aktif' : 'Non-Aktif'}
                     </span>
                   </td>
-                  <td className="py-3.5 px-4 text-center">
-                    <div className="flex items-center justify-center gap-1.5">
+                  <td className="py-3.5 px-4 text-center whitespace-nowrap min-w-[130px]">
+                    <div className="inline-flex items-center justify-center gap-1.5 shrink-0">
                       <button
                         type="button"
                         onClick={() => {
                           setEditingSchool(s);
                           setIsNew(false);
                         }}
-                        className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors cursor-pointer"
+                        className="w-8 h-8 inline-flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg transition-all shadow-2xs shrink-0 active:scale-95 cursor-pointer"
                         title="Edit Madrasah"
                       >
-                        <Edit className="w-4 h-4" />
+                        <Edit className="w-3.5 h-3.5" />
                       </button>
                       {onDeleteSchool && (
                         <button
                           type="button"
                           onClick={() => handleOpenDelete(s)}
-                          className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 hover:text-rose-700 rounded-lg transition-colors cursor-pointer"
+                          className="w-8 h-8 inline-flex items-center justify-center bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-300 rounded-lg transition-all shadow-2xs shrink-0 active:scale-95 cursor-pointer"
                           title="Hapus Madrasah & Seluruh Data Terkait"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       )}
                     </div>

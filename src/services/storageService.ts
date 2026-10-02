@@ -1561,6 +1561,41 @@ class StorageService {
             });
           }
         }
+
+        // Interconnect Pas Foto document (documents table) with account profile photo
+        if (updates.photo_url) {
+          const docs = this.getDocuments();
+          const existingFotoIdx = docs.findIndex(
+            (d) =>
+              d.registration_number === regNum &&
+              (d.document_type === 'foto' || d.document_type === 'pas_foto')
+          );
+          if (existingFotoIdx >= 0) {
+            if (updates.photo_url.startsWith('data:image/')) {
+              docs[existingFotoIdx].file_data_base64 = updates.photo_url;
+            } else {
+              docs[existingFotoIdx].drive_url = updates.photo_url;
+              docs[existingFotoIdx].view_url = updates.photo_url;
+            }
+            docs[existingFotoIdx].upload_time = new Date().toISOString();
+          } else {
+            docs.unshift({
+              document_id: `DOC-FOTO-${Date.now()}`,
+              registration_number: regNum,
+              student_id: `STD-${Date.now()}`,
+              document_type: 'foto',
+              document_title: 'Pas Foto 3x4 Calon Murid',
+              file_name: `00_PAS_FOTO_3X4_${regNum}.jpg`,
+              file_size_kb: 120,
+              file_data_base64: updates.photo_url.startsWith('data:image/') ? updates.photo_url : undefined,
+              drive_url: !updates.photo_url.startsWith('data:image/') ? updates.photo_url : undefined,
+              upload_time: new Date().toISOString(),
+              verification_status: 'menunggu',
+            });
+          }
+          this.memCache.documents = docs;
+          safeSetItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(docs));
+        }
       }
 
       // Immediately synchronize profile updates to server database
@@ -3067,6 +3102,49 @@ class StorageService {
           }
         }
 
+        // Interconnect Pas Foto document with account photo
+        if (savedPhotoUrl && regNum) {
+          const docs = this.getDocuments();
+          const existingFotoIdx = docs.findIndex(
+            (d) =>
+              d.registration_number === regNum &&
+              (d.document_type === 'foto' || d.document_type === 'pas_foto')
+          );
+          if (existingFotoIdx >= 0) {
+            if (savedPhotoUrl.startsWith('data:image/')) {
+              docs[existingFotoIdx].file_data_base64 = savedPhotoUrl;
+            } else {
+              docs[existingFotoIdx].drive_url = savedPhotoUrl;
+              docs[existingFotoIdx].view_url = savedPhotoUrl;
+            }
+            docs[existingFotoIdx].upload_time = new Date().toISOString();
+          } else {
+            docs.unshift({
+              document_id: `DOC-FOTO-${Date.now()}`,
+              registration_number: regNum,
+              student_id: `STD-${Date.now()}`,
+              document_type: 'foto',
+              document_title: 'Pas Foto 3x4 Calon Murid',
+              file_name: `00_PAS_FOTO_3X4_${regNum}.jpg`,
+              file_size_kb: 120,
+              file_data_base64: savedPhotoUrl.startsWith('data:image/') ? savedPhotoUrl : undefined,
+              drive_url: !savedPhotoUrl.startsWith('data:image/') ? savedPhotoUrl : undefined,
+              upload_time: new Date().toISOString(),
+              verification_status: 'menunggu',
+            });
+          }
+          this.memCache.documents = docs;
+          safeSetItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(docs));
+        }
+
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('sipma:user_profile_updated', {
+              detail: { photo_url: savedPhotoUrl, registration_number: regNum, user_id: userId },
+            })
+          );
+        }
+
         this.notifySubscribers('user_profile_updated', currentUsers[idx]);
         this.triggerAutoSync(true);
       }
@@ -3583,8 +3661,51 @@ class StorageService {
         this.setCurrentUser(currentUser);
       }
 
+      // Synchronize Pas Foto document automatically when profile photo is uploaded or updated
+      if (profile.photo_url && profile.registration_number) {
+        const docs = this.getDocuments();
+        const existingFotoIdx = docs.findIndex(
+          (d) =>
+            d.registration_number === profile.registration_number &&
+            (d.document_type === 'foto' || d.document_type === 'pas_foto')
+        );
+        if (existingFotoIdx >= 0) {
+          if (profile.photo_url.startsWith('data:image/')) {
+            docs[existingFotoIdx].file_data_base64 = profile.photo_url;
+          } else {
+            docs[existingFotoIdx].drive_url = profile.photo_url;
+            docs[existingFotoIdx].view_url = profile.photo_url;
+          }
+          docs[existingFotoIdx].upload_time = new Date().toISOString();
+        } else {
+          docs.unshift({
+            document_id: `DOC-FOTO-${Date.now()}`,
+            registration_number: profile.registration_number,
+            student_id: profile.student_id || `STD-${Date.now()}`,
+            document_type: 'foto',
+            document_title: 'Pas Foto 3x4 Calon Murid',
+            file_name: `00_PAS_FOTO_3X4_${profile.registration_number}.jpg`,
+            file_size_kb: 120,
+            file_data_base64: profile.photo_url.startsWith('data:image/') ? profile.photo_url : undefined,
+            drive_url: !profile.photo_url.startsWith('data:image/') ? profile.photo_url : undefined,
+            upload_time: new Date().toISOString(),
+            verification_status: 'menunggu',
+          });
+        }
+        this.memCache.documents = docs;
+        safeSetItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(docs));
+      }
+
       // Sync directly to server
       if (profile.photo_url) {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('sipma:user_profile_updated', {
+              detail: { photo_url: profile.photo_url, registration_number: profile.registration_number },
+            })
+          );
+        }
+
         fetch('/api/user/update-profile', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -3901,96 +4022,121 @@ class StorageService {
     return { success: true, applicant: { ...mockApp, student: mockStudent } };
   }
 
-  deleteApplication(registrationNumber: string): { success: boolean; message: string } {
+  async deleteApplication(registrationNumber: string): Promise<{ success: boolean; message: string }> {
     try {
       const apps = this.getApplications();
+      const students = this.getStudentsMap();
       const targetApp = apps.find((a) => a.registration_number === registrationNumber);
-      if (!targetApp) {
-        return { success: false, message: `Data pendaftaran ${registrationNumber} tidak ditemukan.` };
+      const targetStudent =
+        students[registrationNumber] ||
+        Object.values(students).find(
+          (s) => s.registration_number === registrationNumber || s.student_id === registrationNumber
+        );
+
+      const docs = this.getDocuments();
+      const matchingDocs = docs.filter((d) => d.registration_number === registrationNumber);
+      const users = this.getUsers();
+      const matchingUsers = users.filter((u) => u.registration_number === registrationNumber);
+
+      if (!targetApp && !targetStudent && matchingDocs.length === 0 && matchingUsers.length === 0) {
+        return { success: false, message: `Data pendaftaran ${registrationNumber} tidak ditemukan di database.` };
       }
 
-      // 1. Remove application
+      const studentId =
+        targetStudent?.student_id ||
+        targetApp?.student_id ||
+        matchingUsers[0]?.user_id ||
+        `STD-${registrationNumber}`;
+
+      // 1. Remove from applications
       const filteredApps = apps.filter((a) => a.registration_number !== registrationNumber);
       this.memCache.applications = filteredApps;
-      localStorage.setItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(filteredApps));
+      safeSetItem(STORAGE_KEYS.APPLICATIONS, JSON.stringify(filteredApps));
 
       // 2. Remove student & linked parent/origins/addresses
-      const students = this.getStudentsMap();
-      const studentId = students[registrationNumber]?.student_id || targetApp.student_id;
       if (students[registrationNumber]) {
         delete students[registrationNumber];
-        this.memCache.students = students;
-        localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
       }
-
-      if (studentId) {
-        const parents = this.getParentsMap();
-        if (parents[studentId]) {
-          delete parents[studentId];
-          this.memCache.parents = parents;
-          localStorage.setItem(STORAGE_KEYS.PARENTS, JSON.stringify(parents));
+      Object.keys(students).forEach((k) => {
+        if (students[k].registration_number === registrationNumber || students[k].student_id === studentId) {
+          delete students[k];
         }
+      });
+      this.memCache.students = students;
+      safeSetItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
+
+      if (studentId || registrationNumber) {
+        const parents = this.getParentsMap();
+        if (parents[studentId]) delete parents[studentId];
+        if (parents[registrationNumber]) delete parents[registrationNumber];
+        this.memCache.parents = parents;
+        safeSetItem(STORAGE_KEYS.PARENTS, JSON.stringify(parents));
 
         const origins = this.getSchoolOriginsMap();
-        if (origins[studentId]) {
-          delete origins[studentId];
-          this.memCache.school_origins = origins;
-          localStorage.setItem(STORAGE_KEYS.SCHOOL_ORIGINS, JSON.stringify(origins));
-        }
+        if (origins[studentId]) delete origins[studentId];
+        if (origins[registrationNumber]) delete origins[registrationNumber];
+        this.memCache.school_origins = origins;
+        safeSetItem(STORAGE_KEYS.SCHOOL_ORIGINS, JSON.stringify(origins));
 
         const addresses = this.getAddressesMap();
-        if (addresses[studentId]) {
-          delete addresses[studentId];
-          this.memCache.addresses = addresses;
-          localStorage.setItem(STORAGE_KEYS.ADDRESSES, JSON.stringify(addresses));
-        }
+        if (addresses[studentId]) delete addresses[studentId];
+        if (addresses[registrationNumber]) delete addresses[registrationNumber];
+        this.memCache.addresses = addresses;
+        safeSetItem(STORAGE_KEYS.ADDRESSES, JSON.stringify(addresses));
       }
 
       // 3. Collect drive_file_ids for drive deletion before local removal
-      const docs = this.getDocuments();
-      const driveFileIdsToDelete: string[] = docs
-        .filter((d) => d.registration_number === registrationNumber)
-        .map((d) => d.drive_file_id)
+      const driveFileIdsToDelete: string[] = matchingDocs
+        .map((d) => d.drive_file_id || extractDriveFileId(d.drive_url) || '')
         .filter((id): id is string => !!id && id.length > 5);
 
       const filteredDocs = docs.filter((d) => d.registration_number !== registrationNumber);
       this.memCache.documents = filteredDocs;
-      localStorage.setItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(filteredDocs));
+      safeSetItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(filteredDocs));
 
       // 4. Remove user account if tied to this registration
-      const users = this.getUsers();
       const filteredUsers = users.filter((u) => u.registration_number !== registrationNumber);
       this.memCache.users = filteredUsers;
-      localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(filteredUsers));
+      safeSetItem(STORAGE_KEYS.USERS, JSON.stringify(filteredUsers));
 
       // 5. Handle current user session if it was the deleted user
       const currentUser = this.getCurrentUser();
-      if (currentUser && currentUser.registration_number === registrationNumber) {
+      if (
+        currentUser &&
+        (currentUser.registration_number === registrationNumber || currentUser.user_id === studentId)
+      ) {
         this.setCurrentUser(null);
       }
 
-      // Asynchronously trigger server & Google Apps Script cleanup (Google Drive + All Sheets)
-      fetch('/api/data/delete-application', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          registration_number: registrationNumber,
-          student_id: studentId,
-          drive_file_ids: driveFileIdsToDelete,
-        }),
-      }).catch((e) => console.warn('Delete application server sync warning:', e));
+      // 6. Explicitly invoke server & Google Apps Script deletion (Google Drive + Sheets cleanup)
+      try {
+        await fetch('/api/data/delete-application', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            registration_number: registrationNumber,
+            student_id: studentId,
+            drive_file_ids: driveFileIdsToDelete,
+          }),
+        });
+      } catch (serverErr) {
+        console.warn('Server delete-application call warning:', serverErr);
+      }
+
+      // 7. Full multi-device push to ensure persistence
+      await this.pushToServerNow().catch((e) => console.warn('pushToServerNow error:', e));
 
       this.addAuditLog(
         'DELETE_APPLICATION',
         registrationNumber,
-        `Data pendaftaran ${registrationNumber} dan seluruh berkas di Google Drive & Sheets berhasil dihapus permanen secara otomatis.`
+        `Data pendaftaran ${registrationNumber} beserta seluruh data siswa, berkas lampiran, dan akun terkait berhasil dihapus permanen dari database.`
       );
       this.notifySubscribers('data_mutated');
       this.triggerAutoSync();
 
       return {
         success: true,
-        message: `Data pendaftaran ${registrationNumber} beserta semua berkas di Google Drive & database Sheets berhasil dihapus permanen.`,
+        message: `Data pendaftaran ${registrationNumber} dan seluruh berkas di database berhasil dihapus permanen.`,
       };
     } catch (err: any) {
       return {
@@ -4045,6 +4191,33 @@ class StorageService {
       const deduplicated = deduplicateDocuments(docs);
       this.memCache.documents = deduplicated;
       safeSetItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(deduplicated));
+
+      // Synchronize photo document to student profile & current user account
+      if ((normType === 'foto' || normType === 'pas_foto') && doc.registration_number) {
+        const photoUrl = doc.drive_url || doc.view_url || doc.file_data_base64 || '';
+        if (photoUrl) {
+          const students = this.getStudentsMap();
+          if (students[doc.registration_number]) {
+            students[doc.registration_number].photo_url = photoUrl;
+            this.memCache.students = students;
+            safeSetItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
+          }
+          const users = this.getUsers();
+          const uIdx = users.findIndex(
+            (u) => u.registration_number === doc.registration_number || u.user_id === doc.student_id
+          );
+          if (uIdx >= 0) {
+            users[uIdx].photo_url = photoUrl;
+            this.memCache.users = users;
+            safeSetItem(STORAGE_KEYS.USERS, JSON.stringify(users));
+          }
+          const curUser = this.getCurrentUser();
+          if (curUser && (curUser.registration_number === doc.registration_number || curUser.user_id === doc.student_id)) {
+            curUser.photo_url = photoUrl;
+            this.setCurrentUser(curUser);
+          }
+        }
+      }
     } catch {
       // ignore
     }

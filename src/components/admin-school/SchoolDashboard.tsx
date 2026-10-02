@@ -209,56 +209,72 @@ export const SchoolDashboard: React.FC<Props> = ({
   const CurrentTabIcon = currentTabInfo.icon;
 
   return (
-    <div className="space-y-6" id="sipma-school-dashboard">
-      {/* Top Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-teal-950 text-white p-4 sm:p-6 rounded-2xl shadow-md border border-emerald-800/40 w-full overflow-hidden">
-        <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white break-words">
-          Selamat Datang, {activeSchool.school_name}
-        </h1>
-        <p className="text-xs text-emerald-100/80 mt-1 max-w-2xl leading-relaxed break-words">
-          Kelola data calon murid baru, verifikasi berkas persyaratan, perhitungan zonasi koordinat, dan proses seleksi penerimaan murid.
-        </p>
+    <div className="space-y-4" id="sipma-school-dashboard">
+      {/* Top Banner (Institutional Executive Header) */}
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 text-white p-4 sm:p-5 rounded-xl shadow-xs border border-slate-750 w-full overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-1">
+            <div className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
+              <span>Panel Panitia Madrasah</span>
+              <span className="text-emerald-500/60">·</span>
+              <span>PPDB Terpadu</span>
+            </div>
+            <h1 className="text-lg sm:text-2xl font-bold tracking-tight text-white leading-tight break-words">
+              {activeSchool.school_name}
+            </h1>
+            <p className="text-xs text-slate-300 max-w-2xl leading-relaxed break-words">
+              Kelola data calon murid baru, verifikasi berkas persyaratan, perhitungan zonasi koordinat, dan proses seleksi penerimaan murid.
+            </p>
+          </div>
+          {activeSchool.npsn && (
+            <div className="flex items-center gap-2 self-start sm:self-center shrink-0">
+              <span className="text-[11px] font-mono bg-slate-800/90 border border-slate-750 px-2.5 py-1 rounded-md text-emerald-300 font-semibold tracking-wide">
+                NPSN: {activeSchool.npsn}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ================= TAB 1: OVERVIEW ================= */}
       {activeTab === 'overview' && (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {/* KPI Cards Grid - 6 columns */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
-            <div className="bg-gradient-to-br from-slate-50 to-white p-4 rounded-xl border border-slate-200/90 shadow-xs">
-              <div className="text-[11px] text-slate-800 font-bold uppercase tracking-wider">Total Pendaftar</div>
-              <div className="text-2xl font-black text-slate-950 mt-1">{stats.total}</div>
-              <div className="text-[10px] text-slate-500 mt-1 font-medium">Murid Terdaftar</div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3">
+            <div className="bg-gradient-to-br from-slate-50 to-white p-3 rounded-lg border border-slate-200/90 shadow-2xs">
+              <div className="text-[10.5px] text-slate-800 font-bold uppercase tracking-wider">Total Pendaftar</div>
+              <div className="text-xl sm:text-2xl font-black text-slate-950 mt-0.5">{stats.total}</div>
+              <div className="text-[9.5px] text-slate-500 mt-0.5 font-medium">Murid Terdaftar</div>
             </div>
 
-            <div className="bg-gradient-to-br from-emerald-50/80 to-white p-4 rounded-xl border border-emerald-200/80 shadow-xs">
-              <div className="text-[11px] text-emerald-900 font-bold uppercase tracking-wider">Jalur Zonasi</div>
-              <div className="text-2xl font-black text-emerald-950 mt-1">{stats.zonasi}</div>
-              <div className="text-[10px] text-emerald-700/80 mt-1 font-medium">Kuota: {activeSchool.quota_zonasi}</div>
+            <div className="bg-gradient-to-br from-emerald-50/80 to-white p-3 rounded-lg border border-emerald-200/80 shadow-2xs">
+              <div className="text-[10.5px] text-emerald-900 font-bold uppercase tracking-wider">Jalur Zonasi</div>
+              <div className="text-xl sm:text-2xl font-black text-emerald-950 mt-0.5">{stats.zonasi}</div>
+              <div className="text-[9.5px] text-emerald-700/80 mt-0.5 font-medium">Kuota: {activeSchool.quota_zonasi}</div>
             </div>
 
-            <div className="bg-gradient-to-br from-purple-50/80 to-white p-4 rounded-xl border border-purple-200/80 shadow-xs">
-              <div className="text-[11px] text-purple-900 font-bold uppercase tracking-wider">Jalur Afirmasi</div>
-              <div className="text-2xl font-black text-purple-950 mt-1">{stats.afirmasi}</div>
-              <div className="text-[10px] text-purple-700/80 mt-1 font-medium">Kuota: {activeSchool.quota_afirmasi}</div>
+            <div className="bg-gradient-to-br from-purple-50/80 to-white p-3 rounded-lg border border-purple-200/80 shadow-2xs">
+              <div className="text-[10.5px] text-purple-900 font-bold uppercase tracking-wider">Jalur Afirmasi</div>
+              <div className="text-xl sm:text-2xl font-black text-purple-950 mt-0.5">{stats.afirmasi}</div>
+              <div className="text-[9.5px] text-purple-700/80 mt-0.5 font-medium">Kuota: {activeSchool.quota_afirmasi}</div>
             </div>
 
-            <div className="bg-gradient-to-br from-amber-50/80 to-white p-4 rounded-xl border border-amber-200/80 shadow-xs">
-              <div className="text-[11px] text-amber-900 font-bold uppercase tracking-wider">Jalur Prestasi</div>
-              <div className="text-2xl font-black text-amber-950 mt-1">{stats.prestasi}</div>
-              <div className="text-[10px] text-amber-700/80 mt-1 font-medium">Kuota: {activeSchool.quota_prestasi || 40}</div>
+            <div className="bg-gradient-to-br from-amber-50/80 to-white p-3 rounded-lg border border-amber-200/80 shadow-2xs">
+              <div className="text-[10.5px] text-amber-900 font-bold uppercase tracking-wider">Jalur Prestasi</div>
+              <div className="text-xl sm:text-2xl font-black text-amber-950 mt-0.5">{stats.prestasi}</div>
+              <div className="text-[9.5px] text-amber-700/80 mt-0.5 font-medium">Kuota: {activeSchool.quota_prestasi || 40}</div>
             </div>
 
-            <div className="bg-gradient-to-br from-blue-50/80 to-white p-4 rounded-xl border border-blue-200/80 shadow-xs">
-              <div className="text-[11px] text-blue-900 font-bold uppercase tracking-wider">Jalur Mutasi</div>
-              <div className="text-2xl font-black text-blue-950 mt-1">{stats.mutasi}</div>
-              <div className="text-[10px] text-blue-700/80 mt-1 font-medium">Kuota: {activeSchool.quota_mutasi || 20}</div>
+            <div className="bg-gradient-to-br from-blue-50/80 to-white p-3 rounded-lg border border-blue-200/80 shadow-2xs">
+              <div className="text-[10.5px] text-blue-900 font-bold uppercase tracking-wider">Jalur Mutasi</div>
+              <div className="text-xl sm:text-2xl font-black text-blue-950 mt-0.5">{stats.mutasi}</div>
+              <div className="text-[9.5px] text-blue-700/80 mt-0.5 font-medium">Kuota: {activeSchool.quota_mutasi || 20}</div>
             </div>
 
-            <div className="bg-gradient-to-br from-teal-50/80 to-white p-4 rounded-xl border border-teal-200/80 shadow-xs">
-              <div className="text-[11px] text-teal-900 font-bold uppercase tracking-wider">Terverifikasi</div>
-              <div className="text-2xl font-black text-teal-950 mt-1">{stats.verified}</div>
-              <div className="text-[10px] text-teal-700/80 mt-1 font-medium">{stats.waiting} menunggu</div>
+            <div className="bg-gradient-to-br from-teal-50/80 to-white p-3 rounded-lg border border-teal-200/80 shadow-2xs">
+              <div className="text-[10.5px] text-teal-900 font-bold uppercase tracking-wider">Terverifikasi</div>
+              <div className="text-xl sm:text-2xl font-black text-teal-950 mt-0.5">{stats.verified}</div>
+              <div className="text-[9.5px] text-teal-700/80 mt-0.5 font-medium">{stats.waiting} menunggu</div>
             </div>
           </div>
 

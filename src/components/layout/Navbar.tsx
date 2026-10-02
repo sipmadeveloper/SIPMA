@@ -8,6 +8,8 @@ import {
   ChevronDown,
   UserCheck,
   QrCode,
+  PanelLeft,
+  Menu,
 } from 'lucide-react';
 import { User as UserType, School, SystemSettings } from '../../types/sipma';
 import { normalizeImageUrl, handleImageError } from '../../utils/imageUrl';
@@ -21,6 +23,8 @@ interface Props {
   onNavigateHome: () => void;
   onOpenProfile?: () => void;
   onOpenQRScanner?: () => void;
+  onToggleSidebar?: () => void;
+  isSidebarOpen?: boolean;
   notifications?: NewApplicantItem[];
   unreadNotificationsCount?: number;
   onOpenApplicantFromNotification?: (regNumber: string) => void;
@@ -34,6 +38,8 @@ export const Navbar: React.FC<Props> = ({
   onNavigateHome,
   onOpenProfile,
   onOpenQRScanner,
+  onToggleSidebar,
+  isSidebarOpen,
   notifications = [],
   unreadNotificationsCount = 0,
   onOpenApplicantFromNotification,
@@ -77,44 +83,63 @@ export const Navbar: React.FC<Props> = ({
   return (
     <header className="bg-white/95 backdrop-blur-md border-b border-emerald-100/80 sticky top-0 z-40 shadow-xs">
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        {/* Brand - Dynamic App Logo & Name across all pages */}
+        {/* Left Side: Seamless Integrated Toggle Menu Button when logged in; App Logo & Name only when logged out */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <button
-            type="button"
-            onClick={onNavigateHome}
-            className="flex items-center gap-2.5 text-left group cursor-pointer min-w-0"
-          >
-            {appLogo ? (
-              <img
-                src={normalizeImageUrl(appLogo)}
-                alt={appName}
-                className="w-9 h-9 object-contain rounded-xl border border-emerald-200/80 shadow-xs group-hover:scale-105 transition-transform bg-white p-0.5 shrink-0"
-                referrerPolicy="no-referrer"
-                onError={(e) => handleImageError(e)}
-              />
-            ) : (
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-800 to-teal-600 text-white flex items-center justify-center font-black text-lg shadow-xs group-hover:scale-105 transition-transform shrink-0">
-                {appName.charAt(0) || 'S'}
-              </div>
-            )}
-            <div className="min-w-0">
-              <div className="font-black text-sm sm:text-base tracking-tight text-slate-900 leading-none group-hover:text-emerald-800 transition-colors truncate max-w-[140px] sm:max-w-none">
-                {appName}
-              </div>
-              <div className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider truncate max-w-[140px] sm:max-w-none">
-                {appTagline}
-              </div>
-            </div>
-          </button>
+          {currentUser ? (
+            <div className="flex items-center gap-2 sm:gap-2.5">
+              {/* Integrated Top Header Toggle Menu Button: Kotak Bergaris Tiga Elegan & Halus */}
+              {onToggleSidebar && (
+                <button
+                  type="button"
+                  onClick={onToggleSidebar}
+                  className={`w-9 h-9 sm:w-10 sm:h-10 flex flex-col items-center justify-center gap-[4.5px] rounded-lg bg-white hover:bg-slate-50 active:scale-95 transition-all border border-slate-300 hover:border-slate-500 shadow-2xs cursor-pointer shrink-0 ${
+                    isSidebarOpen ? 'bg-slate-100 border-slate-600 ring-2 ring-slate-400/20' : ''
+                  }`}
+                  title={isSidebarOpen ? 'Tutup Menu Navigasi' : 'Buka Menu Navigasi'}
+                  aria-label={isSidebarOpen ? 'Tutup Menu Navigasi' : 'Buka Menu Navigasi'}
+                >
+                  <span className="w-4 sm:w-4.5 h-[2px] bg-slate-700 rounded-full transition-colors" />
+                  <span className="w-4 sm:w-4.5 h-[2px] bg-slate-700 rounded-full transition-colors" />
+                  <span className="w-4 sm:w-4.5 h-[2px] bg-slate-700 rounded-full transition-colors" />
+                </button>
+              )}
 
-          {/* Active Role Pill */}
-          {currentUser && (
-            <div className="hidden md:flex items-center gap-1.5 ml-3 pl-3 border-l border-slate-200">
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-2xs ${roleInfo.bg}`}>
-                <RoleIcon className="w-3.5 h-3.5 shrink-0" />
-                <span className="truncate max-w-[180px]">{roleInfo.label}</span>
-              </span>
+              {/* Active Role Pill (Compact) */}
+              <div className="flex items-center gap-1.5">
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border shadow-2xs ${roleInfo.bg}`}>
+                  <RoleIcon className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate max-w-[150px] sm:max-w-[240px]">{roleInfo.label}</span>
+                </span>
+              </div>
             </div>
+          ) : (
+            <button
+              type="button"
+              onClick={onNavigateHome}
+              className="flex items-center gap-2.5 text-left group cursor-pointer min-w-0"
+            >
+              {appLogo ? (
+                <img
+                  src={normalizeImageUrl(appLogo)}
+                  alt={appName}
+                  className="w-9 h-9 object-contain rounded-xl border border-emerald-200/80 shadow-xs group-hover:scale-105 transition-transform bg-white p-0.5 shrink-0"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => handleImageError(e)}
+                />
+              ) : (
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-800 to-teal-600 text-white flex items-center justify-center font-black text-lg shadow-xs group-hover:scale-105 transition-transform shrink-0">
+                  {appName.charAt(0) || 'S'}
+                </div>
+              )}
+              <div className="min-w-0">
+                <div className="font-black text-sm sm:text-base tracking-tight text-slate-900 leading-none group-hover:text-emerald-800 transition-colors truncate max-w-[140px] sm:max-w-none">
+                  {appName}
+                </div>
+                <div className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider truncate max-w-[140px] sm:max-w-none">
+                  {appTagline}
+                </div>
+              </div>
+            </button>
           )}
         </div>
 

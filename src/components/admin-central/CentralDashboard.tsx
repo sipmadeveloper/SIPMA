@@ -159,46 +159,53 @@ export const CentralDashboard: React.FC<Props> = ({
   }, [schools, applications]);
 
   return (
-    <div className="space-y-6" id="sipma-central-dashboard">
-      {/* Top Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-teal-950 text-white p-4 sm:p-6 rounded-2xl shadow-md border border-emerald-800/40 w-full overflow-hidden">
-        <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white break-words">
-          Selamat Datang di SIPMA
-        </h1>
-        <p className="text-xs text-emerald-100/80 mt-1 max-w-2xl leading-relaxed break-words">
-          Monitoring penerimaan murid baru madrasah se-wilayah dan pengelolaan data terpadu.
-        </p>
+    <div className="space-y-4" id="sipma-central-dashboard">
+      {/* Top Banner (Institutional Executive Header) */}
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 text-white p-4 sm:p-5 rounded-xl shadow-xs border border-slate-750 w-full overflow-hidden">
+        <div className="space-y-1">
+          <div className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
+            <span>Kantor Wilayah Kementerian Agama</span>
+            <span className="text-emerald-500/60">·</span>
+            <span>Dashboard Pusat PPDB</span>
+          </div>
+          <h1 className="text-lg sm:text-2xl font-bold tracking-tight text-white leading-tight break-words">
+            Pusat Komando & Monitoring PPDB Madrasah
+          </h1>
+          <p className="text-xs text-slate-300 max-w-2xl leading-relaxed break-words">
+            Monitoring penerimaan murid baru madrasah se-wilayah, rekapitulasi kuota, audit log, dan sinkronisasi data terpadu.
+          </p>
+        </div>
       </div>
 
       {/* ================= TAB 1: OVERVIEW ================= */}
       {activeTab === 'overview' && (
-        <div className="space-y-6">
+        <div className="space-y-4">
           {/* KPI Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="bg-gradient-to-br from-indigo-50/80 to-white p-4 rounded-xl border border-indigo-200/80 shadow-xs">
-              <div className="text-xs text-indigo-900 font-bold uppercase tracking-wider">Total Madrasah</div>
-              <div className="text-2xl font-black text-indigo-950 mt-1">{totalSchools}</div>
-              <div className="text-[11px] text-indigo-700/80 mt-1 font-medium">Satuan Pendidikan MI, MTs, & MA</div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
+            <div className="bg-gradient-to-br from-indigo-50/80 to-white p-3 rounded-lg border border-indigo-200/80 shadow-2xs">
+              <div className="text-[11px] text-indigo-900 font-bold uppercase tracking-wider">Total Madrasah</div>
+              <div className="text-xl sm:text-2xl font-black text-indigo-950 mt-0.5">{totalSchools}</div>
+              <div className="text-[10px] text-indigo-700/80 mt-0.5 font-medium">Satuan MI, MTs, & MA</div>
             </div>
 
-            <div className="bg-gradient-to-br from-emerald-50/80 to-white p-4 rounded-xl border border-emerald-200/80 shadow-xs">
-              <div className="text-xs text-emerald-900 font-bold uppercase tracking-wider">Total Calon Murid</div>
-              <div className="text-2xl font-black text-emerald-950 mt-1">{totalApps}</div>
-              <div className="text-[11px] text-emerald-800/80 mt-1 font-medium truncate">
+            <div className="bg-gradient-to-br from-emerald-50/80 to-white p-3 rounded-lg border border-emerald-200/80 shadow-2xs">
+              <div className="text-[11px] text-emerald-900 font-bold uppercase tracking-wider">Total Calon Murid</div>
+              <div className="text-xl sm:text-2xl font-black text-emerald-950 mt-0.5">{totalApps}</div>
+              <div className="text-[10px] text-emerald-800/80 mt-0.5 font-medium truncate">
                 {totalZonasi} Zonasi · {totalAfirmasi} Afirmasi · {totalPrestasi} Prestasi · {totalMutasi} Mutasi
               </div>
             </div>
 
-            <div className="bg-gradient-to-br from-blue-50/80 to-white p-4 rounded-xl border border-blue-200/80 shadow-xs">
-              <div className="text-xs text-blue-900 font-bold uppercase tracking-wider">Berkas Terverifikasi</div>
-              <div className="text-2xl font-black text-blue-950 mt-1">{totalVerified}</div>
-              <div className="text-[11px] text-blue-700/80 mt-1 font-medium">Valid & Memenuhi Syarat</div>
+            <div className="bg-gradient-to-br from-blue-50/80 to-white p-3 rounded-lg border border-blue-200/80 shadow-2xs">
+              <div className="text-[11px] text-blue-900 font-bold uppercase tracking-wider">Berkas Terverifikasi</div>
+              <div className="text-xl sm:text-2xl font-black text-blue-950 mt-0.5">{totalVerified}</div>
+              <div className="text-[10px] text-blue-700/80 mt-0.5 font-medium">Valid & Memenuhi Syarat</div>
             </div>
 
-            <div className="bg-gradient-to-br from-teal-50/80 to-white p-4 rounded-xl border border-teal-200/80 shadow-xs">
-              <div className="text-xs text-teal-900 font-bold uppercase tracking-wider">Lulus Seleksi</div>
-              <div className="text-2xl font-black text-teal-950 mt-1">{totalLulus}</div>
-              <div className="text-[11px] text-teal-700/80 mt-1 font-medium">Murid Memenuhi Kuota</div>
+            <div className="bg-gradient-to-br from-teal-50/80 to-white p-3 rounded-lg border border-teal-200/80 shadow-2xs">
+              <div className="text-[11px] text-teal-900 font-bold uppercase tracking-wider">Lulus Seleksi</div>
+              <div className="text-xl sm:text-2xl font-black text-teal-950 mt-0.5">{totalLulus}</div>
+              <div className="text-[10px] text-teal-700/80 mt-0.5 font-medium">Murid Memenuhi Kuota</div>
             </div>
           </div>
 

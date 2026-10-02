@@ -62,12 +62,25 @@ export async function downloadElementAsPdf(
     return true;
   } catch (error) {
     console.error('Error generating PDF:', error);
-    // Fallback: trigger standard browser print dialog
+    // Do NOT trigger window.print() - ensure pure direct file download
     try {
-      window.print();
-      return true;
+      const element = document.getElementById(elementId);
+      if (element) {
+        const textContent = element.innerText || element.textContent || '';
+        const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename.replace(/\.pdf$/i, '') + '.txt';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        return true;
+      }
     } catch {
-      return false;
+      // ignore
     }
+    return false;
   }
 }

@@ -181,9 +181,9 @@ export default function App() {
       if (saved !== null) {
         return saved === 'true';
       }
-      return window.innerWidth >= 1024;
+      return false;
     }
-    return true;
+    return false;
   });
 
   const handleToggleSidebar = useCallback(() => {
@@ -357,6 +357,19 @@ export default function App() {
       document.title = `${settings.app_name} - ${settings.app_tagline || 'Sistem Penerimaan Murid Madrasah'}`;
     }
   }, [settings?.app_logo, settings?.app_name, settings?.app_tagline]);
+
+  // Real-time synchronization of account profile & pas foto across session
+  useEffect(() => {
+    const handleProfileUpdated = () => {
+      const cur = storageService.getCurrentUser();
+      if (cur) {
+        setCurrentUser(cur);
+      }
+      refreshData();
+    };
+    window.addEventListener('sipma:user_profile_updated', handleProfileUpdated);
+    return () => window.removeEventListener('sipma:user_profile_updated', handleProfileUpdated);
+  }, [refreshData]);
 
   // Auth actions
   const handleLogin = (email: string, role: UserRole) => {
@@ -538,14 +551,19 @@ export default function App() {
   const handleDeleteApplicant = (regNumber: string) => {
     showLoading('Menghapus data pendaftar...', 'Menghapus berkas lampiran dan data pendaftar dari database realtime...', 'delete');
     setTimeout(async () => {
-      const res = storageService.deleteApplication(regNumber);
-      await storageService.pushToServerNow();
-      refreshData();
-      hideLoading();
-      if (res.success) {
-        showAlert('Pendaftar Dihapus', res.message, 'success');
-      } else {
-        showAlert('Gagal Menghapus', res.message, 'error');
+      try {
+        const res = await storageService.deleteApplication(regNumber);
+        await storageService.pushToServerNow().catch((e) => console.warn('Push error after delete:', e));
+        refreshData();
+        hideLoading();
+        if (res.success) {
+          showAlert('Pendaftar Dihapus', res.message, 'success');
+        } else {
+          showAlert('Gagal Menghapus', res.message, 'error');
+        }
+      } catch (err: any) {
+        hideLoading();
+        showAlert('Gagal Menghapus', err?.message || 'Terjadi kesalahan sistem', 'error');
       }
     }, 450);
   };
@@ -553,8 +571,9 @@ export default function App() {
   // Announcements
   const handleAddAnnouncement = (anc: Announcement) => {
     showLoading('Menyimpan pengumuman...', 'Mempublikasikan pengumuman resmi ke portal madrasah...', 'save');
-    setTimeout(() => {
+    setTimeout(async () => {
       storageService.saveAnnouncement(anc);
+      await storageService.pushToServerNow().catch(() => {});
       refreshData();
       hideLoading();
       showToast('Pengumuman baru berhasil diterbitkan.', 'success');
@@ -563,11 +582,12 @@ export default function App() {
 
   const handleDeleteAnnouncement = (id: string) => {
     showLoading('Menghapus pengumuman...', 'Menghapus artikel pengumuman dari database...', 'delete');
-    setTimeout(() => {
+    setTimeout(async () => {
       storageService.deleteAnnouncement(id);
+      await storageService.pushToServerNow().catch(() => {});
       refreshData();
       hideLoading();
-      showToast('Pengumuman berhasil dihapus.', 'info');
+      showToast('Pengumuman berhasil dihapus dari database.', 'info');
     }, 300);
   };
 
@@ -725,6 +745,8 @@ export default function App() {
             setProfileModalTab('profile');
             setIsProfileModalOpen(true);
           }}
+          onToggleSidebar={handleToggleSidebar}
+          isSidebarOpen={isSidebarOpen}
           notifications={applicantNotificationHistory}
           unreadNotificationsCount={applicantNotificationHistory.length}
           onOpenApplicantFromNotification={handleOpenApplicantFromNotification}

@@ -3,6 +3,7 @@ import QRCode from 'qrcode';
 import {
   Printer,
   FileDown,
+  Download,
   ArrowLeft,
   X,
   CheckCircle2,
@@ -31,6 +32,7 @@ interface Props {
   address?: Partial<AddressData> | null;
   school?: Partial<School> | null;
   application?: Partial<Application> | null;
+  autoDownload?: boolean;
 }
 
 export const AcceptanceLetterModal: React.FC<Props> = ({
@@ -42,6 +44,7 @@ export const AcceptanceLetterModal: React.FC<Props> = ({
   address: propAddress,
   school: propSchool,
   application: propApplication,
+  autoDownload = false,
 }) => {
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
@@ -246,19 +249,41 @@ export const AcceptanceLetterModal: React.FC<Props> = ({
     }
   };
 
+  const handleDownloadWordDoc = () => {
+    const blob = new Blob([docContentHtml], { type: 'application/msword;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Surat_Keterangan_Diterima_${regNum}.doc`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const handleDownloadPdf = async () => {
     setIsGeneratingPdf(true);
     try {
       const success = await downloadElementAsPdf('sipma-acceptance-sheet', `Surat_Keterangan_Diterima_${regNum}.pdf`);
       if (!success) {
-        handlePrint();
+        handleDownloadWordDoc();
       }
     } catch {
-      handlePrint();
+      handleDownloadWordDoc();
     } finally {
       setIsGeneratingPdf(false);
     }
   };
+
+  // Auto download if requested via prop
+  useEffect(() => {
+    if (autoDownload && isOpen && qrDataUrl) {
+      const timer = setTimeout(() => {
+        handleDownloadPdf();
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [autoDownload, isOpen, qrDataUrl]);
 
   const handlePrintDedicatedWindow = () => {
     try {
@@ -414,30 +439,31 @@ export const AcceptanceLetterModal: React.FC<Props> = ({
           </button>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Download PDF / Print as PDF (Strictly PDF only) */}
+            {/* Primary Direct Download PDF Button */}
             <button
               type="button"
               onClick={handleDownloadPdf}
               disabled={isGeneratingPdf}
-              title="Unduh dan simpan dokumen sebagai file PDF resmi (A4)"
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-60"
+              title="Langsung unduh file PDF Surat Keterangan Diterima ke perangkat tanpa preview"
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors cursor-pointer disabled:opacity-60"
             >
               {isGeneratingPdf ? (
-                <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
-                <FileDown className="w-4 h-4 text-emerald-400" />
+                <Download className="w-4 h-4" />
               )}
-              <span>{isGeneratingPdf ? 'Membuat PDF...' : 'Unduh Format PDF'}</span>
+              <span>{isGeneratingPdf ? 'Memproses PDF...' : 'Unduh Surat PDF (Langsung)'}</span>
             </button>
 
+            {/* Secondary Print Dialog Button */}
             <button
               type="button"
               onClick={handlePrint}
-              title="Cetak langsung ke printer atau Simpan sebagai PDF"
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors cursor-pointer"
+              title="Buka dialog printer browser"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold border border-slate-300 transition-colors cursor-pointer"
             >
-              <Printer className="w-4 h-4" />
-              <span>Cetak Surat Keterangan Diterima (PDF)</span>
+              <Printer className="w-3.5 h-3.5 text-slate-600" />
+              <span>Dialog Cetak</span>
             </button>
 
             <button

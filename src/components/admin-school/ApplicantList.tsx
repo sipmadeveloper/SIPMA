@@ -258,91 +258,128 @@ export const ApplicantList: React.FC<Props> = ({
 
   return (
     <div className="space-y-4" id="sipma-applicant-list">
-      {/* Search & Filter Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-center justify-between gap-3">
-        <div className="w-full md:w-80 relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Cari nama, NIK, NISN, no. pendaftaran..."
-            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none"
-          />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-          {/* Pathway filter */}
-          <select
-            value={pathwayFilter}
-            onChange={(e) => setPathwayFilter(e.target.value)}
-            className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500 outline-none"
-          >
-            <option value="all">Semua Jalur</option>
-            <option value="zonasi">Jalur Zonasi</option>
-            <option value="afirmasi">Jalur Afirmasi</option>
-            <option value="prestasi">Jalur Prestasi</option>
-            <option value="mutasi">Jalur Mutasi</option>
-          </select>
-
-          {/* Verification filter */}
-          <select
-            value={verificationFilter}
-            onChange={(e) => setVerificationFilter(e.target.value)}
-            className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500 outline-none"
-          >
-            <option value="all">Semua Status Verifikasi</option>
-            <option value="menunggu">Menunggu</option>
-            <option value="terverifikasi">Terverifikasi</option>
-            <option value="perlu_perbaikan">Perlu Perbaikan</option>
-            <option value="ditolak">Ditolak</option>
-          </select>
-
-          {/* Selection status filter */}
-          <select
-            value={selectionFilter}
-            onChange={(e) => setSelectionFilter(e.target.value as any)}
-            className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500 outline-none"
-            title="Filter pendaftar berdasarkan hasil seleksi kelulusan"
-          >
-            <option value="all">Semua Status Seleksi</option>
-            <option value="lulus">🟢 Khusus Siswa Lolos ({countLulus})</option>
-            <option value="tidak_lulus">🔴 Tidak Lolos</option>
-            <option value="menunggu">⏳ Dalam Proses Seleksi</option>
-          </select>
-
-          {/* QR Code Scanner Button */}
-          <button
-            type="button"
-            onClick={() => setIsScannerOpen(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-emerald-700 to-teal-800 hover:from-emerald-800 hover:to-teal-900 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-            title="Pindai QR Code Bukti Pendaftaran calon murid untuk verifikasi berkas otomatis"
-          >
-            <QrCode className="w-3.5 h-3.5 text-emerald-200" />
-            <span>Pindai QR Bukti</span>
-          </button>
-
-          {/* Export Excel Button with Dropdown & Modal */}
-          <div className="relative inline-block text-left">
-            <div className="inline-flex rounded-xl shadow-xs">
+      {/* Search & Practical Compact Filter Toolbar */}
+      <div className="bg-white p-2 sm:p-2.5 rounded-xl border border-slate-200/90 shadow-2xs">
+        <div className="flex flex-wrap lg:flex-nowrap items-center gap-1.5 sm:gap-2">
+          {/* Search Input */}
+          <div className="relative flex-1 min-w-[180px]">
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Cari nama, NIK, NISN, no. pendaftaran..."
+              className="w-full pl-8 pr-7 h-8.5 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none"
+            />
+            {searchQuery && (
               <button
                 type="button"
-                onClick={() => setIsExportModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-l-xl text-xs font-bold transition-colors cursor-pointer"
-                title="Unduh data pendaftar dalam format spreadsheet Excel (.xlsx) yang rapi"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
               >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>Export Excel (.xlsx)</span>
+                ✕
               </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+            {/* Pathway filter */}
+            <select
+              value={pathwayFilter}
+              onChange={(e) => setPathwayFilter(e.target.value)}
+              aria-label="Filter Jalur Pendaftaran"
+              className={`h-8.5 px-2 bg-slate-50 border rounded-lg text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none cursor-pointer ${
+                pathwayFilter !== 'all' ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-bold' : 'border-slate-300 text-slate-700'
+              }`}
+            >
+              <option value="all">Semua Jalur</option>
+              <option value="zonasi">Zonasi</option>
+              <option value="afirmasi">Afirmasi</option>
+              <option value="prestasi">Prestasi</option>
+              <option value="mutasi">Mutasi</option>
+            </select>
+
+            {/* Verification filter */}
+            <select
+              value={verificationFilter}
+              onChange={(e) => setVerificationFilter(e.target.value)}
+              aria-label="Filter Status Verifikasi"
+              className={`h-8.5 px-2 bg-slate-50 border rounded-lg text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none cursor-pointer ${
+                verificationFilter !== 'all' ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-bold' : 'border-slate-300 text-slate-700'
+              }`}
+            >
+              <option value="all">Verifikasi: Semua</option>
+              <option value="menunggu">Menunggu</option>
+              <option value="terverifikasi">Terverifikasi</option>
+              <option value="perlu_perbaikan">Perbaikan</option>
+              <option value="ditolak">Ditolak</option>
+            </select>
+
+            {/* Selection status filter */}
+            <select
+              value={selectionFilter}
+              onChange={(e) => setSelectionFilter(e.target.value as any)}
+              aria-label="Filter Hasil Seleksi"
+              className={`h-8.5 px-2 bg-slate-50 border rounded-lg text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none cursor-pointer ${
+                selectionFilter !== 'all' ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-bold' : 'border-slate-300 text-slate-700'
+              }`}
+              title="Filter hasil seleksi"
+            >
+              <option value="all">Hasil: Semua</option>
+              <option value="lulus">Lulus ({countLulus})</option>
+              <option value="tidak_lulus">Tidak Lolos</option>
+              <option value="menunggu">Proses</option>
+            </select>
+
+            {/* Reset Filter Button if any active */}
+            {(pathwayFilter !== 'all' || verificationFilter !== 'all' || selectionFilter !== 'all' || searchQuery) && (
               <button
                 type="button"
-                onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
-                className="px-2 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-r-xl border-l border-emerald-500/50 text-xs font-bold transition-colors cursor-pointer"
-                title="Pilihan Cepat Unduh Excel"
+                onClick={() => {
+                  setSearchQuery('');
+                  setPathwayFilter('all');
+                  setVerificationFilter('all');
+                  setSelectionFilter('all');
+                }}
+                className="h-8.5 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0"
+                title="Bersihkan Semua Filter"
               >
-                ▼
+                Reset
               </button>
-            </div>
+            )}
+
+            {/* QR Code Scanner Button */}
+            <button
+              type="button"
+              onClick={() => setIsScannerOpen(true)}
+              className="h-8.5 inline-flex items-center gap-1.5 px-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0"
+              title="Pindai QR Code Bukti Pendaftaran calon murid untuk verifikasi berkas otomatis"
+            >
+              <QrCode className="w-3.5 h-3.5 text-emerald-300" />
+              <span className="hidden sm:inline">Pindai QR</span>
+            </button>
+
+            {/* Export Excel Button with Dropdown & Modal */}
+            <div className="relative inline-block text-left shrink-0">
+              <div className="inline-flex h-8.5 rounded-lg shadow-2xs">
+                <button
+                  type="button"
+                  onClick={handleExportCurrent}
+                  className="inline-flex items-center gap-1.5 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-l-lg text-xs font-bold transition-colors cursor-pointer"
+                  title="Langsung unduh data pendaftar dalam format spreadsheet Excel (.xlsx)"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Unduh Excel</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
+                  className="px-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-r-lg border-l border-emerald-500/50 text-xs font-bold transition-colors cursor-pointer"
+                  title="Pilihan Cepat Unduh Excel"
+                >
+                  ▼
+                </button>
+              </div>
 
             {isExportDropdownOpen && (
               <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-white border border-slate-200 shadow-xl z-30 p-2 space-y-1">
@@ -405,6 +442,7 @@ export const ApplicantList: React.FC<Props> = ({
           </div>
         </div>
       </div>
+    </div>
 
       {/* Modern Data Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
@@ -436,7 +474,7 @@ export const ApplicantList: React.FC<Props> = ({
                 <th className="py-3.5 px-4">Status Zonasi</th>
                 <th className="py-3.5 px-4">Verifikasi Berkas</th>
                 <th className="py-3.5 px-4">Hasil Seleksi</th>
-                <th className="py-3.5 px-4 text-center">Aksi</th>
+                <th className="py-3.5 px-4 text-center whitespace-nowrap min-w-[270px]">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -576,69 +614,76 @@ export const ApplicantList: React.FC<Props> = ({
                           {app.final_status ? app.final_status.replace('_', ' ') : 'proses'}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setInitialVerificationTab('location');
-                              setSelectedAppForVerification(app);
-                            }}
-                            className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg"
-                            title="Buka Peta Zonasi Pendaftar Ini"
-                          >
-                            <MapPin className="w-4 h-4" />
-                          </button>
-
+                      <td className="py-3 px-3 text-center whitespace-nowrap min-w-[270px]">
+                        <div className="inline-flex items-center justify-center gap-1.5 shrink-0">
+                          {/* Main Primary Action: Verifikasi Berkas */}
                           <button
                             type="button"
                             onClick={() => {
                               setInitialVerificationTab('profile');
                               setSelectedAppForVerification(app);
                             }}
-                            className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg"
-                            title="Periksa & Verifikasi Berkas"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-xs border border-emerald-800 transition-all active:scale-95 cursor-pointer shrink-0"
+                            title="Periksa & Verifikasi Berkas Pendaftar"
                           >
-                            <Eye className="w-4 h-4" />
+                            <Eye className="w-3.5 h-3.5 text-emerald-100" />
+                            <span>Verifikasi</span>
                           </button>
 
+                          {/* Quick Map Button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setInitialVerificationTab('location');
+                              setSelectedAppForVerification(app);
+                            }}
+                            className="w-8.5 h-8.5 flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg transition-all active:scale-95 cursor-pointer shrink-0 shadow-2xs"
+                            title="Buka Peta Titik Rumah & Zonasi"
+                          >
+                            <MapPin className="w-4 h-4" />
+                          </button>
+
+                          {/* Quick Docs Download Button */}
                           <button
                             type="button"
                             onClick={() => {
                               setInitialVerificationTab('docs');
                               setSelectedAppForVerification(app);
                             }}
-                            className="p-1.5 bg-sky-50 hover:bg-sky-100 text-sky-700 rounded-lg"
-                            title="Buka & Unduh Berkas Persyaratan Pendaftar"
+                            className="w-8.5 h-8.5 flex items-center justify-center bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-300 rounded-lg transition-all active:scale-95 cursor-pointer shrink-0 shadow-2xs"
+                            title="Buka & Unduh Berkas Persyaratan"
                           >
                             <Download className="w-4 h-4" />
                           </button>
 
+                          {/* Reset Password Button */}
                           <button
                             type="button"
                             onClick={() => setResetPasswordApp(app)}
-                            className="p-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg"
-                            title="Reset Password Akun Murid Ini"
+                            className="w-8.5 h-8.5 flex items-center justify-center bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg transition-all active:scale-95 cursor-pointer shrink-0 shadow-2xs"
+                            title="Reset Kata Sandi Akun Murid Ini"
                           >
                             <KeyRound className="w-4 h-4" />
                           </button>
 
+                          {/* Print Bukti Button */}
                           {onViewPrint && (
                             <button
                               type="button"
                               onClick={() => onViewPrint(app.registration_number)}
-                              className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg cursor-pointer"
+                              className="w-8.5 h-8.5 flex items-center justify-center bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-300 rounded-lg transition-all active:scale-95 cursor-pointer shrink-0 shadow-2xs"
                               title="Cetak Bukti Pendaftaran"
                             >
                               <Printer className="w-4 h-4" />
                             </button>
                           )}
 
+                          {/* Delete Applicant Button */}
                           {onDeleteApplicant && (
                             <button
                               type="button"
                               onClick={() => setAppToDelete(app)}
-                              className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg cursor-pointer"
+                              className="w-8.5 h-8.5 flex items-center justify-center bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg transition-all active:scale-95 cursor-pointer shrink-0 shadow-2xs"
                               title="Hapus Data Pendaftar Ini Permanen"
                             >
                               <Trash2 className="w-4 h-4" />

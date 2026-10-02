@@ -292,7 +292,7 @@ export const SelectionManagement: React.FC<Props> = ({
                 <th className="py-3.5 px-4">Jarak / Nilai</th>
                 <th className="py-3.5 px-4">Status Verifikasi</th>
                 <th className="py-3.5 px-4">Status Kelulusan</th>
-                <th className="py-3.5 px-4 text-center">Ubah Status</th>
+                <th className="py-3.5 px-4 text-center whitespace-nowrap min-w-[190px]">Ubah Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -408,23 +408,25 @@ export const SelectionManagement: React.FC<Props> = ({
                           {app.selection_status}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1">
+                      <td className="py-3.5 px-4 text-center whitespace-nowrap min-w-[190px]">
+                        <div className="inline-flex items-center justify-center gap-1.5 shrink-0">
                           <button
                             type="button"
                             onClick={() => onUpdateStatus(app.registration_number, 'lulus')}
-                            className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold transition-colors"
-                            title="Set Lulus"
+                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer active:scale-95"
+                            title="Set Lulus Murid Ini"
                           >
-                            Lulus
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            <span>Lulus</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => onUpdateStatus(app.registration_number, 'tidak_lulus')}
-                            className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-bold transition-colors"
-                            title="Set Tidak Lulus"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-all shadow-2xs shrink-0 cursor-pointer active:scale-95"
+                            title="Set Tidak Lulus Murid Ini"
                           >
-                            Tidak Lulus
+                            <XCircle className="w-3.5 h-3.5" />
+                            <span>Tidak Lulus</span>
                           </button>
                         </div>
                       </td>

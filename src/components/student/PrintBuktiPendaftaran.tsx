@@ -24,6 +24,7 @@ import {
   generateVerificationToken,
   generateVerificationUrl,
 } from '../../utils/qrVerification';
+import { downloadElementAsPdf } from '../../utils/pdfGenerator';
 
 interface Props {
   application?: Partial<Application> | null;
@@ -34,6 +35,7 @@ interface Props {
   school?: Partial<School> | null;
   onBack: () => void;
   onTriggerVerification?: (regNumber: string) => void;
+  autoDownload?: boolean;
 }
 
 export const PrintBuktiPendaftaran: React.FC<Props> = ({
@@ -45,11 +47,13 @@ export const PrintBuktiPendaftaran: React.FC<Props> = ({
   school,
   onBack,
   onTriggerVerification,
+  autoDownload = false,
 }) => {
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [copied, setCopied] = useState<boolean>(false);
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
   const [printAlert, setPrintAlert] = useState<string | null>(null);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
   const printableRef = useRef<HTMLDivElement>(null);
 
   // Safe Guarded Fallbacks
@@ -145,7 +149,34 @@ export const PrintBuktiPendaftaran: React.FC<Props> = ({
     }
   }, [verificationUrl]);
 
-  // Method 1: Standard Window Print with graceful fallback
+  // Method 1: Direct Download PDF File (Client-side instant download without preview)
+  const handleDownloadPdf = async () => {
+    setIsGeneratingPdf(true);
+    try {
+      const fileName = `Bukti_Pendaftaran_${regNumberSafe}.pdf`;
+      const success = await downloadElementAsPdf('sipma-print-sheet', fileName);
+      if (!success) {
+        handleDownloadWordDoc();
+      }
+    } catch (e) {
+      console.warn('PDF download error:', e);
+      handleDownloadWordDoc();
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
+  // Trigger auto download if requested via prop
+  useEffect(() => {
+    if (autoDownload && qrDataUrl) {
+      const timer = setTimeout(() => {
+        handleDownloadPdf();
+      }, 600);
+      return () => clearTimeout(timer);
+    }
+  }, [autoDownload, qrDataUrl]);
+
+  // Method 2: Standard Window Print with graceful fallback
   const handlePrint = () => {
     try {
       window.print();
@@ -554,15 +585,31 @@ Waktu Cetak: ${todayStr}`;
             <span>Unduh Word (.doc)</span>
           </button>
 
-          {/* Primary Print Button */}
+          {/* Primary Direct Download PDF Button */}
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={isGeneratingPdf}
+            title="Langsung unduh file PDF Bukti Pendaftaran ke perangkat tanpa preview"
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors cursor-pointer disabled:opacity-60"
+          >
+            {isGeneratingPdf ? (
+              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
+            <span>{isGeneratingPdf ? 'Memproses PDF...' : 'Unduh Bukti PDF (Langsung)'}</span>
+          </button>
+
+          {/* Secondary Print Dialog Button */}
           <button
             type="button"
             onClick={handlePrint}
-            title="Cetak langsung ke printer atau Simpan sebagai PDF (A4)"
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-colors cursor-pointer"
+            title="Buka dialog printer browser"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold border border-slate-300 transition-colors cursor-pointer"
           >
-            <Printer className="w-4 h-4" />
-            <span>Cetak Bukti Pendaftaran (A4 / PDF)</span>
+            <Printer className="w-3.5 h-3.5 text-slate-600" />
+            <span>Dialog Cetak</span>
           </button>
         </div>
       </div>

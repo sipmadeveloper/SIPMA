@@ -349,30 +349,43 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Search & Filter Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+      {/* Search & Filter Bar (Compact & Practical) */}
+      <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
         <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Cari nama operator, email, NIP, nomor HP, atau tugas..."
-            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-all"
+            placeholder="Cari nama operator, email, NIP, HP, atau tugas..."
+            className="w-full pl-8 pr-3 h-8.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 transition-all"
           />
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 shrink-0">
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as any)}
             aria-label="Filter status akses operator"
-            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500"
+            className="h-8.5 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 cursor-pointer"
           >
             <option value="all">Semua Status ({schoolOperators.length})</option>
             <option value="active">Hanya Aktif ({activeCount})</option>
             <option value="inactive">Ditangguhkan ({inactiveCount})</option>
           </select>
+
+          {(searchQuery || statusFilter !== 'all') && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery('');
+                setStatusFilter('all');
+              }}
+              className="h-8.5 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0"
+            >
+              Reset
+            </button>
+          )}
         </div>
       </div>
 
@@ -414,7 +427,7 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
                   <th className="py-3 px-4">Kontak / NIP</th>
                   <th className="py-3 px-4">Status Akses</th>
                   <th className="py-3 px-4">Wewenang Seleksi</th>
-                  <th className="py-3 px-4 text-right">Tindakan</th>
+                  <th className="py-3 px-4 text-right whitespace-nowrap min-w-[190px]">Tindakan</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -498,9 +511,9 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
                       </td>
 
                       {/* Actions */}
-                      <td className="py-3 px-4 text-right">
+                      <td className="py-3 px-4 text-right whitespace-nowrap min-w-[190px]">
                         {isCurrentAdmin ? (
-                          <div className="inline-flex items-center justify-end gap-1">
+                          <div className="inline-flex items-center justify-end gap-1.5 shrink-0">
                             {/* Reset Password */}
                             <button
                               type="button"
@@ -508,44 +521,44 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
                                 setResetModalOperator(operator);
                                 setCustomNewPass('');
                               }}
-                              className="p-1.5 text-slate-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                              className="w-8 h-8 inline-flex items-center justify-center bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-300 rounded-lg transition-all shadow-2xs cursor-pointer shrink-0 active:scale-95"
                               title="Reset kata sandi akun operator"
                             >
-                              <KeyRound className="w-4 h-4" />
+                              <KeyRound className="w-3.5 h-3.5 text-amber-700" />
                             </button>
 
                             {/* Edit */}
                             <button
                               type="button"
                               onClick={() => handleOpenEditModal(operator)}
-                              className="p-1.5 text-slate-500 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors cursor-pointer"
+                              className="w-8 h-8 inline-flex items-center justify-center bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-300 rounded-lg transition-all shadow-2xs cursor-pointer shrink-0 active:scale-95"
                               title="Edit data operator"
                             >
-                              <Edit2 className="w-4 h-4" />
+                              <Edit2 className="w-3.5 h-3.5" />
                             </button>
 
                             {/* Toggle Status */}
                             <button
                               type="button"
                               onClick={() => handleToggleStatus(operator)}
-                              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                              className={`w-8 h-8 inline-flex items-center justify-center rounded-lg border transition-all shadow-2xs cursor-pointer shrink-0 active:scale-95 ${
                                 isActive
-                                  ? 'text-slate-500 hover:text-rose-600 hover:bg-rose-50'
-                                  : 'text-slate-500 hover:text-emerald-600 hover:bg-emerald-50'
+                                  ? 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'
+                                  : 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100'
                               }`}
                               title={isActive ? 'Tangguhkan akses operator' : 'Aktifkan kembali akses operator'}
                             >
-                              {isActive ? <XCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                              {isActive ? <XCircle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
                             </button>
 
                             {/* Delete */}
                             <button
                               type="button"
                               onClick={() => handleDeleteOperator(operator)}
-                              className="p-1.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              className="w-8 h-8 inline-flex items-center justify-center bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-300 rounded-lg transition-all shadow-2xs cursor-pointer shrink-0 active:scale-95"
                               title="Hapus akun operator permanen"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         ) : (

@@ -141,10 +141,7 @@ export const SidebarMenu: React.FC<Props> = ({
 
   const handleItemClick = (id: string) => {
     onSelectTab(id);
-    // On mobile screens, auto-close the drawer on navigation
-    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
-      onClose();
-    }
+    onClose();
   };
 
   const sidebarContent = (
@@ -309,120 +306,24 @@ export const SidebarMenu: React.FC<Props> = ({
 
   return (
     <>
-      {/* Mobile Toggle Button on left screen edge when closed */}
-      {!isOpen && (
-        <button
-          type="button"
-          onClick={onToggle}
-          className="fixed left-0 top-20 z-30 lg:hidden bg-emerald-900/95 hover:bg-emerald-800 text-white p-2.5 rounded-r-2xl shadow-lg border-y border-r border-emerald-700/80 backdrop-blur-xs flex items-center justify-center cursor-pointer transition-all active:scale-95 group"
-          title="Buka Menu Navigasi"
-          aria-label="Buka Menu Navigasi"
-        >
-          <PanelLeft className="w-5 h-5 text-emerald-200 group-hover:scale-110 transition-transform" />
-        </button>
-      )}
-
-      {/* Mobile Backdrop Overlay */}
+      {/* Backdrop Overlay when open */}
       {isOpen && (
         <div
           onClick={onClose}
-          className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs z-40 lg:hidden animate-in fade-in duration-200"
+          className="fixed inset-0 bg-slate-950/50 backdrop-blur-xs z-40 animate-in fade-in duration-200"
           aria-hidden="true"
         />
       )}
 
-      {/* Mobile Off-Canvas Drawer (< lg) */}
+      {/* Slide-over Toggle Menu Drawer */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] bg-white shadow-2xl flex flex-col lg:hidden transition-transform duration-300 ease-in-out ${
+        className={`fixed inset-y-0 left-0 z-50 w-72 sm:w-80 max-w-[85vw] bg-white shadow-2xl flex flex-col transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full pointer-events-none'
         }`}
       >
         <div className="w-full h-full flex flex-col">
           {sidebarContent}
         </div>
-      </aside>
-
-      {/* Desktop Left Collapsible Sidebar (>= lg) */}
-      <aside
-        className={`hidden lg:flex flex-col sticky top-16 h-[calc(100vh-4rem)] border-r border-slate-200/80 bg-white/95 backdrop-blur-md transition-all duration-300 ease-in-out shrink-0 z-30 ${
-          isOpen ? 'w-64 xl:w-72 shadow-xs' : 'w-16 shadow-2xs'
-        }`}
-      >
-        {isOpen ? (
-          <div className="w-64 xl:w-72 h-full flex flex-col justify-between shrink-0">
-            {sidebarContent}
-          </div>
-        ) : (
-          <div className="w-16 h-full flex flex-col justify-between items-center py-3 bg-white">
-            <div className="flex flex-col items-center gap-3 w-full">
-              {/* Expand Toggle Button on left side */}
-              <button
-                type="button"
-                onClick={onToggle}
-                className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-900 border border-slate-200 hover:border-emerald-300 flex items-center justify-center transition-all cursor-pointer shadow-2xs group"
-                title="Buka Menu Navigasi"
-                aria-label="Buka Menu Navigasi"
-              >
-                <PanelLeft className="w-5 h-5 text-emerald-800 group-hover:scale-110 transition-transform" />
-              </button>
-
-              <div className="w-8 h-px bg-slate-200" />
-
-              {/* Icon Only Navigation Links */}
-              <div className="flex flex-col items-center gap-1.5 w-full px-2 overflow-y-auto max-h-[calc(100vh-14rem)]">
-                {allNavItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = activeTab === item.id;
-
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => handleItemClick(item.id)}
-                      className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all relative group cursor-pointer ${
-                        isActive
-                          ? 'bg-emerald-900 text-emerald-300 shadow-xs ring-1 ring-emerald-800'
-                          : 'text-slate-600 hover:text-emerald-950 hover:bg-emerald-50'
-                      }`}
-                      title={item.label}
-                      aria-label={item.label}
-                    >
-                      <Icon className="w-4 h-4 shrink-0 transition-transform group-hover:scale-110" />
-                      {item.badge !== undefined && item.badge > 0 && (
-                        <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Bottom Actions for Mini Rail */}
-            <div className="flex flex-col items-center gap-2 pt-2 border-t border-slate-200/80 w-full px-2">
-              {onOpenProfile && (
-                <button
-                  type="button"
-                  onClick={onOpenProfile}
-                  className="w-10 h-10 rounded-xl hover:bg-slate-100 text-slate-600 hover:text-slate-900 flex items-center justify-center transition-colors cursor-pointer"
-                  title="Profil Saya"
-                  aria-label="Profil Saya"
-                >
-                  <User className="w-4 h-4" />
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={onLogout}
-                className="w-10 h-10 rounded-xl hover:bg-rose-50 text-rose-600 flex items-center justify-center transition-colors cursor-pointer"
-                title="Keluar"
-                aria-label="Keluar"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
       </aside>
     </>
   );

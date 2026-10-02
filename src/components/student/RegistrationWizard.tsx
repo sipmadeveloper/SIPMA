@@ -571,6 +571,22 @@ export const RegistrationWizard: React.FC<Props> = ({
     });
   };
 
+  const handleDownloadDispensationTemplateDoc = () => {
+    const regSafe = activeRegNumber || registrationNumber || 'REG-SIPMA';
+    const targetSchoolName = effectiveSchool?.school_name || 'Madrasah Pilihan';
+    const docHtml = `<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><title>Template Surat Dispensasi - ${regSafe}</title><style>body { font-family: 'Times New Roman', serif; font-size: 12pt; line-height: 1.5; padding: 20px; } .kop { text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 16px; font-weight: bold; } .title { text-align: center; font-weight: bold; text-decoration: underline; margin-bottom: 15px; } table { width: 100%; border-collapse: collapse; margin-bottom: 12px; } td { padding: 4px 0; vertical-align: top; } .lbl { width: 220px; font-weight: bold; }</style></head><body><div class="kop">PANITIA PENERIMAAN MURID BARU (PPDB)<br>${targetSchoolName.toUpperCase()}</div><div class="title">SURAT PERNYATAAN & PERMOHONAN DISPENSASI PENDAFTARAN</div><p>Yang bertanda tangan di bawah ini:</p><table><tr><td class="lbl">Nama Orang Tua / Wali</td><td>: ${parent?.father_name || parent?.mother_name || '...........................................'}</td></tr><tr><td class="lbl">NIK Orang Tua / Wali</td><td>: ${parent?.father_nik || parent?.mother_nik || '...........................................'}</td></tr><tr><td class="lbl">Nomor HP / WhatsApp</td><td>: ${parent?.father_phone || parent?.mother_phone || student?.phone || '...........................................'}</td></tr></table><p>Dengan ini mengajukan permohonan dispensasi pendaftaran PPDB untuk calon murid:</p><table><tr><td class="lbl">Nama Calon Murid</td><td>: <b>${student?.name || '...........................................'}</b></td></tr><tr><td class="lbl">Nomor Pendaftaran</td><td>: <b>${regSafe}</b></td></tr><tr><td class="lbl">Madrasah Tujuan</td><td>: <b>${targetSchoolName}</b></td></tr></table><p>Demikian surat permohonan dispensasi ini kami buat dengan sebenar-benarnya untuk digunakan sebagaimana mestinya.</p><br><table style="width: 100%;"><tr><td style="width: 50%; text-align: center;">Menyetujui,<br>Calon Murid Baru<br><br><br><br>( ${student?.name || '................................'} )</td><td style="width: 50%; text-align: center;">Pemohon,<br>Orang Tua / Wali<br>[Materai 10.000]<br><br><br>( ${parent?.father_name || parent?.mother_name || '................................'} )</td></tr></table></body></html>`;
+    const blob = new Blob([docHtml], { type: 'application/msword;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Template_Surat_Dispensasi_${regSafe}.doc`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Template Surat Dispensasi berhasil diunduh.', 'success');
+  };
+
   const handleSubmitFinal = () => {
     if (isFormLocked) {
       showAlert('Pendaftaran Telah Dikunci', 'Formulir pendaftaran ini telah dikirim dan dikunci secara permanen. Anda tidak dapat mengisi ulang formulir.', 'info');
@@ -2755,14 +2771,26 @@ export const RegistrationWizard: React.FC<Props> = ({
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setShowDispensationModal(true)}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold shrink-0 shadow-sm transition-all cursor-pointer"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>Unduh / Cetak Template</span>
-                </button>
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleDownloadDispensationTemplateDoc}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer"
+                    title="Langsung unduh template Surat Dispensasi ke komputer/HP tanpa preview"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>Unduh Template (.doc)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowDispensationModal(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-2.5 bg-purple-100 hover:bg-purple-200 text-purple-900 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                    title="Lihat format surat dispensasi"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-purple-700" />
+                    <span>Lihat Format</span>
+                  </button>
+                </div>
               </div>
             )}
 

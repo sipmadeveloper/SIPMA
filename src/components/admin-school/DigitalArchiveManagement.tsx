@@ -503,7 +503,7 @@ _Panitia PPDB ${school.school_name}_`;
           <select
             value={selectedYearFilter}
             onChange={(e) => setSelectedYearFilter(e.target.value)}
-            className="px-3.5 py-2 bg-white border border-emerald-300 rounded-xl text-xs font-bold text-emerald-950 focus:ring-2 focus:ring-emerald-500 shadow-xs outline-hidden cursor-pointer"
+            className="h-8.5 px-3 bg-white border border-emerald-300 rounded-lg text-xs font-bold text-emerald-950 focus:ring-2 focus:ring-emerald-500 shadow-2xs outline-none cursor-pointer"
           >
             <option value="all">Semua Tahun Pendaftaran ({allSchoolApps.length} Murid)</option>
             {availableYears.map((yr) => {
@@ -717,51 +717,57 @@ _Panitia PPDB ${school.school_name}_`;
       {activeMainTab === 'detection' && (
         <div className="space-y-4">
           {/* Search & Filter Bar */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+          {/* Practical Compact Filters for Document Detection */}
+          <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-2xs">
+            <div className="flex flex-wrap items-center gap-2">
               {/* Search Box */}
-              <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
                   value={searchStudentQuery}
                   onChange={(e) => setSearchStudentQuery(e.target.value)}
-                  placeholder="Cari nama murid, nomor pendaftaran, NISN..."
-                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 bg-slate-50/50"
+                  placeholder="Cari nama murid, no. pendaftaran, NISN..."
+                  className="w-full pl-8 pr-7 h-8.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50/70"
                 />
+                {searchStudentQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchStudentQuery('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
 
               {/* Completeness Status Filter */}
-              <div>
-                <select
-                  value={completenessFilter}
-                  onChange={(e) => setCompletenessFilter(e.target.value as CompletenessFilter)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 bg-slate-50/50 font-semibold"
-                >
-                  <option value="all">Semua Status Kelengkapan ({studentDetectionList.length})</option>
-                  <option value="complete">Hanya Berkas Lengkap ({detectionStats.completeCount})</option>
-                  <option value="incomplete">Hanya Belum Lengkap ({detectionStats.incompleteCount})</option>
-                  <option value="empty">Belum Mengunggah Dokumen ({detectionStats.emptyCount})</option>
-                </select>
-              </div>
+              <select
+                value={completenessFilter}
+                onChange={(e) => setCompletenessFilter(e.target.value as CompletenessFilter)}
+                className="h-8.5 px-2.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 font-semibold cursor-pointer shrink-0"
+              >
+                <option value="all">Semua Kelengkapan ({studentDetectionList.length})</option>
+                <option value="complete">Lengkap ({detectionStats.completeCount})</option>
+                <option value="incomplete">Belum Lengkap ({detectionStats.incompleteCount})</option>
+                <option value="empty">Kosong ({detectionStats.emptyCount})</option>
+              </select>
 
               {/* Pathway Filter */}
-              <div>
-                <select
-                  value={pathwayFilter}
-                  onChange={(e) => setPathwayFilter(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 bg-slate-50/50 capitalize"
-                >
-                  <option value="all">Semua Jalur Pendaftaran</option>
-                  <option value="zonasi">Jalur Zonasi</option>
-                  <option value="afirmasi">Jalur Afirmasi</option>
-                  <option value="prestasi">Jalur Prestasi</option>
-                  <option value="mutasi">Jalur Mutasi</option>
-                </select>
-              </div>
+              <select
+                value={pathwayFilter}
+                onChange={(e) => setPathwayFilter(e.target.value)}
+                className="h-8.5 px-2.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 cursor-pointer shrink-0"
+              >
+                <option value="all">Semua Jalur</option>
+                <option value="zonasi">Zonasi</option>
+                <option value="afirmasi">Afirmasi</option>
+                <option value="prestasi">Prestasi</option>
+                <option value="mutasi">Mutasi</option>
+              </select>
 
               {/* Reset Filter Button */}
-              <div className="flex items-center gap-2">
+              {(searchStudentQuery || completenessFilter !== 'all' || pathwayFilter !== 'all') && (
                 <button
                   type="button"
                   onClick={() => {
@@ -769,11 +775,11 @@ _Panitia PPDB ${school.school_name}_`;
                     setCompletenessFilter('all');
                     setPathwayFilter('all');
                   }}
-                  className="w-full px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                  className="h-8.5 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0"
                 >
-                  Reset Filter
+                  Reset
                 </button>
-              </div>
+              )}
             </div>
           </div>
 
@@ -1233,62 +1239,83 @@ _Panitia PPDB ${school.school_name}_`;
               </div>
             </div>
 
-            {/* Filter Inputs Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            {/* Practical Compact Filters for Archive Files */}
+            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
+              <div className="relative flex-1 min-w-[180px]">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
                   value={searchFileQuery}
                   onChange={(e) => setSearchFileQuery(e.target.value)}
                   placeholder="Cari berkas atau nama murid..."
-                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 bg-slate-50/50"
+                  className="w-full pl-8 pr-7 h-8.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50/70"
                 />
+                {searchFileQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchFileQuery('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
 
-              <div>
-                <select
-                  value={selectedStudentFilter}
-                  onChange={(e) => setSelectedStudentFilter(e.target.value)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 bg-slate-50/50"
-                >
-                  <option value="all">Semua Calon Murid ({schoolApps.length})</option>
-                  {schoolApps.map((a) => {
-                    const s = students[a.registration_number];
-                    return (
-                      <option key={a.registration_number} value={a.registration_number}>
-                        {s?.name || a.registration_number} ({a.registration_number})
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
+              <select
+                value={selectedStudentFilter}
+                onChange={(e) => setSelectedStudentFilter(e.target.value)}
+                aria-label="Filter Calon Murid"
+                className="h-8.5 px-2.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 cursor-pointer shrink-0 max-w-[200px]"
+              >
+                <option value="all">Semua Murid ({schoolApps.length})</option>
+                {schoolApps.map((a) => {
+                  const s = students[a.registration_number];
+                  return (
+                    <option key={a.registration_number} value={a.registration_number}>
+                      {s?.name || a.registration_number}
+                    </option>
+                  );
+                })}
+              </select>
 
-              <div>
-                <select
-                  value={cloudStatusFilter}
-                  onChange={(e) => setCloudStatusFilter(e.target.value as any)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 bg-slate-50/50"
-                >
-                  <option value="all">Semua Lokasi Penyimpanan</option>
-                  <option value="drive">Hanya di Google Drive (Cloud)</option>
-                  <option value="local">Penyimpanan Server Lokal</option>
-                </select>
-              </div>
+              <select
+                value={cloudStatusFilter}
+                onChange={(e) => setCloudStatusFilter(e.target.value as any)}
+                aria-label="Filter Lokasi Penyimpanan"
+                className="h-8.5 px-2.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 cursor-pointer shrink-0"
+              >
+                <option value="all">Semua Lokasi</option>
+                <option value="drive">Google Drive (Cloud)</option>
+                <option value="local">Server Lokal</option>
+              </select>
 
-              <div>
-                <select
-                  value={verifyFilter}
-                  onChange={(e) => setVerifyFilter(e.target.value as any)}
-                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 bg-slate-50/50"
+              <select
+                value={verifyFilter}
+                onChange={(e) => setVerifyFilter(e.target.value as any)}
+                aria-label="Filter Status Verifikasi"
+                className="h-8.5 px-2.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 cursor-pointer shrink-0"
+              >
+                <option value="all">Semua Status</option>
+                <option value="terverifikasi">Terverifikasi</option>
+                <option value="menunggu">Menunggu</option>
+                <option value="perlu_perbaikan">Perbaikan</option>
+                <option value="ditolak">Ditolak</option>
+              </select>
+
+              {(searchFileQuery || selectedStudentFilter !== 'all' || cloudStatusFilter !== 'all' || verifyFilter !== 'all') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchFileQuery('');
+                    setSelectedStudentFilter('all');
+                    setCloudStatusFilter('all');
+                    setVerifyFilter('all');
+                  }}
+                  className="h-8.5 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0"
                 >
-                  <option value="all">Semua Status Verifikasi</option>
-                  <option value="terverifikasi">Terverifikasi (Valid)</option>
-                  <option value="menunggu">Menunggu Verifikasi</option>
-                  <option value="perlu_perbaikan">Perlu Perbaikan</option>
-                  <option value="ditolak">Ditolak</option>
-                </select>
-              </div>
+                  Reset
+                </button>
+              )}
             </div>
           </div>
 
@@ -1494,7 +1521,7 @@ _Panitia PPDB ${school.school_name}_`;
                       <th className="py-3 px-4">Ukuran</th>
                       <th className="py-3 px-4">Status Cloud Drive</th>
                       <th className="py-3 px-4">Verifikasi</th>
-                      <th className="py-3 px-4 text-right">Aksi</th>
+                      <th className="py-3 px-4 text-right whitespace-nowrap min-w-[130px]">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1552,12 +1579,12 @@ _Panitia PPDB ${school.school_name}_`;
                               {doc.verification_status || 'menunggu'}
                             </span>
                           </td>
-                          <td className="py-3 px-4 text-right">
-                            <div className="inline-flex items-center gap-1.5">
+                          <td className="py-3 px-4 text-right whitespace-nowrap min-w-[130px]">
+                            <div className="inline-flex items-center justify-end gap-1.5 shrink-0">
                               <button
                                 type="button"
                                 onClick={() => setPreviewDoc(doc)}
-                                className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg cursor-pointer"
+                                className="w-8 h-8 inline-flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg transition-all shadow-2xs shrink-0 active:scale-95 cursor-pointer"
                                 title="Pratinjau Berkas"
                               >
                                 <Eye className="w-3.5 h-3.5" />
@@ -1565,7 +1592,7 @@ _Panitia PPDB ${school.school_name}_`;
                               <button
                                 type="button"
                                 onClick={() => downloadDocumentFile(doc, student?.name)}
-                                className="p-1.5 text-slate-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg cursor-pointer"
+                                className="w-8 h-8 inline-flex items-center justify-center bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-300 rounded-lg transition-all shadow-2xs shrink-0 active:scale-95 cursor-pointer"
                                 title="Unduh Berkas"
                               >
                                 <Download className="w-3.5 h-3.5" />
@@ -1575,7 +1602,7 @@ _Panitia PPDB ${school.school_name}_`;
                                   href={`https://drive.google.com/file/d/${doc.drive_file_id}/view?usp=drivesdk`}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="p-1.5 text-slate-600 hover:text-teal-700 hover:bg-teal-50 rounded-lg"
+                                  className="w-8 h-8 inline-flex items-center justify-center bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-300 rounded-lg transition-all shadow-2xs shrink-0 active:scale-95 cursor-pointer"
                                   title="Buka di Google Drive"
                                 >
                                   <ExternalLink className="w-3.5 h-3.5" />

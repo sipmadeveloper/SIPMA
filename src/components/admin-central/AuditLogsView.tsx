@@ -32,29 +32,54 @@ export const AuditLogsView: React.FC<Props> = ({ logs }) => {
         </div>
       </div>
 
-      {/* Filter Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-3">
+      {/* Filter Bar (Compact & Practical) */}
+      <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
         <div className="w-full sm:w-80 relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cari email, aksi, atau detail..."
-            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+            className="w-full pl-8 pr-7 h-8.5 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
           />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
+            >
+              ✕
+            </button>
+          )}
         </div>
 
-        <select
-          value={roleFilter}
-          onChange={(e) => setRoleFilter(e.target.value)}
-          className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500 outline-none"
-        >
-          <option value="all">Semua Role</option>
-          <option value="calon_murid">Calon Murid</option>
-          <option value="admin_sekolah">Admin Sekolah</option>
-          <option value="admin_pusat">Admin Pusat</option>
-        </select>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <select
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+            aria-label="Filter berdasarkan Role Akun"
+            className="h-8.5 px-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-emerald-500 outline-none cursor-pointer"
+          >
+            <option value="all">Semua Role</option>
+            <option value="calon_murid">Calon Murid</option>
+            <option value="admin_sekolah">Admin Sekolah</option>
+            <option value="admin_pusat">Admin Pusat</option>
+          </select>
+
+          {(search || roleFilter !== 'all') && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch('');
+                setRoleFilter('all');
+              }}
+              className="h-8.5 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0"
+            >
+              Reset
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Logs Table */}

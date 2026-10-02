@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   X,
   FileDown,
+  Download,
   Loader2,
 } from 'lucide-react';
 import { Application, StudentProfile, ParentData, SchoolOrigin, AddressData, School } from '../../types/sipma';
@@ -282,15 +283,27 @@ export const DispensationLetterModal: React.FC<Props> = ({
 </html>
   `;
 
+  const handleDownloadWordDoc = () => {
+    const blob = new Blob([docContentHtml], { type: 'application/msword;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Surat_Dispensasi_${studentSafeReg}.doc`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const handleDownloadPdf = async () => {
     setIsGeneratingPdf(true);
     try {
       const success = await downloadElementAsPdf('sipma-dispensasi-sheet', `Surat_Dispensasi_${studentSafeReg}.pdf`);
       if (!success) {
-        handlePrint();
+        handleDownloadWordDoc();
       }
     } catch {
-      handlePrint();
+      handleDownloadWordDoc();
     } finally {
       setIsGeneratingPdf(false);
     }
@@ -312,29 +325,31 @@ export const DispensationLetterModal: React.FC<Props> = ({
           </button>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* Primary Direct Download PDF Button */}
             <button
               type="button"
               onClick={handleDownloadPdf}
               disabled={isGeneratingPdf}
-              title="Unduh dan simpan dokumen sebagai file PDF resmi (A4)"
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-sm font-semibold shadow-xs transition-colors cursor-pointer disabled:opacity-60"
+              title="Langsung unduh file PDF Surat Dispensasi ke perangkat tanpa preview cetak"
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors cursor-pointer disabled:opacity-60"
             >
               {isGeneratingPdf ? (
-                <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
-                <FileDown className="w-4 h-4 text-emerald-400" />
+                <Download className="w-4 h-4" />
               )}
-              <span>{isGeneratingPdf ? 'Membuat PDF...' : 'Unduh Format PDF'}</span>
+              <span>{isGeneratingPdf ? 'Memproses PDF...' : 'Unduh Surat Dispensasi PDF (Langsung)'}</span>
             </button>
 
+            {/* Secondary Print Dialog Button */}
             <button
               type="button"
               onClick={handlePrint}
-              title="Cetak langsung ke printer atau Simpan sebagai PDF"
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors cursor-pointer"
+              title="Buka dialog printer browser"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-semibold border border-slate-300 transition-colors cursor-pointer"
             >
-              <Printer className="w-4 h-4" />
-              <span>Cetak Surat Dispensasi (PDF)</span>
+              <Printer className="w-4 h-4 text-slate-600" />
+              <span>Dialog Cetak</span>
             </button>
 
             <button

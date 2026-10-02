@@ -45,8 +45,11 @@ export const LoginPage: React.FC<Props> = ({
   const [forgotStep, setForgotStep] = useState<'verify' | 'new_password' | 'success'>('verify');
   const [verifiedUser, setVerifiedUser] = useState<any>(null);
 
-  const appName = settings?.app_name || 'SIPMA';
-  const appTagline = settings?.app_tagline || 'Sistem Penerimaan Murid Madrasah';
+  // App branding (strip any "Sistem Penerimaan Murid Madrasah" suffix/tagline as requested)
+  const appName = (settings?.app_name || 'SIPMA')
+    .replace(/\s*[-–—|:]\s*sistem\s+penerimaan\s+murid\s+madrasah\b/gi, '')
+    .replace(/\s*sistem\s+penerimaan\s+murid\s+madrasah\b/gi, '')
+    .trim() || 'SIPMA';
   const appLogo = settings?.app_logo;
 
   const handleTabChange = (tab: 'calon_murid' | 'admin') => {
@@ -148,36 +151,33 @@ export const LoginPage: React.FC<Props> = ({
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-100 via-emerald-50/40 to-teal-50/40 flex flex-col justify-center py-10 px-4 sm:px-6 lg:px-8" id="sipma-login-page">
-      <div className="w-full max-w-md mx-auto text-center space-y-3">
+      <div className="w-full max-w-lg mx-auto text-center space-y-3 px-2">
         <button
           type="button"
           onClick={onNavigateToHome}
-          className="inline-flex flex-col items-center justify-center gap-3 group transition-transform hover:scale-[1.02] cursor-pointer"
+          className="inline-flex flex-col items-center justify-center gap-3 group transition-transform hover:scale-[1.01] cursor-pointer w-full"
           title={`Kembali ke Beranda ${appName}`}
         >
           {appLogo ? (
             <img
               src={normalizeImageUrl(appLogo)}
               alt={appName}
-              className="w-16 h-16 sm:w-20 sm:h-20 object-contain rounded-2xl border-2 border-emerald-300/80 shadow-lg bg-white p-1.5"
+              className="w-16 h-16 sm:w-20 sm:h-20 object-contain rounded-2xl border-2 border-emerald-300/80 shadow-lg bg-white p-1.5 shrink-0"
               referrerPolicy="no-referrer"
               onError={(e) => handleImageError(e)}
             />
           ) : (
-            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-tr from-emerald-800 to-teal-600 text-white flex items-center justify-center font-black text-2xl sm:text-3xl shadow-lg border-2 border-emerald-400/40">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-tr from-emerald-800 to-teal-600 text-white flex items-center justify-center font-black text-2xl sm:text-3xl shadow-lg border-2 border-emerald-400/40 shrink-0">
               {appName.charAt(0) || 'S'}
             </div>
           )}
-          <span className="text-3xl sm:text-4xl font-black tracking-tight text-emerald-950 group-hover:text-emerald-800 transition-colors">
+          <span className="text-xl sm:text-2xl md:text-3xl lg:text-4xl font-black tracking-tight text-slate-900 group-hover:text-emerald-800 transition-colors break-words w-full px-2 text-center leading-normal whitespace-normal overflow-visible">
             {appName}
           </span>
         </button>
 
-        <div className="space-y-1">
-          <h2 className="text-lg sm:text-xl font-black text-slate-900">Masuk ke Portal PPDB Madrasah</h2>
-          <p className="text-xs text-slate-600 max-w-sm mx-auto leading-relaxed font-medium">
-            {appTagline}
-          </p>
+        <div>
+          <h2 className="text-base sm:text-lg md:text-xl font-black text-slate-900">Masuk ke Portal PPDB Madrasah</h2>
         </div>
       </div>
 

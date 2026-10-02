@@ -384,26 +384,26 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
         </div>
       )}
 
-      {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
-        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
+      {/* Filter and Search Bar (Compact & Practical) */}
+      <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-2xs">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari berdasarkan nama admin, email, NIP, nomor HP, atau nama madrasah..."
-              className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+              placeholder="Cari nama admin, email, NIP, HP, madrasah..."
+              className="w-full pl-8 pr-3 h-8.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
             <select
               value={schoolFilter}
               onChange={(e) => setSchoolFilter(e.target.value)}
               aria-label="Filter Berdasarkan Madrasah"
-              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+              className="h-8.5 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer"
             >
               <option value="all">Semua Madrasah ({schools.length})</option>
               {schools.map((s) => (
@@ -417,12 +417,26 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as any)}
               aria-label="Filter Berdasarkan Status Akses"
-              className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+              className="h-8.5 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer"
             >
               <option value="all">Semua Status</option>
               <option value="active">Aktif Saja</option>
               <option value="inactive">Terkunci / Nonaktif</option>
             </select>
+
+            {(searchQuery || schoolFilter !== 'all' || statusFilter !== 'all') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setSchoolFilter('all');
+                  setStatusFilter('all');
+                }}
+                className="h-8.5 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0"
+              >
+                Reset
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -437,7 +451,7 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
                 <th className="py-3 px-4">Madrasah Naungan</th>
                 <th className="py-3 px-4">Kredensial & Kontak</th>
                 <th className="py-3 px-4">Status Akses</th>
-                <th className="py-3 px-4 text-right">Aksi & Kontrol</th>
+                <th className="py-3 px-4 text-right whitespace-nowrap min-w-[210px]">Aksi & Kontrol</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
@@ -531,8 +545,8 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
                         </div>
                       </td>
 
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
+                      <td className="py-3.5 px-4 text-right whitespace-nowrap min-w-[210px]">
+                        <div className="inline-flex items-center justify-end gap-1.5 shrink-0">
                           {/* Reset Password Button */}
                           <button
                             type="button"
@@ -540,10 +554,10 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
                               setResetModalAdmin(admin);
                               setCustomNewPass('');
                             }}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0 active:scale-95"
                             title="Reset Kata Sandi Akun Admin Ini"
                           >
-                            <KeyRound className="w-3.5 h-3.5 text-amber-600" />
+                            <KeyRound className="w-3.5 h-3.5 text-amber-700" />
                             <span>Reset Sandi</span>
                           </button>
 
@@ -551,20 +565,20 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
                           <button
                             type="button"
                             onClick={() => handleOpenEditModal(admin)}
-                            className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors cursor-pointer"
+                            className="w-8 h-8 inline-flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg transition-all shadow-2xs cursor-pointer shrink-0 active:scale-95"
                             title="Edit Data Admin"
                           >
-                            <Edit3 className="w-4 h-4" />
+                            <Edit3 className="w-3.5 h-3.5" />
                           </button>
 
                           {/* Delete Admin */}
                           <button
                             type="button"
                             onClick={() => setAdminToDelete(admin)}
-                            className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-colors cursor-pointer"
+                            className="w-8 h-8 inline-flex items-center justify-center bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-300 rounded-lg transition-all shadow-2xs cursor-pointer shrink-0 active:scale-95"
                             title="Hapus Akun Admin Ini"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </td>
