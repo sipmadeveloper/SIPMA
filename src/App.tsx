@@ -175,25 +175,11 @@ export default function App() {
   const [highlightApplicantRegNumber, setHighlightApplicantRegNumber] = useState<string | null>(null);
 
   // Left Sidebar Toggle Menu State for All Accounts
-  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('sipma_sidebar_open');
-      if (saved !== null) {
-        return saved === 'true';
-      }
-      return false;
-    }
-    return false;
-  });
+  // Strictly defaults to closed (false) upon entering account / new login unless explicitly clicked to open
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
 
   const handleToggleSidebar = useCallback(() => {
-    setIsSidebarOpen((prev) => {
-      const next = !prev;
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('sipma_sidebar_open', String(next));
-      }
-      return next;
-    });
+    setIsSidebarOpen((prev) => !prev);
   }, []);
 
   // Set of known registration numbers to avoid false notifications on initial mount
@@ -419,6 +405,12 @@ export default function App() {
         return;
       }
 
+      // Reset sidebar navigation to closed upon entering account / logging in
+      setIsSidebarOpen(false);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('sipma_sidebar_open', 'false');
+      }
+
       updateViewMode('app');
       refreshData();
       hideLoading();
@@ -429,6 +421,10 @@ export default function App() {
   const handleLogout = () => {
     showLoading('Keluar dari sistem...');
     setTimeout(() => {
+      setIsSidebarOpen(false);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('sipma_sidebar_open', 'false');
+      }
       setCurrentUser(null);
       storageService.setCurrentUser(null);
       updateViewMode('landing');
@@ -681,8 +677,15 @@ export default function App() {
     return currentRoute.studentTab || 'overview';
   }, [currentUser?.role, currentRoute]);
 
+  const [archiveSubTab, setArchiveSubTab] = useState<'detection' | 'files_gallery'>('detection');
+
   const handleSelectTab = useCallback(
-    (tabId: string) => {
+    (tabId: string, subTab?: string) => {
+      // Auto-close sidebar navigation upon selecting menu tab
+      setIsSidebarOpen(false);
+      if (subTab && (subTab === 'detection' || subTab === 'files_gallery')) {
+        setArchiveSubTab(subTab);
+      }
       if (currentUser?.role === 'admin_pusat') {
         navigate({ centralTab: tabId as CentralTab });
       } else if (currentUser?.role === 'admin_sekolah' || currentUser?.role === 'operator_sekolah') {
@@ -745,6 +748,7 @@ export default function App() {
             setProfileModalTab('profile');
             setIsProfileModalOpen(true);
           }}
+          onLogout={handleLogout}
           onToggleSidebar={handleToggleSidebar}
           isSidebarOpen={isSidebarOpen}
           notifications={applicantNotificationHistory}
@@ -802,6 +806,7 @@ export default function App() {
               currentSchool={currentSchool}
               settings={settings}
               activeTab={currentActiveTab}
+              activeSubTab={archiveSubTab}
               onSelectTab={handleSelectTab}
               stats={sidebarStats}
               onLogout={handleLogout}
@@ -907,6 +912,7 @@ export default function App() {
                     onTabChange={(tab) => navigate({ schoolTab: tab })}
                     highlightRegNumber={highlightApplicantRegNumber}
                     onClearHighlight={() => setHighlightApplicantRegNumber(null)}
+                    archiveSubTab={archiveSubTab}
                   />
                 )}
 

@@ -33,6 +33,9 @@ import {
 } from '../../types/sipma';
 import { formatDistanceIndonesian, formatCoordinates, checkZoningCompliance } from '../../utils/geo';
 import { VerificationModal } from './VerificationModal';
+import { ApplicantLocationModal } from './ApplicantLocationModal';
+import { ApplicantDocumentsModal } from './ApplicantDocumentsModal';
+import { ApplicantDetailModal } from './ApplicantDetailModal';
 import { ResetPasswordModal } from '../common/ResetPasswordModal';
 import { exportApplicantsToExcel } from '../../utils/excelExport';
 import { QRScannerModal } from '../common/QRScannerModal';
@@ -79,6 +82,9 @@ export const ApplicantList: React.FC<Props> = ({
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   const [selectedAppForVerification, setSelectedAppForVerification] = useState<Application | null>(null);
+  const [selectedAppForLocation, setSelectedAppForLocation] = useState<Application | null>(null);
+  const [selectedAppForDocuments, setSelectedAppForDocuments] = useState<Application | null>(null);
+  const [selectedAppForDetail, setSelectedAppForDetail] = useState<Application | null>(null);
   const [initialVerificationTab, setInitialVerificationTab] = useState<'profile' | 'location' | 'docs'>('profile');
   const [resetPasswordApp, setResetPasswordApp] = useState<Application | null>(null);
   const [appToDelete, setAppToDelete] = useState<Application | null>(null);
@@ -532,7 +538,12 @@ export const ApplicantList: React.FC<Props> = ({
                       </td>
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center shadow-2xs">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedAppForDetail(app)}
+                            className="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden shrink-0 flex items-center justify-center shadow-2xs hover:ring-2 hover:ring-emerald-500 cursor-pointer transition-all"
+                            title="Klik untuk melihat Detail Profil Calon Murid (Terpisah)"
+                          >
                             {student?.photo_url ? (
                               <img
                                 src={normalizeImageUrl(student.photo_url)}
@@ -542,9 +553,16 @@ export const ApplicantList: React.FC<Props> = ({
                             ) : (
                               <User className="w-4 h-4 text-slate-400" />
                             )}
-                          </div>
+                          </button>
                           <div className="min-w-0">
-                            <div className="font-bold text-slate-900 truncate">{student?.name || '-'}</div>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedAppForDetail(app)}
+                              className="font-bold text-slate-900 truncate hover:text-emerald-700 hover:underline cursor-pointer text-left block"
+                              title="Klik untuk melihat Detail Profil Calon Murid (Terpisah)"
+                            >
+                              {student?.name || '-'}
+                            </button>
                             <div className="text-[11px] text-slate-500 font-mono">NIK: {student?.nik || '-'}</div>
                           </div>
                         </div>
@@ -577,12 +595,9 @@ export const ApplicantList: React.FC<Props> = ({
                       <td className="py-3.5 px-4 font-bold text-slate-800">
                         <button
                           type="button"
-                          onClick={() => {
-                            setInitialVerificationTab('location');
-                            setSelectedAppForVerification(app);
-                          }}
+                          onClick={() => setSelectedAppForLocation(app)}
                           className="inline-flex items-center gap-1.5 hover:text-emerald-700 hover:underline cursor-pointer group"
-                          title="Lihat Peta Titik Rumah Pendaftar Ini"
+                          title="Lihat Peta Titik Rumah & Zonasi Pendaftar Ini (Terpisah)"
                         >
                           <MapPin className="w-3.5 h-3.5 text-emerald-600 group-hover:scale-110 transition-transform shrink-0" />
                           <span>{formatDistanceIndonesian(app.distance_km)}</span>
@@ -616,75 +631,76 @@ export const ApplicantList: React.FC<Props> = ({
                       </td>
                       <td className="py-3 px-3 text-center whitespace-nowrap min-w-[270px]">
                         <div className="inline-flex items-center justify-center gap-1.5 shrink-0">
-                          {/* Main Primary Action: Verifikasi Berkas */}
+                          {/* 1. Aksi Terpisah: Verifikasi Berkas */}
                           <button
                             type="button"
-                            onClick={() => {
-                              setInitialVerificationTab('profile');
-                              setSelectedAppForVerification(app);
-                            }}
+                            onClick={() => setSelectedAppForVerification(app)}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-xs border border-emerald-800 transition-all active:scale-95 cursor-pointer shrink-0"
-                            title="Periksa & Verifikasi Berkas Pendaftar"
+                            title="Tindakan Verifikasi Status Berkas Pendaftar (Terpisah)"
                           >
-                            <Eye className="w-3.5 h-3.5 text-emerald-100" />
+                            <CheckCircle className="w-3.5 h-3.5 text-emerald-100" />
                             <span>Verifikasi</span>
                           </button>
 
-                          {/* Quick Map Button */}
+                          {/* 2. Aksi Terpisah: Peta Titik Rumah & Zonasi */}
                           <button
                             type="button"
-                            onClick={() => {
-                              setInitialVerificationTab('location');
-                              setSelectedAppForVerification(app);
-                            }}
+                            onClick={() => setSelectedAppForLocation(app)}
                             className="w-8.5 h-8.5 flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg transition-all active:scale-95 cursor-pointer shrink-0 shadow-2xs"
-                            title="Buka Peta Titik Rumah & Zonasi"
+                            title="Buka Peta Lokasi Rumah & Kepatuhan Zonasi (Terpisah)"
                           >
                             <MapPin className="w-4 h-4" />
                           </button>
 
-                          {/* Quick Docs Download Button */}
+                          {/* 3. Aksi Terpisah: Berkas & Unduh Dokumen */}
                           <button
                             type="button"
-                            onClick={() => {
-                              setInitialVerificationTab('docs');
-                              setSelectedAppForVerification(app);
-                            }}
+                            onClick={() => setSelectedAppForDocuments(app)}
                             className="w-8.5 h-8.5 flex items-center justify-center bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-300 rounded-lg transition-all active:scale-95 cursor-pointer shrink-0 shadow-2xs"
-                            title="Buka & Unduh Berkas Persyaratan"
+                            title="Buka & Unduh Berkas Persyaratan Pendaftar (Terpisah)"
                           >
                             <Download className="w-4 h-4" />
                           </button>
 
-                          {/* Reset Password Button */}
+                          {/* 4. Aksi Terpisah: Detail Lengkap Calon Murid */}
+                          <button
+                            type="button"
+                            onClick={() => setSelectedAppForDetail(app)}
+                            className="w-8.5 h-8.5 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg transition-all active:scale-95 cursor-pointer shrink-0 shadow-2xs"
+                            title="Lihat Detail Lengkap Profil Calon Murid (Terpisah)"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+
+                          {/* 5. Aksi Terpisah: Reset Password */}
                           <button
                             type="button"
                             onClick={() => setResetPasswordApp(app)}
                             className="w-8.5 h-8.5 flex items-center justify-center bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg transition-all active:scale-95 cursor-pointer shrink-0 shadow-2xs"
-                            title="Reset Kata Sandi Akun Murid Ini"
+                            title="Reset Kata Sandi Akun Murid Ini (Terpisah)"
                           >
                             <KeyRound className="w-4 h-4" />
                           </button>
 
-                          {/* Print Bukti Button */}
+                          {/* 6. Aksi Terpisah: Cetak Bukti Pendaftaran */}
                           {onViewPrint && (
                             <button
                               type="button"
                               onClick={() => onViewPrint(app.registration_number)}
                               className="w-8.5 h-8.5 flex items-center justify-center bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-300 rounded-lg transition-all active:scale-95 cursor-pointer shrink-0 shadow-2xs"
-                              title="Cetak Bukti Pendaftaran"
+                              title="Cetak Bukti Pendaftaran Resmi (Terpisah)"
                             >
                               <Printer className="w-4 h-4" />
                             </button>
                           )}
 
-                          {/* Delete Applicant Button */}
+                          {/* 7. Aksi Terpisah: Hapus Data Pendaftar */}
                           {onDeleteApplicant && (
                             <button
                               type="button"
                               onClick={() => setAppToDelete(app)}
                               className="w-8.5 h-8.5 flex items-center justify-center bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg transition-all active:scale-95 cursor-pointer shrink-0 shadow-2xs"
-                              title="Hapus Data Pendaftar Ini Permanen"
+                              title="Hapus Data Pendaftar Ini Permanen (Terpisah)"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -938,7 +954,7 @@ export const ApplicantList: React.FC<Props> = ({
         schoolId={school?.school_id}
       />
 
-      {/* Verification Modal */}
+      {/* 1. Modal Terpisah: Verifikasi Berkas & Validasi Keputusan */}
       {selectedAppForVerification && (
         <VerificationModal
           application={selectedAppForVerification}
@@ -956,6 +972,41 @@ export const ApplicantList: React.FC<Props> = ({
           onVerify={(status, notes) => {
             onVerify(selectedAppForVerification.registration_number, status, notes);
           }}
+        />
+      )}
+
+      {/* 2. Modal Terpisah: Peta Titik Rumah & Zonasi */}
+      {selectedAppForLocation && (
+        <ApplicantLocationModal
+          application={selectedAppForLocation}
+          student={students[selectedAppForLocation.registration_number]}
+          school={school}
+          address={addresses[selectedAppForLocation.registration_number]}
+          onClose={() => setSelectedAppForLocation(null)}
+        />
+      )}
+
+      {/* 3. Modal Terpisah: Berkas & Unduhan Dokumen */}
+      {selectedAppForDocuments && (
+        <ApplicantDocumentsModal
+          application={selectedAppForDocuments}
+          student={students[selectedAppForDocuments.registration_number]}
+          documents={documents}
+          school={school}
+          onClose={() => setSelectedAppForDocuments(null)}
+        />
+      )}
+
+      {/* 4. Modal Terpisah: Detail Profil Lengkap Calon Murid */}
+      {selectedAppForDetail && (
+        <ApplicantDetailModal
+          application={selectedAppForDetail}
+          student={students[selectedAppForDetail.registration_number]}
+          parent={parents[selectedAppForDetail.registration_number]}
+          schoolOrigin={schoolOrigins[selectedAppForDetail.registration_number]}
+          address={addresses[selectedAppForDetail.registration_number]}
+          school={school}
+          onClose={() => setSelectedAppForDetail(null)}
         />
       )}
     </div>

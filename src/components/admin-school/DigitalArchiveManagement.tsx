@@ -58,10 +58,20 @@ interface Props {
   documents: DocumentItem[];
   currentUser?: UserType | null;
   onRefreshData?: () => void;
+  initialMainTab?: MainViewTab;
 }
 
 type MainViewTab = 'detection' | 'files_gallery';
-type CategoryFilter = 'all' | 'kartu_keluarga' | 'akta_kelahiran' | 'ijazah_skl' | 'pas_foto' | 'pendukung';
+type CategoryFilter =
+  | 'all'
+  | 'kartu_keluarga'
+  | 'akta_kelahiran'
+  | 'ijazah_skl'
+  | 'pas_foto'
+  | 'pendukung'
+  | 'kartu_afirmasi'
+  | 'sertifikat_prestasi'
+  | 'surat_mutasi';
 type CompletenessFilter = 'all' | 'complete' | 'incomplete' | 'empty';
 
 export const DigitalArchiveManagement: React.FC<Props> = ({
@@ -72,11 +82,18 @@ export const DigitalArchiveManagement: React.FC<Props> = ({
   documents,
   currentUser,
   onRefreshData,
+  initialMainTab,
 }) => {
   const { showAlert } = useFeedback();
 
   // Navigation View Tab: "Deteksi Kelengkapan" vs "Daftar Berkas Terarsip"
-  const [activeMainTab, setActiveMainTab] = useState<MainViewTab>('detection');
+  const [activeMainTab, setActiveMainTab] = useState<MainViewTab>(initialMainTab || 'detection');
+
+  React.useEffect(() => {
+    if (initialMainTab) {
+      setActiveMainTab(initialMainTab);
+    }
+  }, [initialMainTab]);
 
   // Filters for Academic Year Archives
   const [selectedYearFilter, setSelectedYearFilter] = useState<string>('all');
@@ -308,8 +325,21 @@ export const DigitalArchiveManagement: React.FC<Props> = ({
     return schoolDocuments.filter((doc) => {
       // Category Filter
       if (activeCategory !== 'all') {
-        const cat = getDocCategory(doc.document_type);
-        if (cat !== activeCategory) return false;
+        const docKey = normalizeDocTypeKey(doc.document_type);
+        if (activeCategory === 'pendukung') {
+          const cat = getDocCategory(doc.document_type);
+          if (cat !== 'pendukung') return false;
+        } else if (
+          activeCategory === 'kartu_keluarga' ||
+          activeCategory === 'akta_kelahiran' ||
+          activeCategory === 'ijazah_skl' ||
+          activeCategory === 'pas_foto'
+        ) {
+          const cat = getDocCategory(doc.document_type);
+          if (cat !== activeCategory) return false;
+        } else {
+          if (docKey !== activeCategory) return false;
+        }
       }
 
       // Student Filter
@@ -443,244 +473,14 @@ _Panitia PPDB ${school.school_name}_`;
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300" id="sipma-digital-archive">
-      {/* ================= HEADER SECTION ================= */}
-      <div className="bg-gradient-to-br from-slate-900 via-teal-950 to-emerald-950 text-white p-6 rounded-2xl border border-teal-800/40 shadow-md flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
-        <div>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-xs font-bold uppercase tracking-wider">
-            <Archive className="w-3.5 h-3.5" />
-            <span>Manajemen Arsip & Deteksi Kelengkapan Dokumen</span>
-          </div>
-          <h2 className="text-xl sm:text-2xl font-black text-white mt-1.5">
-            Arsip Dokumen & Deteksi Berkas — {school.school_name}
-          </h2>
-          <p className="text-xs text-teal-100/80 mt-1 max-w-2xl leading-relaxed">
-            Berkas yang diunggah oleh pendaftar secara otomatis tersimpan rapi di Google Drive dan Google Sheets berdasarkan kategori (KK, Akta, Ijazah). Admin dapat memantau kelengkapan dokumen seluruh calon peserta didik di sini.
-          </p>
-        </div>
-
-        <div className="flex items-center justify-end shrink-0">
-          {/* Export Completeness Report */}
-          <button
-            type="button"
-            onClick={handleExportCompletenessCsv}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400/40 text-xs font-bold rounded-xl transition-all cursor-pointer shadow-sm hover:shadow-md"
-            title="Unduh rekap inventaris kelengkapan berkas seluruh calon murid (CSV)"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
-            <span>Export Rekap Kelengkapan</span>
-          </button>
-        </div>
-      </div>
-
-      {/* ================= ACADEMIC YEAR ARCHIVE SELECTOR ================= */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-emerald-950/10 via-white to-teal-950/10 p-4 rounded-2xl border border-emerald-200/90 shadow-xs">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-800 to-teal-700 text-white flex items-center justify-center shadow-xs shrink-0">
-            <Archive className="w-5 h-5 text-emerald-100" />
-          </div>
-          <div>
-            <div className="text-xs font-black text-slate-900 tracking-tight flex items-center gap-2">
-              <span>Arsip Dokumen Menurut Tahun Pendaftaran</span>
-              {selectedYearFilter !== 'all' ? (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  Tahun {selectedYearFilter}
-                </span>
-              ) : (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                  Semua Tahun
-                </span>
-              )}
-            </div>
-            <div className="text-[11px] text-slate-500 font-medium">
-              Data & berkas pendaftar lolos seleksi tersimpan rapi di Google Drive & Sheets dan dapat dibuka/diakses kapan saja.
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs font-bold text-slate-700 whitespace-nowrap">Filter Tahun:</span>
-          <select
-            value={selectedYearFilter}
-            onChange={(e) => setSelectedYearFilter(e.target.value)}
-            className="h-8.5 px-3 bg-white border border-emerald-300 rounded-lg text-xs font-bold text-emerald-950 focus:ring-2 focus:ring-emerald-500 shadow-2xs outline-none cursor-pointer"
-          >
-            <option value="all">Semua Tahun Pendaftaran ({allSchoolApps.length} Murid)</option>
-            {availableYears.map((yr) => {
-              const countInYr = allSchoolApps.filter((a) => {
-                const y = a.admission_year || systemSettings.academic_year_label || systemSettings.application_year;
-                return y === yr || String(y).includes(yr);
-              }).length;
-              const isCurrent = yr === (systemSettings.academic_year_label || systemSettings.application_year);
-              return (
-                <option key={yr} value={yr}>
-                  Tahun Ajaran {yr} {isCurrent ? '(Tahun Aktif)' : '(Arsip Kelulusan)'} ({countInYr} Murid)
-                </option>
-              );
-            })}
-          </select>
-        </div>
-      </div>
-
-      {selectedYearFilter !== 'all' && (
-        <div className="flex items-center justify-between gap-3 bg-blue-50 border border-blue-200 px-4 py-3 rounded-xl text-xs text-blue-900 font-medium shadow-2xs">
-          <div className="flex items-center gap-2">
-            <FolderCheck className="w-4 h-4 text-blue-600 shrink-0" />
-            <span>
-              Menampilkan arsip dokumen pendaftaran tahun ajaran <strong>{selectedYearFilter}</strong>. Berkas pendaftar lolos seleksi tersimpan di Google Drive & Sheets dan siap diakses.
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => setSelectedYearFilter('all')}
-            className="text-blue-700 hover:text-blue-950 font-bold underline shrink-0 cursor-pointer"
-          >
-            Tampilkan Semua Tahun
-          </button>
-        </div>
-      )}
-
-      {/* ================= KPI STATS CARDS ================= */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3.5">
-        {/* Total Applicants */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Pendaftar</span>
-            <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-xs">
-              <UserCheck className="w-3.5 h-3.5" />
-            </div>
-          </div>
-          <div className="text-2xl font-black text-slate-900 mt-1">{detectionStats.totalApplicants}</div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Calon Murid Terdaftar</div>
-        </div>
-
-        {/* Complete (Lengkap) */}
-        <div
-          onClick={() => {
-            setActiveMainTab('detection');
-            setCompletenessFilter('complete');
-          }}
-          className={`p-4 rounded-xl border shadow-xs cursor-pointer transition-all ${
-            activeMainTab === 'detection' && completenessFilter === 'complete'
-              ? 'bg-emerald-50 border-emerald-400 ring-2 ring-emerald-300/40'
-              : 'bg-white border-slate-200 hover:border-emerald-300'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-emerald-900 uppercase tracking-wider">Berkas Lengkap</span>
-            <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-2xl font-black text-emerald-950 mt-1">{detectionStats.completeCount}</div>
-          <div className="text-[10px] text-emerald-700 font-medium mt-0.5">
-            {detectionStats.percentage}% Dari Total Murid
-          </div>
-        </div>
-
-        {/* Incomplete (Belum Lengkap) */}
-        <div
-          onClick={() => {
-            setActiveMainTab('detection');
-            setCompletenessFilter('incomplete');
-          }}
-          className={`p-4 rounded-xl border shadow-xs cursor-pointer transition-all ${
-            activeMainTab === 'detection' && completenessFilter === 'incomplete'
-              ? 'bg-amber-50 border-amber-400 ring-2 ring-amber-300/40'
-              : 'bg-white border-slate-200 hover:border-amber-300'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-amber-900 uppercase tracking-wider">Belum Lengkap</span>
-            <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
-              <AlertTriangle className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-2xl font-black text-amber-950 mt-1">{detectionStats.incompleteCount}</div>
-          <div className="text-[10px] text-amber-700 font-medium mt-0.5">Perlu Dilengkapi Murid</div>
-        </div>
-
-        {/* Empty (Belum Unggah) */}
-        <div
-          onClick={() => {
-            setActiveMainTab('detection');
-            setCompletenessFilter('empty');
-          }}
-          className={`p-4 rounded-xl border shadow-xs cursor-pointer transition-all ${
-            activeMainTab === 'detection' && completenessFilter === 'empty'
-              ? 'bg-rose-50 border-rose-400 ring-2 ring-rose-300/40'
-              : 'bg-white border-slate-200 hover:border-rose-300'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-rose-900 uppercase tracking-wider">Belum Unggah</span>
-            <div className="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center">
-              <XCircle className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-2xl font-black text-rose-950 mt-1">{detectionStats.emptyCount}</div>
-          <div className="text-[10px] text-rose-700 font-medium mt-0.5">0 Dokumen Terunggah</div>
-        </div>
-
-        {/* Total Documents in Cloud Drive */}
-        <div
-          onClick={() => setActiveMainTab('files_gallery')}
-          className={`p-4 rounded-xl border shadow-xs cursor-pointer transition-all ${
-            activeMainTab === 'files_gallery'
-              ? 'bg-blue-50 border-blue-400 ring-2 ring-blue-300/40'
-              : 'bg-white border-slate-200 hover:border-blue-300'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-blue-900 uppercase tracking-wider">Total Berkas Masuk</span>
-            <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
-              <Cloud className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-2xl font-black text-blue-950 mt-1">{schoolDocuments.length}</div>
-          <div className="text-[10px] text-blue-700 font-medium mt-0.5">Otomatis di Drive & Sheet</div>
-        </div>
-      </div>
-
-      {/* Progress Bar of Overall Completeness */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex-1">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-1.5">
-            <span className="flex items-center gap-1.5">
-              <TrendingUp className="w-4 h-4 text-emerald-600" />
-              <span>Tingkat Kelengkapan Berkas Pendaftaran Madrasah</span>
-            </span>
-            <span className="text-emerald-700 font-black text-sm">{detectionStats.percentage}% Lengkap</span>
-          </div>
-          <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden p-0.5">
-            <div
-              className="h-full bg-gradient-to-r from-teal-500 to-emerald-600 rounded-full transition-all duration-500"
-              style={{ width: `${detectionStats.percentage}%` }}
-            />
-          </div>
-        </div>
-        <div className="flex items-center gap-3 text-xs text-slate-500 shrink-0 border-t sm:border-t-0 sm:border-l border-slate-100 sm:pl-4 pt-2 sm:pt-0">
-          <div>
-            KK: <strong className="text-slate-800">{detectionStats.totalKK}</strong>
-          </div>
-          <div>•</div>
-          <div>
-            Akta: <strong className="text-slate-800">{detectionStats.totalAkta}</strong>
-          </div>
-          <div>•</div>
-          <div>
-            Ijazah: <strong className="text-slate-800">{detectionStats.totalIjazah}</strong>
-          </div>
-        </div>
-      </div>
-
-      {/* ================= MAIN VIEW TOGGLE TABS ================= */}
-      <div className="flex items-center justify-between flex-wrap gap-2 border-b border-slate-200 pb-2">
+    <div className="space-y-4 animate-in fade-in duration-300" id="sipma-digital-archive">
+      {/* ================= MAIN VIEW TOGGLE TABS & EXPORT ACTION ================= */}
+      <div className="flex items-center justify-between flex-wrap gap-2.5 border-b border-slate-200 pb-3">
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setActiveMainTab('detection')}
-            className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer shadow-xs ${
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer shadow-2xs ${
               activeMainTab === 'detection'
                 ? 'bg-slate-900 text-white ring-2 ring-slate-800'
                 : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
@@ -693,7 +493,7 @@ _Panitia PPDB ${school.school_name}_`;
           <button
             type="button"
             onClick={() => setActiveMainTab('files_gallery')}
-            className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer shadow-xs ${
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer shadow-2xs ${
               activeMainTab === 'files_gallery'
                 ? 'bg-slate-900 text-white ring-2 ring-slate-800'
                 : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
@@ -704,10 +504,16 @@ _Panitia PPDB ${school.school_name}_`;
           </button>
         </div>
 
-        <div className="text-xs text-slate-500 font-medium">
-          {activeMainTab === 'detection'
-            ? 'Detektor 3 dokumen wajib: Kartu Keluarga (KK), Akta Kelahiran, dan Ijazah / SKL'
-            : 'Berkas tersimpan otomatis di Google Drive dan Google Sheets'}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleExportCompletenessCsv}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-2xs"
+            title="Unduh rekap inventaris kelengkapan berkas seluruh calon murid (CSV)"
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-200" />
+            <span>Export Rekap Kelengkapan</span>
+          </button>
         </div>
       </div>
 
@@ -783,377 +589,189 @@ _Panitia PPDB ${school.school_name}_`;
             </div>
           </div>
 
-          {/* List of Students with Document Detection */}
+          {/* List of Students with Document Detection (Simple & Compact) */}
           {filteredDetectionList.length === 0 ? (
             <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs">
-              <div className="w-14 h-14 mx-auto rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mb-3">
-                <CheckSquare className="w-7 h-7" />
+              <div className="w-12 h-12 mx-auto rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mb-3">
+                <CheckSquare className="w-6 h-6" />
               </div>
-              <h3 className="text-base font-bold text-slate-900">Tidak ada data pendaftar yang cocok</h3>
+              <h3 className="text-sm font-bold text-slate-900">Tidak ada data pendaftar yang cocok</h3>
               <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
                 Silakan sesuaikan kriteria pencarian atau filter status kelengkapan dokumen di atas.
               </p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {filteredDetectionList.map((item) => {
-                const s = item.student;
-                const app = item.app;
+            <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+              <div className="divide-y divide-slate-100">
+                {filteredDetectionList.map((item) => {
+                  const s = item.student;
+                  const app = item.app;
+                  const avatarUrl = s?.photo_url || item.docFoto?.file_data_base64 || item.docFoto?.drive_url;
 
-                return (
-                  <div
-                    key={app.registration_number}
-                    className="bg-white rounded-2xl border border-slate-200 shadow-xs hover:border-emerald-300 transition-all p-5 space-y-4"
-                  >
-                    {/* Header Row: Student Profile & Completeness Badge */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3.5">
-                      <div className="flex items-start sm:items-center gap-3">
-                        {/* Student Avatar / Photo */}
-                        <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-base overflow-hidden shrink-0 border border-emerald-200">
-                          {s?.photo_url || item.docFoto?.file_data_base64 || item.docFoto?.drive_url ? (
+                  return (
+                    <div
+                      key={app.registration_number}
+                      className="p-3 sm:px-4 hover:bg-slate-50/80 transition-colors flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs"
+                    >
+                      {/* Left: Foto, Nomor Pendaftaran, Nama */}
+                      <div className="flex items-center gap-3 min-w-0">
+                        {/* Foto */}
+                        <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs overflow-hidden shrink-0 border border-emerald-200">
+                          {avatarUrl ? (
                             <img
-                              src={normalizeImageUrl(s?.photo_url || item.docFoto?.file_data_base64 || item.docFoto?.drive_url)}
+                              src={normalizeImageUrl(avatarUrl)}
                               alt={s?.name || 'Foto'}
                               className="w-full h-full object-cover"
                               referrerPolicy="no-referrer"
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = 'none';
+                              }}
                             />
                           ) : (
                             <span>{(s?.name || 'M').charAt(0).toUpperCase()}</span>
                           )}
                         </div>
 
-                        <div>
+                        {/* No Reg & Nama */}
+                        <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="text-sm font-extrabold text-slate-900">{s?.name || 'Calon Murid'}</h3>
-                            <span className="font-mono text-[10px] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md">
+                            <span className="font-mono text-[11px] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
                               {app.registration_number}
                             </span>
-                            <span className="text-[10px] font-bold uppercase bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded-md">
+                            <span className="font-bold text-slate-900 text-xs sm:text-sm truncate">
+                              {s?.name || 'Calon Murid'}
+                            </span>
+                            <span className="text-[10px] font-bold uppercase bg-slate-50 text-slate-600 px-1.5 py-0.2 rounded border border-slate-200">
                               Jalur {app.pathway}
                             </span>
-                            <span className="text-[10px] font-bold bg-teal-50 text-teal-800 border border-teal-200 px-2 py-0.5 rounded-md">
-                              TA {app.admission_year || systemSettings.academic_year_label || systemSettings.application_year || '2026/2027'}
-                            </span>
-                            {(app.final_status === 'lulus' || app.selection_status === 'lulus') && (
-                              <span className="text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-md flex items-center gap-1">
-                                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                <span>Lolos (Arsip Permanen)</span>
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-3 flex-wrap">
-                            <span>NISN: <strong className="text-slate-700">{s?.nisn || '-'}</strong></span>
-                            <span>•</span>
-                            <span>NIK: <strong className="text-slate-700">{s?.nik || '-'}</strong></span>
-                            {item.targetPhone && (
-                              <>
-                                <span>•</span>
-                                <span className="flex items-center gap-1 font-mono text-slate-700">
-                                  <Phone className="w-3 h-3 text-slate-400" />
-                                  {item.targetPhone}
-                                </span>
-                              </>
-                            )}
                           </div>
                         </div>
                       </div>
 
-                      {/* Status Completeness Badge */}
-                      <div className="flex items-center gap-2">
-                        {item.isComplete ? (
-                          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-100 text-emerald-900 border border-emerald-300 text-xs font-black shadow-xs">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-700" />
-                            <span>LENGKAP (3/3 Wajib Terpenuhi)</span>
-                          </div>
-                        ) : item.isEmpty ? (
-                          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-100 text-rose-900 border border-rose-300 text-xs font-black shadow-xs">
-                            <XCircle className="w-4 h-4 text-rose-700" />
-                            <span>BELUM ADA BERKAS (0/3)</span>
-                          </div>
+                      {/* Right: Nama Dokumen (KK, Akta Lahir, Ijazah/SKL, dll) + Tombol Mata */}
+                      <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap shrink-0">
+                        {/* KK */}
+                        {item.docKK ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs">
+                            <span>KK</span>
+                            <button
+                              type="button"
+                              onClick={() => setPreviewDoc(item.docKK!)}
+                              className="p-0.5 hover:bg-emerald-100 rounded text-emerald-800 transition-colors cursor-pointer"
+                              title="Lihat Berkas Kartu Keluarga"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                          </span>
                         ) : (
-                          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-100 text-amber-900 border border-amber-300 text-xs font-black shadow-xs">
-                            <AlertTriangle className="w-4 h-4 text-amber-700" />
-                            <span>BELUM LENGKAP ({item.coreUploaded}/3 Berkas)</span>
-                          </div>
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 font-bold text-xs">
+                            KK
+                          </span>
                         )}
-                      </div>
-                    </div>
 
-                    {/* Matrix Row: Status of 3 Core Mandatory Documents */}
-                    <div>
-                      <div className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-2">
-                        Status Verifikasi 3 Dokumen Pokok Pendaftaran:
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        {/* 1. Kartu Keluarga (KK) */}
-                        <div
-                          className={`p-3.5 rounded-xl border text-xs flex flex-col justify-between transition-all ${
-                            item.docKK
-                              ? 'bg-blue-50/70 border-blue-200'
-                              : 'bg-slate-50 border-dashed border-slate-300'
-                          }`}
-                        >
-                          <div>
-                            <div className="flex items-center justify-between mb-1.5">
-                              <span className="font-extrabold text-slate-900 flex items-center gap-1.5">
-                                <span className="w-5 h-5 rounded-md bg-blue-100 text-blue-800 flex items-center justify-center font-bold text-[10px]">
-                                  KK
-                                </span>
-                                <span>Kartu Keluarga (KK)</span>
-                              </span>
-                              {item.docKK ? (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-white px-1.5 py-0.5 rounded border border-emerald-200">
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                  <span>Ada</span>
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
-                                  <XCircle className="w-3 h-3 text-rose-600" />
-                                  <span>Kurang</span>
-                                </span>
-                              )}
-                            </div>
-
-                            {item.docKK ? (
-                              <div className="text-[11px] text-slate-600 space-y-0.5">
-                                <div className="truncate font-medium text-slate-800" title={item.docKK.file_name}>
-                                  {item.docKK.file_name}
-                                </div>
-                                <div className="text-slate-500 text-[10px] flex items-center justify-between">
-                                  <span>{item.docKK.file_size_kb || 0} KB</span>
-                                  {item.docKK.drive_file_id && (
-                                    <span className="text-emerald-700 font-semibold flex items-center gap-0.5">
-                                      <Cloud className="w-2.5 h-2.5" /> Di Drive
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            ) : (
-                              <p className="text-[11px] text-slate-400 italic">
-                                Calon murid belum mengunggah Kartu Keluarga.
-                              </p>
-                            )}
-                          </div>
-
-                          {item.docKK && (
-                            <div className="mt-2.5 pt-2 border-t border-blue-100 flex items-center justify-between">
-                              <button
-                                type="button"
-                                onClick={() => setPreviewDoc(item.docKK!)}
-                                className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 hover:text-blue-900 cursor-pointer"
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                                <span>Pratinjau KK</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => downloadDocumentFile(item.docKK!, s?.name)}
-                                className="p-1 text-slate-500 hover:text-blue-700 cursor-pointer"
-                                title="Unduh Berkas"
-                              >
-                                <Download className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* 2. Akta Kelahiran */}
-                        <div
-                          className={`p-3.5 rounded-xl border text-xs flex flex-col justify-between transition-all ${
-                            item.docAkta
-                              ? 'bg-amber-50/70 border-amber-200'
-                              : 'bg-slate-50 border-dashed border-slate-300'
-                          }`}
-                        >
-                          <div>
-                            <div className="flex items-center justify-between mb-1.5">
-                              <span className="font-extrabold text-slate-900 flex items-center gap-1.5">
-                                <span className="w-5 h-5 rounded-md bg-amber-100 text-amber-800 flex items-center justify-center font-bold text-[10px]">
-                                  AK
-                                </span>
-                                <span>Akta Kelahiran</span>
-                              </span>
-                              {item.docAkta ? (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-white px-1.5 py-0.5 rounded border border-emerald-200">
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                  <span>Ada</span>
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
-                                  <XCircle className="w-3 h-3 text-rose-600" />
-                                  <span>Kurang</span>
-                                </span>
-                              )}
-                            </div>
-
-                            {item.docAkta ? (
-                              <div className="text-[11px] text-slate-600 space-y-0.5">
-                                <div className="truncate font-medium text-slate-800" title={item.docAkta.file_name}>
-                                  {item.docAkta.file_name}
-                                </div>
-                                <div className="text-slate-500 text-[10px] flex items-center justify-between">
-                                  <span>{item.docAkta.file_size_kb || 0} KB</span>
-                                  {item.docAkta.drive_file_id && (
-                                    <span className="text-emerald-700 font-semibold flex items-center gap-0.5">
-                                      <Cloud className="w-2.5 h-2.5" /> Di Drive
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            ) : (
-                              <p className="text-[11px] text-slate-400 italic">
-                                Calon murid belum mengunggah Akta Kelahiran.
-                              </p>
-                            )}
-                          </div>
-
-                          {item.docAkta && (
-                            <div className="mt-2.5 pt-2 border-t border-amber-100 flex items-center justify-between">
-                              <button
-                                type="button"
-                                onClick={() => setPreviewDoc(item.docAkta!)}
-                                className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 hover:text-amber-950 cursor-pointer"
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                                <span>Pratinjau Akta</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => downloadDocumentFile(item.docAkta!, s?.name)}
-                                className="p-1 text-slate-500 hover:text-amber-800 cursor-pointer"
-                                title="Unduh Berkas"
-                              >
-                                <Download className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* 3. Ijazah / SKL */}
-                        <div
-                          className={`p-3.5 rounded-xl border text-xs flex flex-col justify-between transition-all ${
-                            item.docIjazah
-                              ? 'bg-purple-50/70 border-purple-200'
-                              : 'bg-slate-50 border-dashed border-slate-300'
-                          }`}
-                        >
-                          <div>
-                            <div className="flex items-center justify-between mb-1.5">
-                              <span className="font-extrabold text-slate-900 flex items-center gap-1.5">
-                                <span className="w-5 h-5 rounded-md bg-purple-100 text-purple-800 flex items-center justify-center font-bold text-[10px]">
-                                  IJZ
-                                </span>
-                                <span>Ijazah / SKL</span>
-                              </span>
-                              {item.docIjazah ? (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-white px-1.5 py-0.5 rounded border border-emerald-200">
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                                  <span>Ada</span>
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
-                                  <XCircle className="w-3 h-3 text-rose-600" />
-                                  <span>Kurang</span>
-                                </span>
-                              )}
-                            </div>
-
-                            {item.docIjazah ? (
-                              <div className="text-[11px] text-slate-600 space-y-0.5">
-                                <div className="truncate font-medium text-slate-800" title={item.docIjazah.file_name}>
-                                  {item.docIjazah.file_name}
-                                </div>
-                                <div className="text-slate-500 text-[10px] flex items-center justify-between">
-                                  <span>{item.docIjazah.file_size_kb || 0} KB</span>
-                                  {item.docIjazah.drive_file_id && (
-                                    <span className="text-emerald-700 font-semibold flex items-center gap-0.5">
-                                      <Cloud className="w-2.5 h-2.5" /> Di Drive
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            ) : (
-                              <p className="text-[11px] text-slate-400 italic">
-                                Calon murid belum mengunggah Ijazah / SKL.
-                              </p>
-                            )}
-                          </div>
-
-                          {item.docIjazah && (
-                            <div className="mt-2.5 pt-2 border-t border-purple-100 flex items-center justify-between">
-                              <button
-                                type="button"
-                                onClick={() => setPreviewDoc(item.docIjazah!)}
-                                className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-800 hover:text-purple-950 cursor-pointer"
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                                <span>Pratinjau Ijazah</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => downloadDocumentFile(item.docIjazah!, s?.name)}
-                                className="p-1 text-slate-500 hover:text-purple-800 cursor-pointer"
-                                title="Unduh Berkas"
-                              >
-                                <Download className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Footer Row: Missing Docs Summary & Actions */}
-                    <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-100">
-                      <div>
-                        {item.allMissingDocs.length > 0 ? (
-                          <div className="text-xs text-rose-800 flex items-center gap-1.5">
-                            <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                            <span>
-                              Dokumen yang belum lengkap:{' '}
-                              <strong>{item.allMissingDocs.join(', ')}</strong>
-                            </span>
-                          </div>
+                        {/* Akta Lahir */}
+                        {item.docAkta ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs">
+                            <span>Akta Lahir</span>
+                            <button
+                              type="button"
+                              onClick={() => setPreviewDoc(item.docAkta!)}
+                              className="p-0.5 hover:bg-emerald-100 rounded text-emerald-800 transition-colors cursor-pointer"
+                              title="Lihat Berkas Akta Kelahiran"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                          </span>
                         ) : (
-                          <div className="text-xs text-emerald-800 flex items-center gap-1.5">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                            <span>Seluruh dokumen pokok persyaratan pendaftaran telah lengkap terarsip.</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Action Buttons */}
-                      <div className="flex items-center gap-2">
-                        {item.allMissingDocs.length > 0 && item.targetPhone && (
-                          <button
-                            type="button"
-                            onClick={() => handleSendWhatsAppReminder(item)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
-                            title="Kirim pesan pengingat dokumen yang belum lengkap ke WhatsApp murid / orang tua"
-                          >
-                            <MessageCircle className="w-3.5 h-3.5" />
-                            <span>Kirim Pengingat WA</span>
-                          </button>
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 font-bold text-xs">
+                            Akta Lahir
+                          </span>
                         )}
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveMainTab('files_gallery');
-                            setSelectedStudentFilter(app.registration_number);
-                          }}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
-                        >
-                          <Archive className="w-3.5 h-3.5 text-slate-600" />
-                          <span>Lihat Berkas Murid Ini ({item.studentDocs.length})</span>
-                        </button>
+                        {/* Ijazah / SKL */}
+                        {item.docIjazah ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs">
+                            <span>Ijazah/SKL</span>
+                            <button
+                              type="button"
+                              onClick={() => setPreviewDoc(item.docIjazah!)}
+                              className="p-0.5 hover:bg-emerald-100 rounded text-emerald-800 transition-colors cursor-pointer"
+                              title="Lihat Berkas Ijazah / SKL"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 font-bold text-xs">
+                            Ijazah/SKL
+                          </span>
+                        )}
+
+                        {/* Dokumen Jalur / Tambahan (dll) */}
+                        {app.pathway === 'afirmasi' && (
+                          item.docAfirmasi ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs">
+                              <span>KIP/PKH</span>
+                              <button
+                                type="button"
+                                onClick={() => setPreviewDoc(item.docAfirmasi!)}
+                                className="p-0.5 hover:bg-emerald-100 rounded text-emerald-800 transition-colors cursor-pointer"
+                                title="Lihat Berkas Afirmasi"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 font-bold text-xs">
+                              KIP/PKH
+                            </span>
+                          )
+                        )}
+
+                        {app.pathway === 'prestasi' && (
+                          item.docPrestasi ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs">
+                              <span>Sertifikat</span>
+                              <button
+                                type="button"
+                                onClick={() => setPreviewDoc(item.docPrestasi!)}
+                                className="p-0.5 hover:bg-emerald-100 rounded text-emerald-800 transition-colors cursor-pointer"
+                                title="Lihat Sertifikat Prestasi"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 font-bold text-xs">
+                              Sertifikat
+                            </span>
+                          )
+                        )}
+
+                        {app.pathway === 'mutasi' && (
+                          item.docMutasi ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-xs">
+                              <span>Surat Mutasi</span>
+                              <button
+                                type="button"
+                                onClick={() => setPreviewDoc(item.docMutasi!)}
+                                className="p-0.5 hover:bg-emerald-100 rounded text-emerald-800 transition-colors cursor-pointer"
+                                title="Lihat Surat Mutasi"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 font-bold text-xs">
+                              Surat Mutasi
+                            </span>
+                          )
+                        )}
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
@@ -1165,107 +783,69 @@ _Panitia PPDB ${school.school_name}_`;
       {activeMainTab === 'files_gallery' && (
         <div className="space-y-4">
           {/* Controls & Filter Bar */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3.5">
-            {/* Category Pills */}
-            <div className="flex items-center justify-between flex-wrap gap-2 border-b border-slate-100 pb-3">
-              <div className="flex flex-wrap items-center gap-1.5">
-                {[
-                  { id: 'all', label: 'Semua Berkas', count: schoolDocuments.length },
-                  { id: 'kartu_keluarga', label: 'Kartu Keluarga (KK)', count: detectionStats.totalKK },
-                  { id: 'akta_kelahiran', label: 'Akta Kelahiran', count: detectionStats.totalAkta },
-                  { id: 'ijazah_skl', label: 'Ijazah / SKL', count: detectionStats.totalIjazah },
-                  {
-                    id: 'pas_foto',
-                    label: 'Pas Foto 3x4',
-                    count: schoolDocuments.filter((d) => getDocCategory(d.document_type) === 'pas_foto').length,
-                  },
-                  {
-                    id: 'pendukung',
-                    label: 'Dokumen Jalur Khusus',
-                    count: schoolDocuments.filter((d) => getDocCategory(d.document_type) === 'pendukung').length,
-                  },
-                ].map((tab) => {
-                  const isActive = activeCategory === tab.id;
-                  return (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => setActiveCategory(tab.id as CategoryFilter)}
-                      className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                        isActive
-                          ? 'bg-slate-900 text-white shadow-xs'
-                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                      }`}
-                    >
-                      <span>{tab.label}</span>
-                      <span
-                        className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
-                          isActive ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-800'
-                        }`}
-                      >
-                        {tab.count}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* View Switcher */}
-              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+          <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+            {/* 1. Fitur Cari Nama Berkas / Murid (Terpisah di Atas Agar Lebih Lebar) */}
+            <div className="relative w-full">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={searchFileQuery}
+                onChange={(e) => setSearchFileQuery(e.target.value)}
+                placeholder="Cari nama calon murid, nomor pendaftaran, atau nama berkas..."
+                className="w-full pl-9.5 pr-8 h-9 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50/70"
+              />
+              {searchFileQuery && (
                 <button
                   type="button"
-                  onClick={() => setGalleryViewMode('grid')}
-                  className={`p-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    galleryViewMode === 'grid'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                  title="Tampilan Galeri Visual"
+                  onClick={() => setSearchFileQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
                 >
-                  <Grid className="w-4 h-4" />
+                  ✕
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setGalleryViewMode('table')}
-                  className={`p-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    galleryViewMode === 'table'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                  title="Tampilan Tabel Rinci"
-                >
-                  <List className="w-4 h-4" />
-                </button>
-              </div>
+              )}
             </div>
 
-            {/* Practical Compact Filters for Archive Files */}
-            <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
-              <div className="relative flex-1 min-w-[180px]">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  type="text"
-                  value={searchFileQuery}
-                  onChange={(e) => setSearchFileQuery(e.target.value)}
-                  placeholder="Cari berkas atau nama murid..."
-                  className="w-full pl-8 pr-7 h-8.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50/70"
-                />
-                {searchFileQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchFileQuery('')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
+            {/* 2. Filter Baris Bawah: Tahun Pendaftaran, Jenis Berkas, Murid, Lokasi, Status, View Switcher */}
+            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+              {/* Filter Pilihan Tahun Pendaftaran (Cukup Satu Kotak) */}
+              <select
+                value={selectedYearFilter}
+                onChange={(e) => setSelectedYearFilter(e.target.value)}
+                aria-label="Filter Tahun Pendaftaran"
+                className="h-8.5 px-2.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 font-bold text-slate-800 cursor-pointer shrink-0"
+              >
+                <option value="all">Semua Tahun Pendaftaran ({allSchoolApps.length} Murid)</option>
+                {availableYears.map((yr) => (
+                  <option key={yr} value={yr}>
+                    Tahun Ajaran {yr}
+                  </option>
+                ))}
+              </select>
 
+              {/* Filter Jenis Berkas (Ringkas Cukup Satu Kotak dengan Banyak Pilihan Kategori Berkas) */}
+              <select
+                value={activeCategory}
+                onChange={(e) => setActiveCategory(e.target.value as CategoryFilter)}
+                aria-label="Filter Jenis Berkas"
+                className="h-8.5 px-2.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 font-bold text-slate-800 cursor-pointer shrink-0"
+              >
+                <option value="all">Semua Jenis Berkas ({schoolDocuments.length})</option>
+                <option value="kartu_keluarga">Kartu Keluarga (KK)</option>
+                <option value="akta_kelahiran">Akta Kelahiran</option>
+                <option value="ijazah_skl">Ijazah / SKL</option>
+                <option value="pas_foto">Pas Foto 3x4</option>
+                <option value="pendukung">Dokumen Pendukung / Pernyataan</option>
+                <option value="kartu_afirmasi">Kartu Afirmasi (KIP/PKH/KKS)</option>
+                <option value="sertifikat_prestasi">Sertifikat Piagam Prestasi</option>
+                <option value="surat_mutasi">Surat Mutasi Tugas</option>
+              </select>
+
+              {/* Filter Murid */}
               <select
                 value={selectedStudentFilter}
                 onChange={(e) => setSelectedStudentFilter(e.target.value)}
                 aria-label="Filter Calon Murid"
-                className="h-8.5 px-2.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 cursor-pointer shrink-0 max-w-[200px]"
+                className="h-8.5 px-2.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 cursor-pointer shrink-0 max-w-[190px]"
               >
                 <option value="all">Semua Murid ({schoolApps.length})</option>
                 {schoolApps.map((a) => {
@@ -1278,6 +858,7 @@ _Panitia PPDB ${school.school_name}_`;
                 })}
               </select>
 
+              {/* Filter Lokasi Penyimpanan */}
               <select
                 value={cloudStatusFilter}
                 onChange={(e) => setCloudStatusFilter(e.target.value as any)}
@@ -1289,6 +870,7 @@ _Panitia PPDB ${school.school_name}_`;
                 <option value="local">Server Lokal</option>
               </select>
 
+              {/* Filter Status Verifikasi */}
               <select
                 value={verifyFilter}
                 onChange={(e) => setVerifyFilter(e.target.value as any)}
@@ -1302,20 +884,51 @@ _Panitia PPDB ${school.school_name}_`;
                 <option value="ditolak">Ditolak</option>
               </select>
 
-              {(searchFileQuery || selectedStudentFilter !== 'all' || cloudStatusFilter !== 'all' || verifyFilter !== 'all') && (
+              {/* Reset Button */}
+              {(selectedYearFilter !== 'all' || activeCategory !== 'all' || selectedStudentFilter !== 'all' || cloudStatusFilter !== 'all' || verifyFilter !== 'all' || searchFileQuery) && (
                 <button
                   type="button"
                   onClick={() => {
-                    setSearchFileQuery('');
+                    setSelectedYearFilter('all');
+                    setActiveCategory('all');
                     setSelectedStudentFilter('all');
                     setCloudStatusFilter('all');
                     setVerifyFilter('all');
+                    setSearchFileQuery('');
                   }}
                   className="h-8.5 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0"
                 >
                   Reset
                 </button>
               )}
+
+              {/* View Switcher (Grid / Table) */}
+              <div className="ml-auto flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setGalleryViewMode('grid')}
+                  className={`p-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                    galleryViewMode === 'grid'
+                      ? 'bg-white text-slate-900 shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                  title="Tampilan Galeri Visual"
+                >
+                  <Grid className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGalleryViewMode('table')}
+                  className={`p-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                    galleryViewMode === 'table'
+                      ? 'bg-white text-slate-900 shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                  title="Tampilan Tabel Rinci"
+                >
+                  <List className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -1349,6 +962,9 @@ _Panitia PPDB ${school.school_name}_`;
                   ijazah_skl: { bg: 'bg-purple-100', text: 'text-purple-800', label: 'Ijazah / SKL' },
                   pas_foto: { bg: 'bg-teal-100', text: 'text-teal-800', label: 'Pas Foto 3x4' },
                   pendukung: { bg: 'bg-emerald-100', text: 'text-emerald-800', label: 'Dokumen Jalur' },
+                  kartu_afirmasi: { bg: 'bg-indigo-100', text: 'text-indigo-800', label: 'Kartu Afirmasi' },
+                  sertifikat_prestasi: { bg: 'bg-amber-100', text: 'text-amber-800', label: 'Sertifikat Prestasi' },
+                  surat_mutasi: { bg: 'bg-sky-100', text: 'text-sky-800', label: 'Surat Mutasi' },
                 };
 
                 const catInfo = categoryLabels[cat] || categoryLabels.all;

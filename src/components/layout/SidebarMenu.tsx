@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   TrendingUp,
   Users,
@@ -22,6 +22,9 @@ import {
   GraduationCap,
   Sparkles,
   Calendar,
+  ChevronDown,
+  ChevronRight,
+  CheckSquare,
 } from 'lucide-react';
 import { User as UserType, School, SystemSettings } from '../../types/sipma';
 import { normalizeImageUrl, handleImageError } from '../../utils/imageUrl';
@@ -35,6 +38,22 @@ export interface SidebarStats {
   operatorsCount?: number;
 }
 
+export interface NavSubItem {
+  id: string;
+  label: string;
+  icon?: any;
+  badge?: number;
+  subTab?: string;
+}
+
+export interface NavParentMenu {
+  id: string;
+  label: string;
+  icon: any;
+  badge?: number;
+  subItems: NavSubItem[];
+}
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
@@ -43,7 +62,8 @@ interface Props {
   currentSchool?: School | null;
   settings?: SystemSettings | null;
   activeTab: string;
-  onSelectTab: (tabId: string) => void;
+  activeSubTab?: string;
+  onSelectTab: (tabId: string, subTab?: string) => void;
   stats?: SidebarStats;
   onLogout: () => void;
   onOpenProfile?: () => void;
@@ -57,6 +77,7 @@ export const SidebarMenu: React.FC<Props> = ({
   currentSchool,
   settings,
   activeTab,
+  activeSubTab,
   onSelectTab,
   stats = {},
   onLogout,
@@ -75,21 +96,39 @@ export const SidebarMenu: React.FC<Props> = ({
   const isCentralAdmin = currentUser.role === 'admin_pusat';
   const isStudent = currentUser.role === 'calon_murid';
 
-  // Navigation Items by User Role
-  const getNavSections = () => {
+  // Hierarchical Menus with Sub-menus for Each User Account
+  const getNavMenus = (): NavParentMenu[] => {
     if (isCentralAdmin) {
       return [
         {
-          title: 'Menu Pusat',
-          items: [
+          id: 'menu_central_dashboard',
+          label: 'Dashboard & Analitik',
+          icon: TrendingUp,
+          subItems: [
             { id: 'overview', label: 'Ringkasan & Analitik', icon: TrendingUp },
+            { id: 'map', label: 'Peta Sebaran Wilayah', icon: MapPin },
+          ],
+        },
+        {
+          id: 'menu_central_institutions',
+          label: 'Lembaga & Pendaftar',
+          icon: Building2,
+          badge: (stats.totalSchools || 0) + (stats.totalApps || 0),
+          subItems: [
             { id: 'schools', label: 'Satuan Madrasah', icon: Building2, badge: stats.totalSchools },
             { id: 'admins', label: 'Akun Admin Madrasah', icon: ShieldCheck },
             { id: 'applicants', label: 'Semua Pendaftar', icon: Users, badge: stats.totalApps },
-            { id: 'map', label: 'Peta Sebaran Wilayah', icon: MapPin },
+          ],
+        },
+        {
+          id: 'menu_central_system',
+          label: 'Sistem & Informasi',
+          icon: Settings,
+          badge: stats.totalAuditLogs,
+          subItems: [
             { id: 'config', label: 'Sinkronisasi & Pengaturan', icon: Settings },
-            { id: 'logs', label: 'Audit Log Sistem', icon: History, badge: stats.totalAuditLogs },
             { id: 'announcements', label: 'Pengumuman Resmi', icon: Bell },
+            { id: 'logs', label: 'Audit Log Sistem', icon: History, badge: stats.totalAuditLogs },
           ],
         },
       ];
@@ -98,37 +137,67 @@ export const SidebarMenu: React.FC<Props> = ({
     if (isSchoolAdmin || isOperator) {
       return [
         {
-          title: 'Menu Madrasah',
-          items: [
+          id: 'menu_school_dashboard',
+          label: 'Dashboard & Wilayah',
+          icon: TrendingUp,
+          subItems: [
             { id: 'overview', label: 'Ringkasan & Statistik', icon: TrendingUp },
-            { id: 'applicants', label: 'Data Pendaftar', icon: Users, badge: stats.schoolAppsCount },
-            { id: 'selection', label: 'Proses Seleksi & Kelulusan', icon: Award },
-            { id: 'archives', label: 'Arsip Digital Dokumen', icon: Archive, badge: stats.schoolDocsCount },
-            ...(!isOperator
-              ? [{ id: 'operators', label: 'Tim Operator Madrasah', icon: UserCheck, badge: stats.operatorsCount }]
-              : []),
             { id: 'map', label: 'Peta Sebaran Murid', icon: MapPin },
-            ...(!isOperator
-              ? [{ id: 'settings', label: 'Pengaturan & Zonasi', icon: Settings }]
-              : []),
           ],
         },
+        {
+          id: 'menu_school_applicants',
+          label: 'Manajemen Pendaftar',
+          icon: Users,
+          badge: stats.schoolAppsCount,
+          subItems: [
+            { id: 'applicants', label: 'Data Pendaftar', icon: Users, badge: stats.schoolAppsCount },
+            { id: 'selection', label: 'Proses Seleksi & Kelulusan', icon: Award },
+          ],
+        },
+        {
+          id: 'menu_school_archives',
+          label: 'Arsip Digital Dokumen',
+          icon: Archive,
+          badge: stats.schoolDocsCount,
+          subItems: [
+            { id: 'archives', subTab: 'detection', label: 'Deteksi Kelengkapan', icon: CheckSquare },
+            { id: 'archives', subTab: 'files_gallery', label: 'Galeri & Berkas Terarsip', icon: Archive, badge: stats.schoolDocsCount },
+          ],
+        },
+        ...(!isOperator
+          ? [
+              {
+                id: 'menu_school_settings',
+                label: 'Pengaturan Madrasah',
+                icon: Settings,
+                subItems: [
+                  { id: 'settings', label: 'Pengaturan & Zonasi', icon: Settings },
+                  { id: 'operators', label: 'Tim Operator Madrasah', icon: UserCheck, badge: stats.operatorsCount },
+                ],
+              },
+            ]
+          : []),
       ];
     }
 
     // Calon Murid / Wali Murid
     return [
       {
-        title: 'Pendaftaran PPDB',
-        items: [
+        id: 'menu_student_registration',
+        label: 'Pendaftaran PPDB',
+        icon: GraduationCap,
+        subItems: [
           { id: 'overview', label: 'Beranda & Status Seleksi', icon: TrendingUp },
           { id: 'form', label: 'Formulir Pendaftaran', icon: FileEdit },
           { id: 'print', label: 'Cetak Bukti Pendaftaran', icon: Printer },
         ],
       },
       {
-        title: 'Akun & Informasi',
-        items: [
+        id: 'menu_student_info',
+        label: 'Informasi & Akun',
+        icon: User,
+        subItems: [
           { id: 'profile', label: 'Profil Calon Murid', icon: User },
           { id: 'announcements', label: 'Pengumuman Resmi', icon: Bell },
         ],
@@ -136,12 +205,44 @@ export const SidebarMenu: React.FC<Props> = ({
     ];
   };
 
-  const navSections = getNavSections();
-  const allNavItems = navSections.flatMap((s) => s.items);
+  const navMenus = getNavMenus();
 
-  const handleItemClick = (id: string) => {
-    onSelectTab(id);
-    onClose();
+  // Track accordion state for each menu
+  const [openMenuIds, setOpenMenuIds] = useState<Record<string, boolean>>({});
+
+  // Auto-expand parent menu that contains the current active tab
+  useEffect(() => {
+    const parentMenu = navMenus.find((m) =>
+      m.subItems.some((sub) => sub.id === activeTab)
+    );
+    if (parentMenu) {
+      setOpenMenuIds((prev) => ({
+        ...prev,
+        [parentMenu.id]: true,
+      }));
+    }
+  }, [activeTab]);
+
+  const toggleMenu = (menuId: string) => {
+    setOpenMenuIds((prev) => ({
+      ...prev,
+      [menuId]: !prev[menuId],
+    }));
+  };
+
+  const handleSubItemClick = (subItem: NavSubItem) => {
+    onSelectTab(subItem.id, subItem.subTab);
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      onClose();
+    }
+  };
+
+  const isSubItemActive = (subItem: NavSubItem) => {
+    if (subItem.id !== activeTab) return false;
+    if (subItem.subTab && activeSubTab) {
+      return subItem.subTab === activeSubTab;
+    }
+    return true;
   };
 
   const sidebarContent = (
@@ -208,60 +309,111 @@ export const SidebarMenu: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Navigation Links */}
-        <div className="p-3 space-y-4 overflow-y-auto flex-1 min-h-0">
-          {navSections.map((sec, secIdx) => (
-            <div key={secIdx} className="space-y-1">
-              <div className="px-3 py-1 text-[10px] font-black uppercase tracking-wider text-slate-600">
-                {sec.title}
-              </div>
-              <div className="space-y-0.5">
-                {sec.items.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = activeTab === item.id;
+        {/* Navigation Links with Expandable Sub-menus */}
+        <div className="p-3 space-y-2 overflow-y-auto flex-1 min-h-0">
+          <div className="px-2 py-1 text-[10px] font-black uppercase tracking-wider text-slate-500">
+            Daftar Menu & Sub Menu
+          </div>
 
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => handleItemClick(item.id)}
-                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs transition-all text-left cursor-pointer group ${
-                        isActive
-                          ? 'bg-emerald-900 text-white font-bold shadow-xs ring-1 ring-emerald-800'
-                          : 'text-slate-700 hover:text-emerald-950 hover:bg-emerald-50/70 font-semibold'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <Icon
-                          className={`w-4 h-4 shrink-0 transition-transform group-hover:scale-110 ${
-                            isActive ? 'text-emerald-300' : 'text-slate-600 group-hover:text-emerald-700'
-                          }`}
-                        />
-                        <span className="truncate">{item.label}</span>
-                      </div>
+          <div className="space-y-1.5">
+            {navMenus.map((menu) => {
+              const MenuIcon = menu.icon;
+              const isMenuOpen = Boolean(openMenuIds[menu.id]);
+              const hasActiveChild = menu.subItems.some((sub) => isSubItemActive(sub));
 
-                      {item.badge !== undefined && item.badge > 0 && (
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
-                            isActive
-                              ? 'bg-emerald-800 text-emerald-200 border border-emerald-700'
-                              : 'bg-slate-100 text-slate-700 border border-slate-200 group-hover:bg-emerald-100 group-hover:text-emerald-900'
-                          }`}
-                        >
-                          {item.badge}
+              return (
+                <div key={menu.id} className="space-y-1">
+                  {/* Primary Parent Menu Button */}
+                  <button
+                    type="button"
+                    onClick={() => toggleMenu(menu.id)}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left cursor-pointer group ${
+                      hasActiveChild
+                        ? 'bg-slate-100 text-slate-900 border border-slate-300/80 shadow-2xs'
+                        : isMenuOpen
+                        ? 'bg-slate-50 text-slate-900 border border-slate-200'
+                        : 'text-slate-700 hover:text-emerald-950 hover:bg-emerald-50/70 border border-transparent'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <MenuIcon
+                        className={`w-4 h-4 shrink-0 transition-transform ${
+                          hasActiveChild || isMenuOpen
+                            ? 'text-emerald-700'
+                            : 'text-slate-500 group-hover:text-emerald-600'
+                        }`}
+                      />
+                      <span className="truncate">{menu.label}</span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {menu.badge !== undefined && menu.badge > 0 && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-700 border border-slate-300">
+                          {menu.badge}
                         </span>
                       )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+                      <ChevronDown
+                        className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
+                          isMenuOpen ? 'rotate-0 text-emerald-700' : '-rotate-90 text-slate-400'
+                        }`}
+                      />
+                    </div>
+                  </button>
+
+                  {/* Collapsible Sub-menu Items */}
+                  {isMenuOpen && (
+                    <div className="ml-4 pl-2.5 border-l-2 border-emerald-300/80 my-1 space-y-1 py-0.5 animate-in fade-in duration-200">
+                      {menu.subItems.map((subItem, sIdx) => {
+                        const SubIcon = subItem.icon || ChevronRight;
+                        const isActive = isSubItemActive(subItem);
+
+                        return (
+                          <button
+                            key={`${subItem.id}-${subItem.subTab || sIdx}`}
+                            type="button"
+                            onClick={() => handleSubItemClick(subItem)}
+                            className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-all text-left cursor-pointer group ${
+                              isActive
+                                ? 'bg-emerald-900 text-white font-bold shadow-2xs ring-1 ring-emerald-800'
+                                : 'text-slate-600 hover:text-emerald-950 hover:bg-emerald-50/70 font-semibold'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <SubIcon
+                                className={`w-3.5 h-3.5 shrink-0 transition-transform group-hover:scale-110 ${
+                                  isActive
+                                    ? 'text-emerald-300'
+                                    : 'text-slate-400 group-hover:text-emerald-600'
+                                }`}
+                              />
+                              <span className="truncate">{subItem.label}</span>
+                            </div>
+
+                            {subItem.badge !== undefined && subItem.badge > 0 && (
+                              <span
+                                className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded-full shrink-0 ${
+                                  isActive
+                                    ? 'bg-emerald-800 text-emerald-200 border border-emerald-700'
+                                    : 'bg-slate-100 text-slate-700 border border-slate-200 group-hover:bg-emerald-100 group-hover:text-emerald-900'
+                                }`}
+                              >
+                                {subItem.badge}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
       {/* Bottom Footer Area */}
-      <div className="p-3 border-t border-slate-200/80 bg-slate-50/80 space-y-2">
+      <div className="p-3 border-t border-slate-200/80 bg-slate-50/80">
         {/* Academic Year Indicator */}
         <div className="px-3 py-1.5 bg-emerald-50/80 border border-emerald-200/80 rounded-xl flex items-center justify-between text-[11px]">
           <div className="flex items-center gap-1.5 text-emerald-900 font-semibold">
@@ -271,34 +423,6 @@ export const SidebarMenu: React.FC<Props> = ({
           <span className="font-bold text-emerald-950 font-mono text-[10px] bg-white px-2 py-0.5 rounded-md border border-emerald-300/80 shadow-2xs">
             {academicYear}
           </span>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="grid grid-cols-2 gap-1.5 pt-1">
-          {onOpenProfile && (
-            <button
-              type="button"
-              onClick={() => {
-                onOpenProfile();
-                if (typeof window !== 'undefined' && window.innerWidth < 1024) {
-                  onClose();
-                }
-              }}
-              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
-            >
-              <User className="w-3.5 h-3.5 text-slate-500" />
-              <span>Profil</span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={onLogout}
-            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
-          >
-            <LogOut className="w-3.5 h-3.5 text-rose-600" />
-            <span>Keluar</span>
-          </button>
         </div>
       </div>
     </div>

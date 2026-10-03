@@ -1,15 +1,9 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   User,
-  Bell,
-  Building2,
-  ShieldCheck,
-  GraduationCap,
   ChevronDown,
-  UserCheck,
+  LogOut,
   QrCode,
-  PanelLeft,
-  Menu,
 } from 'lucide-react';
 import { User as UserType, School, SystemSettings } from '../../types/sipma';
 import { normalizeImageUrl, handleImageError } from '../../utils/imageUrl';
@@ -25,6 +19,7 @@ interface Props {
   onOpenQRScanner?: () => void;
   onToggleSidebar?: () => void;
   isSidebarOpen?: boolean;
+  onLogout?: () => void;
   notifications?: NewApplicantItem[];
   unreadNotificationsCount?: number;
   onOpenApplicantFromNotification?: (regNumber: string) => void;
@@ -40,42 +35,26 @@ export const Navbar: React.FC<Props> = ({
   onOpenQRScanner,
   onToggleSidebar,
   isSidebarOpen,
+  onLogout,
   notifications = [],
   unreadNotificationsCount = 0,
   onOpenApplicantFromNotification,
   onMarkAllNotificationsAsRead,
 }) => {
-  const getRoleBadge = () => {
-    switch (currentUser?.role) {
-      case 'admin_pusat':
-        return {
-          label: 'Admin Pusat',
-          bg: 'bg-rose-100 text-rose-800 border-rose-200',
-          icon: ShieldCheck,
-        };
-      case 'admin_sekolah':
-        return {
-          label: `Panitia ${currentSchool?.school_name || 'Madrasah'}`,
-          bg: 'bg-blue-100 text-blue-800 border-blue-200',
-          icon: Building2,
-        };
-      case 'operator_sekolah':
-        return {
-          label: `Operator ${currentSchool?.school_name || 'Madrasah'}`,
-          bg: 'bg-teal-100 text-teal-800 border-teal-200',
-          icon: UserCheck,
-        };
-      default:
-        return {
-          label: 'Calon Murid',
-          bg: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-          icon: GraduationCap,
-        };
-    }
-  };
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState<boolean>(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
-  const roleInfo = getRoleBadge();
-  const RoleIcon = roleInfo.icon;
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const appName = settings?.app_name || 'SIPMA';
   const appTagline = settings?.app_tagline || 'Sistem Penerimaan Murid Madrasah';
   const appLogo = settings?.app_logo;
@@ -83,10 +62,10 @@ export const Navbar: React.FC<Props> = ({
   return (
     <header className="bg-white/95 backdrop-blur-md border-b border-emerald-100/80 sticky top-0 z-40 shadow-xs">
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-        {/* Left Side: Seamless Integrated Toggle Menu Button when logged in; App Logo & Name only when logged out */}
+        {/* Left Side: Seamless Integrated Toggle Menu Button & Clean App Identity (No Role Badge) */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           {currentUser ? (
-            <div className="flex items-center gap-2 sm:gap-2.5">
+            <div className="flex items-center gap-2.5">
               {/* Integrated Top Header Toggle Menu Button: Kotak Bergaris Tiga Elegan & Halus */}
               {onToggleSidebar && (
                 <button
@@ -104,12 +83,24 @@ export const Navbar: React.FC<Props> = ({
                 </button>
               )}
 
-              {/* Active Role Pill (Compact) */}
-              <div className="flex items-center gap-1.5">
-                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border shadow-2xs ${roleInfo.bg}`}>
-                  <RoleIcon className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate max-w-[150px] sm:max-w-[240px]">{roleInfo.label}</span>
-                </span>
+              {/* Clean App Identity Without Role Badge */}
+              <div className="flex items-center gap-2 min-w-0">
+                {appLogo ? (
+                  <img
+                    src={normalizeImageUrl(appLogo)}
+                    alt={appName}
+                    className="w-7 h-7 sm:w-8 sm:h-8 object-contain rounded-lg border border-emerald-200/80 shadow-2xs bg-white p-0.5 shrink-0"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => handleImageError(e)}
+                  />
+                ) : (
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-tr from-emerald-800 to-teal-600 text-white flex items-center justify-center font-black text-xs sm:text-sm shadow-2xs shrink-0">
+                    {appName.charAt(0) || 'S'}
+                  </div>
+                )}
+                <div className="font-black text-sm text-slate-900 leading-tight truncate">
+                  {appName}
+                </div>
               </div>
             </div>
           ) : (
@@ -144,7 +135,7 @@ export const Navbar: React.FC<Props> = ({
         </div>
 
         {/* User Right Menu */}
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
           {currentUser ? (
             <div className="flex items-center gap-2">
               {/* QR Scanner Quick Button for Admin & Operators */}
@@ -170,48 +161,78 @@ export const Navbar: React.FC<Props> = ({
                 />
               )}
 
-              {/* Profile Image & User Info - Untouched & Uncluttered */}
-              <button
-                type="button"
-                onClick={onOpenProfile}
-                className="flex items-center gap-2 p-1 sm:px-2.5 sm:py-1.5 rounded-xl hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-all text-left cursor-pointer group shrink-0"
-                title="Buka Pengaturan Profil & Kata Sandi Akun"
-              >
-                {currentUser.photo_url ? (
-                  <img
-                    src={normalizeImageUrl(currentUser.photo_url)}
-                    alt={currentUser.name}
-                    className="w-8 h-8 rounded-xl object-cover border border-emerald-300 shadow-xs group-hover:border-emerald-500 shrink-0"
-                    referrerPolicy="no-referrer"
-                    onError={(e) => handleImageError(e)}
+              {/* User Dropdown Action Button (Segitiga Kebawah) */}
+              <div className="relative" ref={userMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                  className={`w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-xl border transition-all cursor-pointer shadow-2xs active:scale-95 ${
+                    isUserMenuOpen
+                      ? 'bg-slate-100 border-slate-400 text-emerald-800 ring-2 ring-emerald-500/20'
+                      : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-700 hover:text-slate-900 hover:border-slate-400'
+                  }`}
+                  title="Klik untuk membuka pilihan profil akun & keluar"
+                  aria-label="Menu Akun"
+                  aria-expanded={isUserMenuOpen}
+                >
+                  <ChevronDown
+                    className={`w-4 h-4 transition-transform duration-200 ${
+                      isUserMenuOpen ? 'rotate-180 text-emerald-700' : 'text-slate-600'
+                    }`}
                   />
-                ) : (
-                  <div className="w-8 h-8 rounded-xl bg-slate-100 group-hover:bg-emerald-50 border border-slate-200 group-hover:border-emerald-200 flex items-center justify-center text-slate-600 group-hover:text-emerald-700 transition-colors shrink-0">
-                    <User className="w-4 h-4" />
+                </button>
+
+                {/* Popover Dropdown Menu: 2 Pilihan (Profil Akun & Keluar) */}
+                {isUserMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-48 sm:w-52 bg-white rounded-2xl border border-slate-200 shadow-xl p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
+                    {/* User Summary Header */}
+                    <div className="px-3 py-2 border-b border-slate-100 mb-1">
+                      <div className="text-xs font-bold text-slate-900 truncate">
+                        {currentUser.name}
+                      </div>
+                      <div className="text-[10px] text-slate-400 truncate">
+                        {currentUser.email || currentUser.phone || currentUser.registration_number || '-'}
+                      </div>
+                    </div>
+
+                    {/* Pilihan 1: Tombol Profil Akun */}
+                    {onOpenProfile && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsUserMenuOpen(false);
+                          onOpenProfile();
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:text-emerald-950 hover:bg-emerald-50/80 transition-all cursor-pointer text-left"
+                      >
+                        <User className="w-4 h-4 text-emerald-700 shrink-0" />
+                        <span>Profil Akun</span>
+                      </button>
+                    )}
+
+                    {/* Pilihan 2: Tombol Keluar */}
+                    {onLogout && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsUserMenuOpen(false);
+                          onLogout();
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-rose-700 hover:bg-rose-50 transition-all cursor-pointer text-left border-t border-slate-100 mt-1"
+                      >
+                        <LogOut className="w-4 h-4 text-rose-600 shrink-0" />
+                        <span>Keluar</span>
+                      </button>
+                    )}
                   </div>
                 )}
-
-                <div className="text-right hidden sm:block min-w-0">
-                  <div className="text-xs font-bold text-slate-900 group-hover:text-emerald-900 transition-colors truncate max-w-[120px] md:max-w-[170px]">
-                    {currentUser.name}
-                  </div>
-                  <div className="text-[10px] text-slate-400 group-hover:text-slate-600 font-mono truncate max-w-[120px] md:max-w-[170px]">
-                    {currentUser.role === 'admin_pusat'
-                      ? 'Admin Pusat'
-                      : currentUser.role === 'admin_sekolah'
-                      ? 'Panitia PPDB'
-                      : currentUser.role === 'operator_sekolah'
-                      ? 'Operator Madrasah'
-                      : 'Calon Murid'}
-                  </div>
-                </div>
-              </button>
+              </div>
             </div>
           ) : (
             <button
               type="button"
               onClick={onNavigateHome}
-              className="px-3.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+              className="px-3.5 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
             >
               Beranda
             </button>
