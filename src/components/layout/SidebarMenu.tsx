@@ -25,6 +25,11 @@ import {
   ChevronDown,
   ChevronRight,
   CheckSquare,
+  Database,
+  Cloud,
+  HardDrive,
+  FileText,
+  Code,
 } from 'lucide-react';
 import { User as UserType, School, SystemSettings } from '../../types/sipma';
 import { normalizeImageUrl, handleImageError } from '../../utils/imageUrl';
@@ -44,6 +49,7 @@ export interface NavSubItem {
   icon?: any;
   badge?: number;
   subTab?: string;
+  subItems?: NavSubItem[];
 }
 
 export interface NavParentMenu {
@@ -126,7 +132,18 @@ export const SidebarMenu: React.FC<Props> = ({
           icon: Settings,
           badge: stats.totalAuditLogs,
           subItems: [
-            { id: 'config', label: 'Sinkronisasi & Pengaturan', icon: Settings },
+            {
+              id: 'config',
+              label: 'Sinkronisasi & Pengaturan',
+              icon: Settings,
+              subItems: [
+                { id: 'config', subTab: 'config', label: 'Konfigurasi & Koneksi Database', icon: Database },
+                { id: 'config', subTab: 'realtime', label: 'Sinkronisasi Realtime', icon: Cloud },
+                { id: 'config', subTab: 'backup', label: 'Backup & Restore Database', icon: HardDrive },
+                { id: 'config', subTab: 'guide', label: 'Panduan Setup (GAS & Vercel)', icon: FileText },
+                { id: 'config', subTab: 'code', label: 'Kode Backend (Code.gs)', icon: Code },
+              ],
+            },
             { id: 'announcements', label: 'Pengumuman Resmi', icon: Bell },
             { id: 'logs', label: 'Audit Log Sistem', icon: History, badge: stats.totalAuditLogs },
           ],
@@ -161,8 +178,8 @@ export const SidebarMenu: React.FC<Props> = ({
           icon: Archive,
           badge: stats.schoolDocsCount,
           subItems: [
-            { id: 'archives', subTab: 'detection', label: 'Deteksi Kelengkapan', icon: CheckSquare },
-            { id: 'archives', subTab: 'files_gallery', label: 'Galeri & Berkas Terarsip', icon: Archive, badge: stats.schoolDocsCount },
+            { id: 'archives', subTab: 'detection', label: 'Deteksi Kelengkapan Berkas', icon: CheckSquare },
+            { id: 'archives', subTab: 'files_gallery', label: 'Galeri & Daftar Berkas Arsip', icon: Archive, badge: stats.schoolDocsCount },
           ],
         },
         ...(!isOperator
@@ -207,18 +224,31 @@ export const SidebarMenu: React.FC<Props> = ({
 
   const navMenus = getNavMenus();
 
-  // Track accordion state for each menu
+  // Track accordion state for each menu & sub-menu
   const [openMenuIds, setOpenMenuIds] = useState<Record<string, boolean>>({});
+  const [openSubMenuIds, setOpenSubMenuIds] = useState<Record<string, boolean>>({
+    config: true,
+  });
 
-  // Auto-expand parent menu that contains the current active tab
+  // Auto-expand parent menu & sub-menu that contains the current active tab
   useEffect(() => {
     const parentMenu = navMenus.find((m) =>
-      m.subItems.some((sub) => sub.id === activeTab)
+      m.subItems.some((sub) => {
+        if (sub.id === activeTab) return true;
+        if (sub.subItems?.some((child) => child.id === activeTab)) return true;
+        return false;
+      })
     );
     if (parentMenu) {
       setOpenMenuIds((prev) => ({
         ...prev,
         [parentMenu.id]: true,
+      }));
+    }
+    if (activeTab === 'config') {
+      setOpenSubMenuIds((prev) => ({
+        ...prev,
+        config: true,
       }));
     }
   }, [activeTab]);
@@ -230,7 +260,24 @@ export const SidebarMenu: React.FC<Props> = ({
     }));
   };
 
+  const toggleSubMenu = (subItemId: string, defaultSubTab?: string) => {
+    setOpenSubMenuIds((prev) => {
+      const willOpen = !prev[subItemId];
+      if (willOpen) {
+        onSelectTab(subItemId, activeSubTab || defaultSubTab || 'config');
+      }
+      return {
+        ...prev,
+        [subItemId]: willOpen,
+      };
+    });
+  };
+
   const handleSubItemClick = (subItem: NavSubItem) => {
+    if (subItem.subItems && subItem.subItems.length > 0) {
+      toggleSubMenu(subItem.id, subItem.subItems[0]?.subTab);
+      return;
+    }
     onSelectTab(subItem.id, subItem.subTab);
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {
       onClose();
@@ -239,10 +286,17 @@ export const SidebarMenu: React.FC<Props> = ({
 
   const isSubItemActive = (subItem: NavSubItem) => {
     if (subItem.id !== activeTab) return false;
-    if (subItem.subTab && activeSubTab) {
-      return subItem.subTab === activeSubTab;
+    if (subItem.subTab) {
+      const currentSub = activeSubTab || (activeTab === 'config' ? 'config' : '');
+      return subItem.subTab === currentSub;
     }
-    return true;
+    return !subItem.subItems || subItem.subItems.length === 0;
+  };
+
+  const hasActiveSubChild = (subItem: NavSubItem) => {
+    if (subItem.id !== activeTab) return false;
+    if (!subItem.subItems || subItem.subItems.length === 0) return true;
+    return subItem.subItems.some((child) => isSubItemActive(child));
   };
 
   const sidebarContent = (
@@ -365,7 +419,78 @@ export const SidebarMenu: React.FC<Props> = ({
                     <div className="ml-4 pl-2.5 border-l-2 border-emerald-300/80 my-1 space-y-1 py-0.5 animate-in fade-in duration-200">
                       {menu.subItems.map((subItem, sIdx) => {
                         const SubIcon = subItem.icon || ChevronRight;
+                        const hasSubSubItems = Boolean(subItem.subItems && subItem.subItems.length > 0);
+                        const isSubMenuOpen = Boolean(openSubMenuIds[subItem.id]);
+                        const isParentActive = hasActiveSubChild(subItem);
                         const isActive = isSubItemActive(subItem);
+
+                        if (hasSubSubItems) {
+                          return (
+                            <div key={`${subItem.id}-${sIdx}`} className="space-y-1">
+                              {/* Sub Menu Toggle Header */}
+                              <button
+                                type="button"
+                                onClick={() => toggleSubMenu(subItem.id, subItem.subItems?.[0]?.subTab)}
+                                className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs transition-all text-left cursor-pointer group ${
+                                  isParentActive
+                                    ? 'bg-slate-900 text-white font-bold shadow-2xs'
+                                    : 'text-slate-700 hover:text-emerald-950 hover:bg-emerald-50/70 font-semibold'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <SubIcon
+                                    className={`w-3.5 h-3.5 shrink-0 transition-transform group-hover:scale-110 ${
+                                      isParentActive
+                                        ? 'text-emerald-300'
+                                        : 'text-slate-500 group-hover:text-emerald-600'
+                                    }`}
+                                  />
+                                  <span className="truncate">{subItem.label}</span>
+                                </div>
+
+                                <ChevronDown
+                                  className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                                    isParentActive ? 'text-emerald-300' : 'text-slate-400'
+                                  } ${isSubMenuOpen ? 'rotate-0' : '-rotate-90'}`}
+                                />
+                              </button>
+
+                              {/* Sub-sub Menu Items */}
+                              {isSubMenuOpen && subItem.subItems && (
+                                <div className="ml-3 pl-2.5 border-l-2 border-emerald-400/80 my-1 space-y-1 py-0.5 animate-in fade-in duration-150">
+                                  {subItem.subItems.map((child, cIdx) => {
+                                    const ChildIcon = child.icon || ChevronRight;
+                                    const isChildActive = isSubItemActive(child);
+
+                                    return (
+                                      <button
+                                        key={`${child.id}-${child.subTab || cIdx}`}
+                                        type="button"
+                                        onClick={() => handleSubItemClick(child)}
+                                        className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] transition-all text-left cursor-pointer group ${
+                                          isChildActive
+                                            ? 'bg-emerald-800 text-white font-bold shadow-2xs ring-1 ring-emerald-700'
+                                            : 'text-slate-600 hover:text-emerald-950 hover:bg-emerald-100/60 font-medium'
+                                        }`}
+                                      >
+                                        <div className="flex items-center gap-2 min-w-0">
+                                          <ChildIcon
+                                            className={`w-3 h-3 shrink-0 transition-transform group-hover:scale-110 ${
+                                              isChildActive
+                                                ? 'text-emerald-200'
+                                                : 'text-slate-400 group-hover:text-emerald-700'
+                                            }`}
+                                          />
+                                          <span className="truncate">{child.label}</span>
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
 
                         return (
                           <button

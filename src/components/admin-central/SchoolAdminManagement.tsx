@@ -299,59 +299,31 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200">
-      {/* Header Info */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="p-2 bg-emerald-50 text-emerald-700 rounded-xl">
-              <ShieldCheck className="w-5 h-5" />
-            </span>
-            <div>
-              <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
-                Manajemen Akses Masuk Admin Madrasah
-              </h2>
-              <p className="text-xs text-slate-500">
-                Atur akun login, hak akses, dan lakukan reset kata sandi seluruh panitia/operator madrasah se-wilayah.
-              </p>
-            </div>
-          </div>
+    <div className="space-y-4 animate-in fade-in duration-200">
+      {/* Quick Stats Grid: Kotak Kecil Rapi 1 Baris Menyamping */}
+      <div className="grid grid-cols-4 gap-1.5 sm:gap-2 w-full overflow-x-auto">
+        <div className="bg-white p-2 rounded-xl border border-slate-200/90 shadow-2xs text-center flex flex-col justify-center min-w-0">
+          <div className="text-[9px] sm:text-[10px] text-slate-500 font-bold uppercase tracking-wider truncate">Total Akun</div>
+          <div className="text-base sm:text-xl font-black text-slate-900 leading-tight my-0.5 truncate">{totalAdmins}</div>
+          <div className="text-[8px] sm:text-[9px] text-slate-400 font-medium truncate">{schools.length} Madrasah</div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => handleOpenCreateModal()}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>Tambah Akun Admin Madrasah</span>
-        </button>
-      </div>
-
-      {/* Quick Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Akun Admin</div>
-          <div className="text-2xl font-black text-slate-900 mt-1">{totalAdmins}</div>
-          <div className="text-[11px] text-slate-400 mt-0.5 font-medium">Terdaftar di {schools.length} Madrasah</div>
+        <div className="bg-white p-2 rounded-xl border border-slate-200/90 shadow-2xs text-center flex flex-col justify-center min-w-0">
+          <div className="text-[9px] sm:text-[10px] text-emerald-700 font-bold uppercase tracking-wider truncate">Akun Aktif</div>
+          <div className="text-base sm:text-xl font-black text-emerald-600 leading-tight my-0.5 truncate">{activeAdmins}</div>
+          <div className="text-[8px] sm:text-[9px] text-teal-600/80 font-medium truncate">Akses Aktif</div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider">Akun Aktif</div>
-          <div className="text-2xl font-black text-emerald-600 mt-1">{activeAdmins}</div>
-          <div className="text-[11px] text-slate-400 mt-0.5 font-medium">Dapat login ke sistem</div>
+        <div className="bg-white p-2 rounded-xl border border-slate-200/90 shadow-2xs text-center flex flex-col justify-center min-w-0">
+          <div className="text-[9px] sm:text-[10px] text-rose-700 font-bold uppercase tracking-wider truncate">Terkunci</div>
+          <div className="text-base sm:text-xl font-black text-rose-600 leading-tight my-0.5 truncate">{inactiveAdmins}</div>
+          <div className="text-[8px] sm:text-[9px] text-rose-500 font-medium truncate">Nonaktif</div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="text-[11px] font-bold text-rose-600 uppercase tracking-wider">Akses Terkunci</div>
-          <div className="text-2xl font-black text-rose-600 mt-1">{inactiveAdmins}</div>
-          <div className="text-[11px] text-slate-400 mt-0.5 font-medium">Dinonaktifkan sementara</div>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="text-[11px] font-bold text-amber-600 uppercase tracking-wider">Madrasah Tanpa Admin</div>
-          <div className="text-2xl font-black text-amber-600 mt-1">{schoolsWithoutAdmin.length}</div>
-          <div className="text-[11px] text-slate-400 mt-0.5 font-medium">Perlu dibuatkan akun</div>
+        <div className="bg-white p-2 rounded-xl border border-slate-200/90 shadow-2xs text-center flex flex-col justify-center min-w-0">
+          <div className="text-[9px] sm:text-[10px] text-amber-700 font-bold uppercase tracking-wider truncate">Tanpa Admin</div>
+          <div className="text-base sm:text-xl font-black text-amber-600 leading-tight my-0.5 truncate">{schoolsWithoutAdmin.length}</div>
+          <div className="text-[8px] sm:text-[9px] text-amber-600/80 font-medium truncate">Perlu Akun</div>
         </div>
       </div>
 
@@ -437,6 +409,16 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
                 Reset
               </button>
             )}
+
+            <button
+              type="button"
+              onClick={() => handleOpenCreateModal()}
+              className="inline-flex items-center justify-center w-8.5 h-8.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all shadow-xs cursor-pointer shrink-0 ml-auto active:scale-95"
+              title="Tambah Akun Admin Madrasah Baru"
+              aria-label="Tambah Akun Admin Madrasah"
+            >
+              <UserPlus className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </div>

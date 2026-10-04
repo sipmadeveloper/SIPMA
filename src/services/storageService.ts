@@ -4090,6 +4090,14 @@ class StorageService {
         .map((d) => d.drive_file_id || extractDriveFileId(d.drive_url) || '')
         .filter((id): id is string => !!id && id.length > 5);
 
+      if (targetStudent?.photo_url) {
+        const photoId = extractDriveFileId(targetStudent.photo_url);
+        if (photoId && !driveFileIdsToDelete.includes(photoId)) {
+          driveFileIdsToDelete.push(photoId);
+        }
+      }
+      const studentName = targetStudent?.name || matchingUsers[0]?.name || '';
+
       const filteredDocs = docs.filter((d) => d.registration_number !== registrationNumber);
       this.memCache.documents = filteredDocs;
       safeSetItem(STORAGE_KEYS.DOCUMENTS, JSON.stringify(filteredDocs));
@@ -4108,7 +4116,8 @@ class StorageService {
         this.setCurrentUser(null);
       }
 
-      // 6. Explicitly invoke server & Google Apps Script deletion (Google Drive + Sheets cleanup)
+      // 6. Explicitly invoke server & Google Apps Script deletion (Google Drive folders/files + Sheets cleanup)
+      const settings = this.getSettings();
       try {
         await fetch('/api/data/delete-application', {
           method: 'POST',
@@ -4116,11 +4125,37 @@ class StorageService {
           body: JSON.stringify({
             registration_number: registrationNumber,
             student_id: studentId,
+            student_name: studentName,
             drive_file_ids: driveFileIdsToDelete,
+            gas_web_app_url: settings.gas_web_app_url,
+            spreadsheet_id: settings.spreadsheet_id,
           }),
         });
       } catch (serverErr) {
         console.warn('Server delete-application call warning:', serverErr);
+      }
+
+      // 6b. Direct GAS call redundancy (deletes student folder, files, and sheet rows directly from client)
+      if (settings.gas_web_app_url && settings.gas_web_app_url.startsWith('http')) {
+        try {
+          await fetch(settings.gas_web_app_url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              action: 'deleteApplication',
+              spreadsheet_id: settings.spreadsheet_id,
+              drive_root_folder_id: settings.drive_root_folder_id,
+              data: {
+                registration_number: registrationNumber,
+                student_id: studentId,
+                student_name: studentName,
+                drive_file_ids: driveFileIdsToDelete,
+              },
+            }),
+          });
+        } catch (directGasErr) {
+          console.warn('Direct GAS deleteApplication error:', directGasErr);
+        }
       }
 
       // 7. Full multi-device push to ensure persistence
@@ -4129,14 +4164,14 @@ class StorageService {
       this.addAuditLog(
         'DELETE_APPLICATION',
         registrationNumber,
-        `Data pendaftaran ${registrationNumber} beserta seluruh data siswa, berkas lampiran, dan akun terkait berhasil dihapus permanen dari database.`
+        `Data pendaftaran ${registrationNumber} (${studentName || 'Siswa'}) beserta seluruh data di database, Google Sheets, dan seluruh file serta folder siswa di Google Drive berhasil dihapus permanen.`
       );
       this.notifySubscribers('data_mutated');
       this.triggerAutoSync();
 
       return {
         success: true,
-        message: `Data pendaftaran ${registrationNumber} dan seluruh berkas di database berhasil dihapus permanen.`,
+        message: `Data pendaftaran ${registrationNumber} dan seluruh file serta folder data siswa di Google Drive dan Google Sheets berhasil dihapus permanen secara otomatis.`,
       };
     } catch (err: any) {
       return {

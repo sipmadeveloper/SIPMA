@@ -1300,6 +1300,7 @@ function deleteRowsMatchingColumn(sheet, colIndex1Based, targetValue) {
 function handleDeleteApplication(data, spreadsheetId, rootFolderId) {
   var regNumber = (data && data.registration_number) ? String(data.registration_number).trim() : "";
   var studentId = (data && data.student_id) ? String(data.student_id).trim() : "";
+  var studentName = (data && data.student_name) ? String(data.student_name).trim() : "";
   var driveFileIds = (data && data.drive_file_ids && Array.isArray(data.drive_file_ids)) ? data.drive_file_ids : [];
   
   var deletedFilesCount = 0;
@@ -1307,14 +1308,41 @@ function handleDeleteApplication(data, spreadsheetId, rootFolderId) {
   var ss = SpreadsheetApp.openById(targetId);
   ensureAllSheetsExist(ss);
 
+  // Jika studentId atau studentName belum ada, cari dari Sheet Students / Applications terlebih dahulu
+  if ((!studentId || !studentName) && regNumber) {
+    var sSheet = ss.getSheetByName(SHEETS.STUDENTS);
+    if (sSheet && sSheet.getLastRow() > 1) {
+      var sRows = sSheet.getDataRange().getValues();
+      for (var sr = 1; sr < sRows.length; sr++) {
+        if (String(sRows[sr][2]).trim() === regNumber) {
+          if (!studentId) studentId = String(sRows[sr][0]).trim();
+          if (!studentName) studentName = String(sRows[sr][3]).trim();
+          break;
+        }
+      }
+    }
+    if (!studentId) {
+      var aSheet = ss.getSheetByName(SHEETS.APPLICATIONS);
+      if (aSheet && aSheet.getLastRow() > 1) {
+        var aRows = aSheet.getDataRange().getValues();
+        for (var ar = 1; ar < aRows.length; ar++) {
+          if (String(aRows[ar][1]).trim() === regNumber) {
+            studentId = String(aRows[ar][3]).trim();
+            break;
+          }
+        }
+      }
+    }
+  }
+
   // 1. Hapus semua file di Google Drive berdasarkan drive_file_id
   for (var i = 0; i < driveFileIds.length; i++) {
     var fId = driveFileIds[i];
-    if (fId && fId.length > 5) {
+    if (fId && fId.length > 5 && fId !== "LOCAL_STORAGE") {
       try {
         var file = DriveApp.getFileById(fId);
         if (file) {
-          file.setTrashed(true); // Pindahkan ke Sampah (Trash) Drive agar tidak memakan ruang
+          file.setTrashed(true);
           deletedFilesCount++;
         }
       } catch (e) {}
@@ -1342,25 +1370,150 @@ function handleDeleteApplication(data, spreadsheetId, rootFolderId) {
     }
   }
 
-  // 3. Cari dan hapus subfolder pendaftar di Google Drive jika ada (misal: "REG-... - Nama Siswa")
+  // 3. Cari dan hapus seluruh berkas lepas di Google Drive yang memuat nomor registrasi
   if (regNumber) {
+    var fileSearchQueries = [
+      'title contains "' + regNumber + '" and trashed = false',
+      'name contains "' + regNumber + '" and trashed = false'
+    ];
+    for (var fq = 0; fq < fileSearchQueries.length; fq++) {
+      try {
+        var filesFound = DriveApp.searchFiles(fileSearchQueries[fq]);
+        while (filesFound.hasNext()) {
+          var ff = filesFound.next();
+          try {
+            ff.setTrashed(true);
+            deletedFilesCount++;
+          } catch(e) {}
+        }
+      } catch(e) {}
+    }
+  }
+
+  // 4. Cari dan hapus seluruh FOLDER DATA SISWA di Google Drive (beserta subfolder dan seluruh file di dalamnya)
+  var folderQueries = [];
+  if (regNumber) {
+    folderQueries.push('title contains "' + regNumber + '" and trashed = false');
+    folderQueries.push('name contains "' + regNumber + '" and trashed = false');
+  }
+  if (studentId) {
+    folderQueries.push('title contains "' + studentId + '" and trashed = false');
+    folderQueries.push('name contains "' + studentId + '" and trashed = false');
+  }
+  if (studentName && studentName.length >= 3 && studentName.toLowerCase() !== "calon murid" && studentName.toLowerCase() !== "pendaftar") {
+    var cleanStudentNameQuery = studentName.replace(/"/g, '').trim();
+    folderQueries.push('title contains "' + cleanStudentNameQuery + '" and trashed = false');
+    folderQueries.push('name contains "' + cleanStudentNameQuery + '" and trashed = false');
+  }
+
+  var processedFolderIds = {};
+  for (var fqi = 0; fqi < folderQueries.length; fqi++) {
     try {
-      var folderMatches = DriveApp.searchFolders('title contains "' + regNumber + '" and trashed = false');
+      var folderMatches = DriveApp.searchFolders(folderQueries[fqi]);
       while (folderMatches.hasNext()) {
         var folder = folderMatches.next();
-        folder.setTrashed(true);
+        var foldId = folder.getId();
+        if (processedFolderIds[foldId]) continue;
+        processedFolderIds[foldId] = true;
+
+        var fName = folder.getName();
+        // Validasi agar tidak menghapus folder induk umum seperti root PPDB, Madrasah, atau Tahun
+        var isTargetStudentFolder = false;
+        if (regNumber && fName.indexOf(regNumber) > -1) {
+          isTargetStudentFolder = true;
+        } else if (studentId && fName.indexOf(studentId) > -1) {
+          isTargetStudentFolder = true;
+        } else if (studentName && fName.toLowerCase().indexOf(studentName.toLowerCase()) > -1) {
+          if (fName.indexOf("PPDB") === -1 && fName.indexOf("Tahun") === -1 && fName.indexOf("Madrasah") === -1) {
+            isTargetStudentFolder = true;
+          }
+        }
+
+        if (isTargetStudentFolder) {
+          // Hapus seluruh file di dalam folder siswa
+          try {
+            var subFiles = folder.getFiles();
+            while (subFiles.hasNext()) {
+              try {
+                var sf = subFiles.next();
+                sf.setTrashed(true);
+                deletedFilesCount++;
+              } catch(e) {}
+            }
+          } catch(e) {}
+
+          // Hapus seluruh subfolder (misal 01_KK, 02_AKTA, dll) dan isinya
+          try {
+            var subFolds = folder.getFolders();
+            while (subFolds.hasNext()) {
+              try {
+                var sfold = subFolds.next();
+                var sfoldFiles = sfold.getFiles();
+                while (sfoldFiles.hasNext()) {
+                  try {
+                    sfoldFiles.next().setTrashed(true);
+                    deletedFilesCount++;
+                  } catch(e) {}
+                }
+                sfold.setTrashed(true);
+              } catch(e) {}
+            }
+          } catch(e) {}
+
+          // Pindahkan folder siswa ke Sampah Google Drive
+          try {
+            folder.setTrashed(true);
+          } catch(e) {}
+        }
       }
     } catch(e) {}
   }
 
-  // 4. Hapus baris dari seluruh tabel database Google Sheets
+  // 5. Telusuri folder hierarki induk root Google Drive (jika ada rootFolderId)
+  var targetRootId = rootFolderId || DRIVE_ROOT_FOLDER_ID;
+  if (targetRootId && targetRootId.length > 5) {
+    try {
+      var rootFold = DriveApp.getFolderById(targetRootId);
+      if (rootFold) {
+        var yrFolds = rootFold.getFolders();
+        while (yrFolds.hasNext()) {
+          var yf = yrFolds.next();
+          var schFolds = yf.getFolders();
+          while (schFolds.hasNext()) {
+            var sf = schFolds.next();
+            var appFolds = sf.getFolders();
+            while (appFolds.hasNext()) {
+              var af = appFolds.next();
+              var afId = af.getId();
+              if (processedFolderIds[afId]) continue;
+              var afName = af.getName();
+              if ((regNumber && afName.indexOf(regNumber) > -1) || (studentName && afName.indexOf(studentName) > -1)) {
+                processedFolderIds[afId] = true;
+                try {
+                  var afFiles = af.getFiles();
+                  while (afFiles.hasNext()) {
+                    try { afFiles.next().setTrashed(true); deletedFilesCount++; } catch(e) {}
+                  }
+                  af.setTrashed(true);
+                } catch(e) {}
+              }
+            }
+          }
+        }
+      }
+    } catch(rfErr) {}
+  }
+
+  // 6. Hapus seluruh baris data dari SELURUH tabel database Google Sheets
   if (regNumber) {
     deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.APPLICATIONS), 2, regNumber); // Applications: registration_number
     deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.STUDENTS), 3, regNumber); // Students: registration_number
+    deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.DOCUMENTS), 2, regNumber); // Documents: registration_number
     deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.USERS), 2, regNumber); // Users: registration_number
   }
 
   if (studentId) {
+    deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.APPLICATIONS), 4, studentId);
     deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.STUDENTS), 1, studentId);
     deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.PARENTS), 2, studentId);
     deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.SCHOOL_ORIGINS), 2, studentId);
@@ -1369,7 +1522,7 @@ function handleDeleteApplication(data, spreadsheetId, rootFolderId) {
 
   return {
     success: true,
-    message: "Data pendaftaran " + regNumber + " dan seluruh file di Google Drive serta database Sheets berhasil dihapus permanen secara otomatis.",
+    message: "Data pendaftaran " + regNumber + " dan seluruh file serta folder data siswa di Google Drive dan Google Sheets berhasil dihapus permanen secara otomatis.",
     registration_number: regNumber,
     deleted_files_count: deletedFilesCount
   };

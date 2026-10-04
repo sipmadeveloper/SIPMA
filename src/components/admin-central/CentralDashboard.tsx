@@ -69,6 +69,8 @@ interface Props {
   onRefreshData?: () => void;
   activeTab?: 'overview' | 'schools' | 'admins' | 'applicants' | 'map' | 'config' | 'logs' | 'announcements';
   onTabChange?: (tab: 'overview' | 'schools' | 'admins' | 'applicants' | 'map' | 'config' | 'logs' | 'announcements') => void;
+  configSubTab?: 'config' | 'realtime' | 'backup' | 'guide' | 'code';
+  onConfigSubTabChange?: (tab: 'config' | 'realtime' | 'backup' | 'guide' | 'code') => void;
   highlightRegNumber?: string | null;
   onClearHighlight?: () => void;
 }
@@ -98,6 +100,8 @@ export const CentralDashboard: React.FC<Props> = ({
   onRefreshData,
   activeTab: controlledActiveTab,
   onTabChange,
+  configSubTab,
+  onConfigSubTabChange,
   highlightRegNumber,
   onClearHighlight,
 }) => {
@@ -290,11 +294,11 @@ export const CentralDashboard: React.FC<Props> = ({
 
       {/* ================= TAB 4: DISTRIBUTION MAP ================= */}
       {activeTab === 'map' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-          <div className="border-b border-slate-100 pb-3">
-            <h3 className="text-sm font-bold text-slate-900">Peta Sebaran Murid se-Wilayah</h3>
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+          <div className="border-b border-slate-100 pb-2.5">
+            <h3 className="text-sm font-bold text-slate-900">Peta Sebaran Wilayah</h3>
             <p className="text-xs text-slate-500">
-              Visualisasi pemetaan lokasi calon murid terhadap madrasah pilihan.
+              Visualisasi pemetaan titik koordinat lokasi calon murid terhadap madrasah se-wilayah.
             </p>
           </div>
 
@@ -308,7 +312,12 @@ export const CentralDashboard: React.FC<Props> = ({
 
       {/* ================= TAB 5: GAS & SYSTEM CONFIG ================= */}
       {activeTab === 'config' && (
-        <SystemConfig settings={settings} onSaveSettings={onSaveSettings} />
+        <SystemConfig
+          settings={settings}
+          onSaveSettings={onSaveSettings}
+          activeSubTab={configSubTab}
+          onSubTabChange={onConfigSubTabChange}
+        />
       )}
 
       {/* ================= TAB 6: AUDIT LOGS ================= */}

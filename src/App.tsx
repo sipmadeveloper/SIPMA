@@ -545,7 +545,11 @@ export default function App() {
 
   // Applicant Deletion
   const handleDeleteApplicant = (regNumber: string) => {
-    showLoading('Menghapus data pendaftar...', 'Menghapus berkas lampiran dan data pendaftar dari database realtime...', 'delete');
+    showLoading(
+      'Menghapus data pendaftar...',
+      'Menghapus data pendaftar dari aplikasi, membersihkan baris Google Sheets, serta menghapus file & folder data siswa di Google Drive...',
+      'delete'
+    );
     setTimeout(async () => {
       try {
         const res = await storageService.deleteApplication(regNumber);
@@ -678,6 +682,7 @@ export default function App() {
   }, [currentUser?.role, currentRoute]);
 
   const [archiveSubTab, setArchiveSubTab] = useState<'detection' | 'files_gallery'>('detection');
+  const [configSubTab, setConfigSubTab] = useState<'config' | 'realtime' | 'backup' | 'guide' | 'code'>('config');
 
   const handleSelectTab = useCallback(
     (tabId: string, subTab?: string) => {
@@ -685,6 +690,11 @@ export default function App() {
       setIsSidebarOpen(false);
       if (subTab && (subTab === 'detection' || subTab === 'files_gallery')) {
         setArchiveSubTab(subTab);
+      }
+      if (tabId === 'config' && subTab) {
+        if (['config', 'realtime', 'backup', 'guide', 'code'].includes(subTab)) {
+          setConfigSubTab(subTab as any);
+        }
       }
       if (currentUser?.role === 'admin_pusat') {
         navigate({ centralTab: tabId as CentralTab });
@@ -806,7 +816,7 @@ export default function App() {
               currentSchool={currentSchool}
               settings={settings}
               activeTab={currentActiveTab}
-              activeSubTab={archiveSubTab}
+              activeSubTab={currentActiveTab === 'config' ? configSubTab : archiveSubTab}
               onSelectTab={handleSelectTab}
               stats={sidebarStats}
               onLogout={handleLogout}
@@ -943,6 +953,8 @@ export default function App() {
                     onRefreshData={refreshData}
                     activeTab={(currentRoute.centralTab as CentralTab) || 'overview'}
                     onTabChange={(tab) => navigate({ centralTab: tab })}
+                    configSubTab={configSubTab}
+                    onConfigSubTabChange={setConfigSubTab}
                     highlightRegNumber={highlightApplicantRegNumber}
                     onClearHighlight={() => setHighlightApplicantRegNumber(null)}
                   />

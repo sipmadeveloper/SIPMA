@@ -418,11 +418,11 @@ export const SchoolDashboard: React.FC<Props> = ({
 
       {/* ================= TAB 4: DISTRIBUTION MAP ================= */}
       {activeTab === 'map' && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-          <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+          <div className="flex justify-between items-center border-b border-slate-100 pb-2.5">
             <div>
               <h3 className="text-sm font-bold text-slate-900">
-                Peta Persebaran Titik Rumah Calon Murid
+                Peta Sebaran Wilayah & Zonasi Madrasah
               </h3>
               <p className="text-xs text-slate-500">
                 Visualisasi titik koordinat rumah calon murid relatif terhadap radius zonasi ({activeSchool.zoning_radius_km} km) {activeSchool.school_name}.

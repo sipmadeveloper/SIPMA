@@ -11,6 +11,7 @@ import {
   MapPin,
   Play,
   FileSpreadsheet,
+  ArrowDown,
   ChevronDown,
 } from 'lucide-react';
 import { Application, StudentProfile, School, SchoolOrigin, ParentData, AddressData } from '../../types/sipma';
@@ -373,14 +374,18 @@ export const SelectionManagement: React.FC<Props> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Tombol Aksi Unduh Excel: Cukup Gambar Icon File Excel Hijau dengan Tanda Panah Kebawah Tanpa Tulisan */}
           <button
             type="button"
             onClick={() => exportSelectionResultsToExcel(school, selectedPathway, pathwayApps, students, schoolOrigins)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+            className="inline-flex items-center justify-center w-8.5 h-8.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg text-emerald-700 transition-all shadow-2xs cursor-pointer shrink-0 active:scale-95"
             title="Unduh hasil seleksi dan pemeringkatan jalur ini ke format Excel (.xlsx)"
+            aria-label="Unduh File Excel"
           >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
-            <span>Export Excel (.xlsx)</span>
+            <span className="relative inline-flex items-center justify-center">
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+              <ArrowDown className="w-2.5 h-2.5 text-emerald-700 absolute -bottom-1 -right-1 bg-white rounded-full ring-1 ring-emerald-500 stroke-[3]" />
+            </span>
           </button>
 
           <button

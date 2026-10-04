@@ -3415,7 +3415,7 @@ app.post('/api/gas/delete-file', async (req: Request, res: Response) => {
 // 8. Delete Application with Cascade Cleanup (Drive Files & All Sheets Tables)
 app.post('/api/data/delete-application', async (req: Request, res: Response) => {
   try {
-    const { registration_number, student_id, drive_file_ids } = req.body;
+    const { registration_number, student_id, student_name, drive_file_ids } = req.body;
     if (!registration_number) {
       return res.status(400).json({ success: false, message: 'Nomor pendaftaran diperlukan.' });
     }
@@ -3445,6 +3445,18 @@ app.post('/api/data/delete-application', async (req: Request, res: Response) => 
       serverDb.documents = serverDb.documents.filter((d: any) => d.registration_number !== registration_number);
     }
 
+    // Clean any local upload files matching registration number
+    try {
+      if (fs.existsSync(UPLOAD_DIR)) {
+        const uploadFiles = fs.readdirSync(UPLOAD_DIR);
+        for (const uf of uploadFiles) {
+          if (uf.includes(registration_number) || (student_id && uf.includes(student_id))) {
+            try { fs.unlinkSync(path.join(UPLOAD_DIR, uf)); } catch (e) {}
+          }
+        }
+      }
+    } catch (e) {}
+
     // Clean serverDb entities
     if (serverDb.applications) {
       serverDb.applications = serverDb.applications.filter((a: any) => a.registration_number !== registration_number);
@@ -3469,7 +3481,7 @@ app.post('/api/data/delete-application', async (req: Request, res: Response) => 
 
     persistServerDb();
 
-    // 1. Try forwarding targeted delete to Google Apps Script (handles Google Drive file deletion)
+    // 1. Try forwarding targeted delete to Google Apps Script (handles Google Drive student folder & file deletion)
     let gasResult = null;
     if (gasUrl && gasUrl.startsWith('http')) {
       try {
@@ -3483,6 +3495,7 @@ app.post('/api/data/delete-application', async (req: Request, res: Response) => 
             data: {
               registration_number,
               student_id,
+              student_name,
               drive_file_ids: fileIdsToDelete,
             },
           }),
@@ -3500,7 +3513,7 @@ app.post('/api/data/delete-application', async (req: Request, res: Response) => 
 
     res.json({
       success: true,
-      message: `Data pendaftaran ${registration_number} dan semua file di Google Drive serta database berhasil dihapus otomatis secara permanen.`,
+      message: `Data pendaftaran ${registration_number} dan seluruh folder data siswa serta file di Google Drive dan Google Sheets berhasil dihapus otomatis secara permanen.`,
       gas_synced: true,
       deleted_file_ids: fileIdsToDelete,
     });

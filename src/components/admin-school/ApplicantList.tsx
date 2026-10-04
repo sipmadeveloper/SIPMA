@@ -7,6 +7,7 @@ import {
   AlertCircle,
   XCircle,
   FileSpreadsheet,
+  ArrowDown,
   Printer,
   MapPin,
   Clock,
@@ -365,87 +366,19 @@ export const ApplicantList: React.FC<Props> = ({
               <span className="hidden sm:inline">Pindai QR</span>
             </button>
 
-            {/* Export Excel Button with Dropdown & Modal */}
-            <div className="relative inline-block text-left shrink-0">
-              <div className="inline-flex h-8.5 rounded-lg shadow-2xs">
-                <button
-                  type="button"
-                  onClick={handleExportCurrent}
-                  className="inline-flex items-center gap-1.5 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-l-lg text-xs font-bold transition-colors cursor-pointer"
-                  title="Langsung unduh data pendaftar dalam format spreadsheet Excel (.xlsx)"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
-                  <span>Unduh Excel</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
-                  className="px-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-r-lg border-l border-emerald-500/50 text-xs font-bold transition-colors cursor-pointer"
-                  title="Pilihan Cepat Unduh Excel"
-                >
-                  ▼
-                </button>
-              </div>
-
-            {isExportDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-white border border-slate-200 shadow-xl z-30 p-2 space-y-1">
-                <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Pilihan Unduh Format Excel (.xlsx)
-                </div>
-                <button
-                  type="button"
-                  onClick={handleExportPassed}
-                  className="w-full text-left px-3 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-50 rounded-xl flex items-center justify-between transition-colors cursor-pointer"
-                >
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                    <span>Unduh Khusus Siswa Lolos</span>
-                  </span>
-                  <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-mono font-bold">
-                    {countLulus}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleExportAll}
-                  className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-xl flex items-center justify-between transition-colors cursor-pointer"
-                >
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-                    <span>Unduh Seluruh Pendaftar</span>
-                  </span>
-                  <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-mono font-bold">
-                    {countTotal}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleExportCurrent}
-                  className="w-full text-left px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 rounded-xl flex items-center justify-between transition-colors cursor-pointer"
-                >
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                    <span>Unduh Filter Tampilan</span>
-                  </span>
-                  <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-mono font-bold">
-                    {filteredApps.length}
-                  </span>
-                </button>
-                <div className="border-t border-slate-100 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsExportDropdownOpen(false);
-                      setIsExportModalOpen(true);
-                    }}
-                    className="w-full text-left px-3 py-1.5 text-[11px] font-semibold text-slate-500 hover:text-emerald-700 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
-                  >
-                    Buka Panduan & Opsi Lengkap...
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+            {/* Tombol Aksi Unduh Excel: Cukup Gambar Icon File Excel Hijau dengan Tanda Panah Kebawah Tanpa Tulisan */}
+            <button
+              type="button"
+              onClick={handleExportCurrent}
+              className="inline-flex items-center justify-center w-8.5 h-8.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg text-emerald-700 transition-all shadow-2xs cursor-pointer shrink-0 active:scale-95"
+              title="Langsung unduh data pendaftar dalam format spreadsheet Excel (.xlsx)"
+              aria-label="Unduh File Excel"
+            >
+              <span className="relative inline-flex items-center justify-center">
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                <ArrowDown className="w-2.5 h-2.5 text-emerald-700 absolute -bottom-1 -right-1 bg-white rounded-full ring-1 ring-emerald-500 stroke-[3]" />
+              </span>
+            </button>
         </div>
       </div>
     </div>
@@ -906,8 +839,10 @@ export const ApplicantList: React.FC<Props> = ({
               <p className="text-xs text-slate-600 mt-1 leading-relaxed">
                 Anda akan menghapus data pendaftaran <strong>{students[appToDelete.registration_number]?.name || appToDelete.registration_number}</strong> (No: {appToDelete.registration_number}).
               </p>
-              <div className="mt-3 p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800">
-                Data pendaftaran, data siswa, berkas lampiran, dan akun pengguna akan <strong>dihapus permanen</strong> dari aplikasi dan <strong>langsung disinkronkan ke Google Sheets</strong> secara otomatis.
+              <div className="mt-3 p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 space-y-1">
+                <p>
+                  Data pendaftaran, seluruh data siswa di database, baris pada seluruh lembar <strong>Google Sheets</strong>, serta seluruh berkas dan <strong>folder data siswa di Google Drive</strong> akan <strong>dihapus permanen secara otomatis</strong>.
+                </p>
               </div>
             </div>
 

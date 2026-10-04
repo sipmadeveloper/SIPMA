@@ -43,12 +43,25 @@ import { useFeedback } from '../../context/FeedbackContext';
 interface Props {
   settings: SystemSettings;
   onSaveSettings: (newSettings: SystemSettings) => void;
+  activeSubTab?: 'config' | 'realtime' | 'backup' | 'guide' | 'code';
+  onSubTabChange?: (tab: 'config' | 'realtime' | 'backup' | 'guide' | 'code') => void;
 }
 
-export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
+export const SystemConfig: React.FC<Props> = ({
+  settings,
+  onSaveSettings,
+  activeSubTab: controlledSubTab,
+  onSubTabChange,
+}) => {
   const { showAlert, showToast, showLoading, hideLoading } = useFeedback();
   const [formData, setFormData] = useState<SystemSettings>({ ...settings });
-  const [activeTab, setActiveTab] = useState<'config' | 'realtime' | 'backup' | 'guide' | 'code'>('config');
+  const [internalActiveTab, setInternalActiveTab] = useState<'config' | 'realtime' | 'backup' | 'guide' | 'code'>('config');
+
+  const activeTab = controlledSubTab || internalActiveTab;
+  const setActiveTab = (tab: 'config' | 'realtime' | 'backup' | 'guide' | 'code') => {
+    setInternalActiveTab(tab);
+    onSubTabChange?.(tab);
+  };
 
   useEffect(() => {
     setFormData({ ...settings });
@@ -494,55 +507,33 @@ export const SystemConfig: React.FC<Props> = ({ settings, onSaveSettings }) => {
         </div>
       </div>
 
-      {/* Tab Switcher */}
-      <div className="flex flex-wrap bg-white p-1 rounded-xl border border-slate-200 shadow-xs text-xs font-bold gap-1">
-        <button
-          type="button"
-          onClick={() => setActiveTab('config')}
-          className={`px-4 py-2 rounded-lg transition-all ${
-            activeTab === 'config' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          Konfigurasi & Koneksi Database
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('realtime')}
-          className={`px-4 py-2 rounded-lg transition-all flex items-center gap-1.5 ${
-            activeTab === 'realtime' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <Cloud className="w-3.5 h-3.5 text-sky-400" />
-          <span>Sinkronisasi Realtime</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('backup')}
-          className={`px-4 py-2 rounded-lg transition-all flex items-center gap-1.5 ${
-            activeTab === 'backup' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          <Database className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Backup & Restore DB</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('guide')}
-          className={`px-4 py-2 rounded-lg transition-all ${
-            activeTab === 'guide' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          Panduan Setup (GAS & Vercel)
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('code')}
-          className={`px-4 py-2 rounded-lg transition-all ${
-            activeTab === 'code' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          Kode Backend (Code.gs)
-        </button>
+      {/* Active Sub-Menu Section Indicator */}
+      <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 flex items-center justify-between shadow-2xs">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold shadow-2xs">
+            {activeTab === 'config' && <Database className="w-5 h-5 text-emerald-400" />}
+            {activeTab === 'realtime' && <Cloud className="w-5 h-5 text-sky-400" />}
+            {activeTab === 'backup' && <HardDrive className="w-5 h-5 text-amber-400" />}
+            {activeTab === 'guide' && <FileText className="w-5 h-5 text-indigo-400" />}
+            {activeTab === 'code' && <Code className="w-5 h-5 text-purple-400" />}
+          </div>
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+              Sub-Menu Terpilih
+            </div>
+            <h3 className="text-base font-bold text-slate-900">
+              {activeTab === 'config' && 'Konfigurasi & Koneksi Database'}
+              {activeTab === 'realtime' && 'Sinkronisasi Realtime Multi-Perangkat'}
+              {activeTab === 'backup' && 'Backup & Restore Database'}
+              {activeTab === 'guide' && 'Panduan Setup (GAS & Vercel)'}
+              {activeTab === 'code' && 'Kode Backend (Code.gs)'}
+            </h3>
+          </div>
+        </div>
+
+        <div className="text-xs font-semibold text-slate-500 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs hidden sm:block">
+          Navigasi Menu Terpisah
+        </div>
       </div>
 
       {/* ================= TAB 1: CONFIG & TESTERS ================= */}

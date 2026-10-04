@@ -23,6 +23,7 @@ import {
   FileCheck,
   CheckSquare,
   FileSpreadsheet,
+  ArrowDown,
   X,
   Phone,
   MessageCircle,
@@ -474,60 +475,17 @@ _Panitia PPDB ${school.school_name}_`;
 
   return (
     <div className="space-y-4 animate-in fade-in duration-300" id="sipma-digital-archive">
-      {/* ================= MAIN VIEW TOGGLE TABS & EXPORT ACTION ================= */}
-      <div className="flex items-center justify-between flex-wrap gap-2.5 border-b border-slate-200 pb-3">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setActiveMainTab('detection')}
-            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer shadow-2xs ${
-              activeMainTab === 'detection'
-                ? 'bg-slate-900 text-white ring-2 ring-slate-800'
-                : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-            }`}
-          >
-            <CheckSquare className="w-4 h-4 text-emerald-400" />
-            <span>Deteksi Kelengkapan Setiap Murid ({studentDetectionList.length})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveMainTab('files_gallery')}
-            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer shadow-2xs ${
-              activeMainTab === 'files_gallery'
-                ? 'bg-slate-900 text-white ring-2 ring-slate-800'
-                : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-            }`}
-          >
-            <Archive className="w-4 h-4 text-teal-400" />
-            <span>Galeri & Daftar Berkas Terarsip ({schoolDocuments.length})</span>
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleExportCompletenessCsv}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all cursor-pointer shadow-2xs"
-            title="Unduh rekap inventaris kelengkapan berkas seluruh calon murid (CSV)"
-          >
-            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-200" />
-            <span>Export Rekap Kelengkapan</span>
-          </button>
-        </div>
-      </div>
-
       {/* =========================================================================
          TAB 1: DETEKSI KELENGKAPAN SETIAP MURID PENDAFTAR (FITUR UTAMA)
          ========================================================================= */}
       {activeMainTab === 'detection' && (
         <div className="space-y-4">
           {/* Search & Filter Bar */}
-          {/* Practical Compact Filters for Document Detection */}
+          {/* Practical Compact Filters for Document Detection: Sejajar Rapi 1 Baris */}
           <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-2xs">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full">
               {/* Search Box */}
-              <div className="relative flex-1 min-w-[200px]">
+              <div className="relative flex-1 min-w-0">
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
@@ -547,45 +505,62 @@ _Panitia PPDB ${school.school_name}_`;
                 )}
               </div>
 
-              {/* Completeness Status Filter */}
-              <select
-                value={completenessFilter}
-                onChange={(e) => setCompletenessFilter(e.target.value as CompletenessFilter)}
-                className="h-8.5 px-2.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 font-semibold cursor-pointer shrink-0"
-              >
-                <option value="all">Semua Kelengkapan ({studentDetectionList.length})</option>
-                <option value="complete">Lengkap ({detectionStats.completeCount})</option>
-                <option value="incomplete">Belum Lengkap ({detectionStats.incompleteCount})</option>
-                <option value="empty">Kosong ({detectionStats.emptyCount})</option>
-              </select>
+              {/* Action and Filter Controls Inline Sejajar */}
+              <div className="flex items-center gap-1.5 overflow-x-auto shrink-0 pb-0.5 sm:pb-0">
+                {/* Completeness Status Filter */}
+                <select
+                  value={completenessFilter}
+                  onChange={(e) => setCompletenessFilter(e.target.value as CompletenessFilter)}
+                  className="h-8.5 px-2.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 font-semibold cursor-pointer shrink-0"
+                >
+                  <option value="all">Semua Kelengkapan ({studentDetectionList.length})</option>
+                  <option value="complete">Lengkap ({detectionStats.completeCount})</option>
+                  <option value="incomplete">Belum Lengkap ({detectionStats.incompleteCount})</option>
+                  <option value="empty">Kosong ({detectionStats.emptyCount})</option>
+                </select>
 
-              {/* Pathway Filter */}
-              <select
-                value={pathwayFilter}
-                onChange={(e) => setPathwayFilter(e.target.value)}
-                className="h-8.5 px-2.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 cursor-pointer shrink-0"
-              >
-                <option value="all">Semua Jalur</option>
-                <option value="zonasi">Zonasi</option>
-                <option value="afirmasi">Afirmasi</option>
-                <option value="prestasi">Prestasi</option>
-                <option value="mutasi">Mutasi</option>
-              </select>
+                {/* Pathway Filter */}
+                <select
+                  value={pathwayFilter}
+                  onChange={(e) => setPathwayFilter(e.target.value)}
+                  className="h-8.5 px-2.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 cursor-pointer shrink-0"
+                >
+                  <option value="all">Semua Jalur</option>
+                  <option value="zonasi">Zonasi</option>
+                  <option value="afirmasi">Afirmasi</option>
+                  <option value="prestasi">Prestasi</option>
+                  <option value="mutasi">Mutasi</option>
+                </select>
 
-              {/* Reset Filter Button */}
-              {(searchStudentQuery || completenessFilter !== 'all' || pathwayFilter !== 'all') && (
+                {/* Reset Filter Button */}
+                {(searchStudentQuery || completenessFilter !== 'all' || pathwayFilter !== 'all') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchStudentQuery('');
+                      setCompletenessFilter('all');
+                      setPathwayFilter('all');
+                    }}
+                    className="h-8.5 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0"
+                  >
+                    Reset
+                  </button>
+                )}
+
+                {/* Tombol Aksi Unduh Excel Sejajar */}
                 <button
                   type="button"
-                  onClick={() => {
-                    setSearchStudentQuery('');
-                    setCompletenessFilter('all');
-                    setPathwayFilter('all');
-                  }}
-                  className="h-8.5 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0"
+                  onClick={handleExportCompletenessCsv}
+                  className="inline-flex items-center justify-center w-8.5 h-8.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg text-emerald-700 transition-all shadow-2xs cursor-pointer shrink-0 active:scale-95"
+                  title="Unduh rekap inventaris kelengkapan berkas seluruh calon murid (Excel / CSV)"
+                  aria-label="Unduh Rekap Kelengkapan Excel"
                 >
-                  Reset
+                  <span className="relative inline-flex items-center justify-center">
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                    <ArrowDown className="w-2.5 h-2.5 text-emerald-700 absolute -bottom-1 -right-1 bg-white rounded-full ring-1 ring-emerald-500 stroke-[3]" />
+                  </span>
                 </button>
-              )}
+              </div>
             </div>
           </div>
 

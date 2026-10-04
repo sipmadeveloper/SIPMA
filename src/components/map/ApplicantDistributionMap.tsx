@@ -24,6 +24,8 @@ import {
   Sliders,
   ExternalLink,
   Activity,
+  ChevronDown,
+  X,
 } from 'lucide-react';
 import { storageService } from '../../services/storageService';
 
@@ -60,6 +62,77 @@ export const ApplicantDistributionMap: React.FC<Props> = ({
   const [showRadiusConcentric, setShowRadiusConcentric] = useState(true);
   const [activeApplicant, setActiveApplicant] = useState<Application | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  // Category counts and quick selection for single filter box
+  const pathwayCounts = useMemo(() => {
+    const counts = { zonasi: 0, afirmasi: 0, prestasi: 0, mutasi: 0 };
+    applications.forEach((a) => {
+      if (a.pathway in counts) {
+        counts[a.pathway as keyof typeof counts]++;
+      }
+    });
+    return counts;
+  }, [applications]);
+
+  const { verifiedCount, unverifiedCount } = useMemo(() => {
+    let ver = 0;
+    let unver = 0;
+    applications.forEach((a) => {
+      if (a.verification_status === 'terverifikasi') ver++;
+      else unver++;
+    });
+    return { verifiedCount: ver, unverifiedCount: unver };
+  }, [applications]);
+
+  const activeCategoryFilter = useMemo(() => {
+    if (selectedPathway !== 'all') return `pathway:${selectedPathway}`;
+    if (selectedZoningFilter !== 'all') return `zoning:${selectedZoningFilter}`;
+    if (selectedVerificationFilter !== 'all') return `verification:${selectedVerificationFilter}`;
+    if (tileLayerType !== 'streets') return `layer:${tileLayerType}`;
+    if (!showZoningRadius) return 'radius:inactive';
+    return 'all';
+  }, [selectedPathway, selectedZoningFilter, selectedVerificationFilter, tileLayerType, showZoningRadius]);
+
+  const handleCategorySelect = (val: string) => {
+    if (val === 'all') {
+      setSelectedPathway('all');
+      setSelectedZoningFilter('all');
+      setSelectedVerificationFilter('all');
+      setTileLayerType('streets');
+      setShowZoningRadius(true);
+      return;
+    }
+
+    if (val.startsWith('pathway:')) {
+      setSelectedPathway(val.replace('pathway:', ''));
+      setSelectedZoningFilter('all');
+      setSelectedVerificationFilter('all');
+    } else if (val.startsWith('zoning:')) {
+      setSelectedZoningFilter(val.replace('zoning:', '') as 'inside' | 'outside');
+      setSelectedPathway('all');
+      setSelectedVerificationFilter('all');
+    } else if (val.startsWith('verification:')) {
+      setSelectedVerificationFilter(val.replace('verification:', ''));
+      setSelectedPathway('all');
+      setSelectedZoningFilter('all');
+    } else if (val.startsWith('layer:')) {
+      setTileLayerType(val.replace('layer:', '') as 'streets' | 'satellite' | 'terrain');
+    } else if (val === 'radius:active') {
+      setShowZoningRadius(true);
+    } else if (val === 'radius:inactive') {
+      setShowZoningRadius(false);
+    }
+  };
+
+  const handleResetFilters = () => {
+    setSelectedPathway('all');
+    setSelectedZoningFilter('all');
+    setSelectedVerificationFilter('all');
+    setSelectedStatusFilter('all');
+    setTileLayerType('streets');
+    setShowZoningRadius(true);
+    setSearchQuery('');
+  };
 
   const safeSchool: School = useMemo(() => {
     return (
@@ -528,162 +601,133 @@ export const ApplicantDistributionMap: React.FC<Props> = ({
 
   return (
     <div className="space-y-4" id="sipma-applicant-distribution-map-view">
-      {/* Top Metric Cards: Zoning Reach & Visual Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
-          <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Pendaftar Terpetakan</div>
-          <div className="text-xl font-black text-slate-900 mt-0.5">
-            {stats.mapped} <span className="text-xs font-normal text-slate-400">/ {stats.total}</span>
-          </div>
-          <div className="text-[10px] text-emerald-600 font-semibold mt-1">
-            {stats.unmapped > 0 ? `${stats.unmapped} tanpa koordinat` : 'Semua memiliki koordinat'}
-          </div>
+      {/* Top Metric Cards: Kotak Kecil Rapi 1 Baris Menyamping */}
+      <div className="grid grid-cols-6 gap-1.5 sm:gap-2 w-full overflow-x-auto">
+        <div className="bg-white p-2 rounded-xl border border-slate-200/90 shadow-2xs text-center flex flex-col justify-center min-w-[70px]">
+          <div className="text-[9px] sm:text-[10px] text-slate-500 font-bold uppercase tracking-wider truncate">Pendaftar</div>
+          <div className="text-sm sm:text-base md:text-lg font-black text-slate-900 leading-tight my-0.5 truncate">{stats.mapped}</div>
+          <div className="text-[8px] sm:text-[9px] text-slate-400 font-medium truncate">dari {stats.total}</div>
         </div>
 
-        <div className="bg-gradient-to-br from-emerald-50 to-white p-3.5 rounded-xl border border-emerald-200 shadow-xs">
-          <div className="text-[11px] font-bold text-emerald-800 uppercase tracking-wide">Dalam Radius ({zoningRadiusKm} km)</div>
-          <div className="text-xl font-black text-emerald-950 mt-0.5">{stats.insideZoning}</div>
-          <div className="text-[10px] text-emerald-700 font-semibold mt-1">
-            {stats.zoningReachPercent}% dari terpetakan
-          </div>
+        <div className="bg-gradient-to-br from-emerald-50/80 to-white p-2 rounded-xl border border-emerald-200/80 shadow-2xs text-center flex flex-col justify-center min-w-[70px]">
+          <div className="text-[9px] sm:text-[10px] text-emerald-800 font-bold uppercase tracking-wider truncate">Dalam Radius</div>
+          <div className="text-sm sm:text-base md:text-lg font-black text-emerald-950 leading-tight my-0.5 truncate">{stats.insideZoning}</div>
+          <div className="text-[8px] sm:text-[9px] text-emerald-700 font-medium truncate">≤ {zoningRadiusKm} km</div>
         </div>
 
-        <div className="bg-gradient-to-br from-rose-50 to-white p-3.5 rounded-xl border border-rose-200 shadow-xs">
-          <div className="text-[11px] font-bold text-rose-800 uppercase tracking-wide">Luar Radius Zonasi</div>
-          <div className="text-xl font-black text-rose-950 mt-0.5">{stats.outsideZoning}</div>
-          <div className="text-[10px] text-rose-700 font-semibold mt-1">
-            {stats.mapped > 0 ? Math.round((stats.outsideZoning / stats.mapped) * 100) : 0}% di luar batas
-          </div>
+        <div className="bg-gradient-to-br from-rose-50/80 to-white p-2 rounded-xl border border-rose-200/80 shadow-2xs text-center flex flex-col justify-center min-w-[70px]">
+          <div className="text-[9px] sm:text-[10px] text-rose-800 font-bold uppercase tracking-wider truncate">Luar Radius</div>
+          <div className="text-sm sm:text-base md:text-lg font-black text-rose-950 leading-tight my-0.5 truncate">{stats.outsideZoning}</div>
+          <div className="text-[8px] sm:text-[9px] text-rose-700 font-medium truncate">&gt; {zoningRadiusKm} km</div>
         </div>
 
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
-          <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Jarak Terdekat</div>
-          <div className="text-xl font-black text-teal-700 mt-0.5">
-            {formatDistanceIndonesian(stats.nearestKm)}
-          </div>
-          <div className="text-[10px] text-slate-500 mt-1">Paling dekat ke madrasah</div>
+        <div className="bg-white p-2 rounded-xl border border-slate-200/90 shadow-2xs text-center flex flex-col justify-center min-w-[70px]">
+          <div className="text-[9px] sm:text-[10px] text-teal-800 font-bold uppercase tracking-wider truncate">Jarak Dekat</div>
+          <div className="text-sm sm:text-base md:text-lg font-black text-teal-700 leading-tight my-0.5 truncate">{formatDistanceIndonesian(stats.nearestKm)}</div>
+          <div className="text-[8px] sm:text-[9px] text-slate-400 font-medium truncate">Minimum</div>
         </div>
 
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
-          <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Jarak Terjauh</div>
-          <div className="text-xl font-black text-amber-700 mt-0.5">
-            {formatDistanceIndonesian(stats.furthestKm)}
-          </div>
-          <div className="text-[10px] text-slate-500 mt-1">Titik terjauh tercatat</div>
+        <div className="bg-white p-2 rounded-xl border border-slate-200/90 shadow-2xs text-center flex flex-col justify-center min-w-[70px]">
+          <div className="text-[9px] sm:text-[10px] text-amber-800 font-bold uppercase tracking-wider truncate">Jarak Jauh</div>
+          <div className="text-sm sm:text-base md:text-lg font-black text-amber-700 leading-tight my-0.5 truncate">{formatDistanceIndonesian(stats.furthestKm)}</div>
+          <div className="text-[8px] sm:text-[9px] text-slate-400 font-medium truncate">Maksimum</div>
         </div>
 
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
-          <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">Rata-Rata Jarak</div>
-          <div className="text-xl font-black text-indigo-700 mt-0.5">
-            {formatDistanceIndonesian(stats.avgDistanceKm)}
-          </div>
-          <div className="text-[10px] text-slate-500 mt-1">Sebaran rata-rata siswa</div>
+        <div className="bg-white p-2 rounded-xl border border-slate-200/90 shadow-2xs text-center flex flex-col justify-center min-w-[70px]">
+          <div className="text-[9px] sm:text-[10px] text-indigo-800 font-bold uppercase tracking-wider truncate">Rata-Rata</div>
+          <div className="text-sm sm:text-base md:text-lg font-black text-indigo-700 leading-tight my-0.5 truncate">{formatDistanceIndonesian(stats.avgDistanceKm)}</div>
+          <div className="text-[8px] sm:text-[9px] text-slate-400 font-medium truncate">Rerata Siswa</div>
         </div>
       </div>
 
-      {/* Control Toolbar */}
-      <div className="bg-white p-3 sm:p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+      {/* Control Toolbar: Ringkas Cukup 1 Kotak Filter dengan Banyak Pilihan Kategori */}
+      <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
         {/* Search input */}
-        <div className="relative w-full sm:w-64">
-          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+        <div className="relative flex-1 sm:max-w-xs">
+          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Cari murid di peta..."
-            className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none"
+            placeholder="Cari nama / no. pendaftar di peta..."
+            className="w-full pl-8 pr-3 h-8.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
           />
         </div>
 
-        {/* Filter Dropdowns */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Pathway Filter */}
-          <select
-            value={selectedPathway}
-            onChange={(e) => setSelectedPathway(e.target.value)}
-            className="px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500 outline-none"
-          >
-            <option value="all">Semua Jalur</option>
-            <option value="zonasi">Zonasi (Hijau)</option>
-            <option value="afirmasi">Afirmasi (Ungu)</option>
-            <option value="prestasi">Prestasi (Amber)</option>
-            <option value="mutasi">Mutasi (Biru)</option>
-          </select>
+        {/* 1 Kotak Ringkas Filter Peta dengan Banyak Pilihan Kategori & Aksi Peta */}
+        <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
+          {/* Cukup 1 Kotak dengan Banyak Pilihan Kategori */}
+          <div className="relative flex-1 sm:w-72">
+            <Filter className="w-3.5 h-3.5 text-emerald-600 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none z-10" />
+            <select
+              value={activeCategoryFilter}
+              onChange={(e) => handleCategorySelect(e.target.value)}
+              aria-label="Pilihan kategori filter peta"
+              className="w-full h-8.5 pl-8 pr-7 bg-slate-50 hover:bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 shadow-2xs focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all cursor-pointer truncate"
+            >
+              <option value="all">📍 Semua Kategori (Tampilkan Lengkap)</option>
 
-          {/* Zoning Reach Filter */}
-          <select
-            value={selectedZoningFilter}
-            onChange={(e) => setSelectedZoningFilter(e.target.value as any)}
-            className="px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500 outline-none"
-          >
-            <option value="all">Semua Jangkauan</option>
-            <option value="inside">✓ Dalam Radius ({zoningRadiusKm} km)</option>
-            <option value="outside">✕ Luar Radius Zonasi</option>
-          </select>
+              <optgroup label="── 1. Kategori Jalur Pendaftaran ──">
+                <option value="pathway:zonasi">🟢 Jalur Zonasi ({pathwayCounts.zonasi})</option>
+                <option value="pathway:afirmasi">🟣 Jalur Afirmasi ({pathwayCounts.afirmasi})</option>
+                <option value="pathway:prestasi">🟡 Jalur Prestasi ({pathwayCounts.prestasi})</option>
+                <option value="pathway:mutasi">🔵 Jalur Mutasi ({pathwayCounts.mutasi})</option>
+              </optgroup>
 
-          {/* Map Layer Type */}
-          <div className="inline-flex rounded-xl bg-slate-100 p-0.5 border border-slate-300 text-[11px] font-bold">
-            <button
-              type="button"
-              onClick={() => setTileLayerType('streets')}
-              className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                tileLayerType === 'streets' ? 'bg-white text-emerald-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Jalan
-            </button>
-            <button
-              type="button"
-              onClick={() => setTileLayerType('satellite')}
-              className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                tileLayerType === 'satellite' ? 'bg-white text-emerald-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Satelit
-            </button>
-            <button
-              type="button"
-              onClick={() => setTileLayerType('terrain')}
-              className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                tileLayerType === 'terrain' ? 'bg-white text-emerald-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Topografi
-            </button>
+              <optgroup label="── 2. Kategori Jangkauan Radius ──">
+                <option value="zoning:inside">✓ Dalam Radius Zonasi (≤ {zoningRadiusKm} km)</option>
+                <option value="zoning:outside">✕ Luar Radius Zonasi (&gt; {zoningRadiusKm} km)</option>
+              </optgroup>
+
+              <optgroup label="── 3. Kategori Status Verifikasi ──">
+                <option value="verification:terverifikasi">✓ Berkas Terverifikasi ({verifiedCount})</option>
+                <option value="verification:menunggu">⏳ Menunggu Verifikasi ({unverifiedCount})</option>
+              </optgroup>
+
+              <optgroup label="── 4. Kategori Tampilan Peta ──">
+                <option value="layer:streets">🗺️ Peta Jalan (Streets)</option>
+                <option value="layer:satellite">🛰️ Citra Satelit</option>
+                <option value="layer:terrain">🏔️ Peta Topografi</option>
+              </optgroup>
+
+              <optgroup label="── 5. Kategori Lingkar Radius ──">
+                <option value="radius:active">⭕ Tampilkan Lingkar Radius ({zoningRadiusKm} km)</option>
+                <option value="radius:inactive">🚫 Sembunyikan Lingkar Radius</option>
+              </optgroup>
+            </select>
           </div>
 
-          {/* Recenter / Action Buttons */}
+          {/* Reset Filter Button if any filter active */}
+          {(activeCategoryFilter !== 'all' || searchQuery) && (
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              className="h-8.5 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0"
+              title="Reset seluruh filter ke pengaturan awal"
+            >
+              Reset
+            </button>
+          )}
+
+          {/* Quick Recenter Actions */}
           <button
             type="button"
             onClick={handleRecenterSchool}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs"
+            className="inline-flex items-center gap-1.5 h-8.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0 active:scale-95"
             title="Kembalikan fokus ke titik koordinat madrasah"
           >
             <Compass className="w-3.5 h-3.5" />
-            <span>Pusat Madrasah</span>
+            <span className="hidden md:inline">Pusat Madrasah</span>
           </button>
 
           <button
             type="button"
             onClick={handleFitAllApplicants}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 h-8.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 active:scale-95"
             title="Sesuaikan zoom layar mencakup seluruh pendaftar"
           >
             <Maximize2 className="w-3.5 h-3.5" />
-            <span>Semua Titik</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowZoningRadius(!showZoningRadius)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
-              showZoningRadius
-                ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
-                : 'bg-slate-50 border-slate-300 text-slate-500'
-            }`}
-            title="Sembunyikan atau tampilkan lingkaran radius zonasi"
-          >
-            Lingkaran Zonasi: {showZoningRadius ? 'Aktif' : 'Nonaktif'}
+            <span className="hidden md:inline">Semua Titik</span>
           </button>
         </div>
       </div>

@@ -108,27 +108,9 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
   const cascadeStats = schoolToDelete ? storageService.getSchoolCascadeStats(schoolToDelete.school_id) : null;
 
   return (
-    <div className="space-y-6" id="sipma-school-management">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-        <div>
-          <div className="text-xs font-bold text-emerald-800 uppercase tracking-wider">
-            Manajemen Multi-Madrasah Terintegrasi
-          </div>
-          <h2 className="text-xl font-bold text-slate-900 mt-0.5">Daftar Seluruh Madrasah (MI, MTs, MA)</h2>
-        </div>
-
-        <button
-          type="button"
-          onClick={handleAddNew}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Tambah Madrasah Baru</span>
-        </button>
-      </div>
-
-      {/* Search Bar (Compact & Practical) */}
-      <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between">
+    <div className="space-y-4" id="sipma-school-management">
+      {/* Search Bar & Action Button (Sejajar dengan kolom pencarian) */}
+      <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between gap-2">
         <div className="w-full sm:w-80 relative">
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
@@ -136,7 +118,7 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cari nama madrasah, NSM, NPSN..."
-            className="w-full pl-8 pr-7 h-8.5 bg-slate-50 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+            className="w-full pl-8 pr-7 h-8.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
           />
           {search && (
             <button
@@ -148,6 +130,16 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
             </button>
           )}
         </div>
+
+        <button
+          type="button"
+          onClick={handleAddNew}
+          className="inline-flex items-center justify-center w-8.5 h-8.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all shadow-xs cursor-pointer shrink-0 active:scale-95"
+          title="Tambah Madrasah Baru"
+          aria-label="Tambah Madrasah Baru"
+        >
+          <Plus className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Schools Table */}

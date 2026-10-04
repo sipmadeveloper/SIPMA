@@ -270,86 +270,29 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
   const isCurrentAdmin = currentUser?.role === 'admin_sekolah' || currentUser?.role === 'admin_pusat';
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200">
-      {/* Header Banner */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div className="flex items-start gap-3.5">
-          <div className="p-3 bg-teal-50 text-teal-700 rounded-2xl border border-teal-100/80 shrink-0 mt-0.5">
-            <UserCheck className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
-                Tim Operator Madrasah
-              </h2>
-              <span className="px-2.5 py-0.5 bg-teal-100/80 text-teal-800 text-[11px] font-bold rounded-full border border-teal-200">
-                {school.school_name}
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-1 max-w-2xl leading-relaxed">
-              Tambahkan dan kelola akun operator staf/panitia madrasah Anda untuk membantu verifikasi dokumen berkas pendaftaran dan proses kelulusan seleksi calon peserta didik.
-            </p>
-          </div>
+    <div className="space-y-4 animate-in fade-in duration-200">
+      {/* Quick Stats Grid: Kotak Kecil Rapi 1 Baris Menyamping */}
+      <div className="grid grid-cols-3 gap-1.5 sm:gap-2 w-full">
+        <div className="bg-white p-2 rounded-xl border border-slate-200/90 shadow-2xs text-center flex flex-col justify-center min-w-0">
+          <div className="text-[9px] sm:text-[10px] text-slate-500 font-bold uppercase tracking-wider truncate">Total Operator</div>
+          <div className="text-base sm:text-xl font-black text-slate-900 leading-tight my-0.5 truncate">{schoolOperators.length}</div>
+          <div className="text-[8px] sm:text-[9px] text-slate-400 font-medium truncate">Tim Panitia</div>
         </div>
 
-        {isCurrentAdmin && (
-          <button
-            type="button"
-            onClick={handleOpenCreateModal}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0"
-          >
-            <UserPlus className="w-4 h-4" />
-            <span>Tambah Akun Operator</span>
-          </button>
-        )}
-      </div>
-
-      {/* Quick Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Operator</div>
-          <div className="text-2xl font-black text-slate-900 mt-1">{schoolOperators.length}</div>
-          <div className="text-[11px] text-slate-400 mt-0.5 font-medium">Tim Panitia Madrasah</div>
+        <div className="bg-white p-2 rounded-xl border border-slate-200/90 shadow-2xs text-center flex flex-col justify-center min-w-0">
+          <div className="text-[9px] sm:text-[10px] text-teal-700 font-bold uppercase tracking-wider truncate">Operator Aktif</div>
+          <div className="text-base sm:text-xl font-black text-teal-600 leading-tight my-0.5 truncate">{activeCount}</div>
+          <div className="text-[8px] sm:text-[9px] text-teal-600/80 font-medium truncate">Akses Aktif</div>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="text-[11px] font-bold text-teal-600 uppercase tracking-wider">Operator Aktif</div>
-          <div className="text-2xl font-black text-teal-600 mt-1">{activeCount}</div>
-          <div className="text-[11px] text-slate-400 mt-0.5 font-medium">Memiliki hak akses login</div>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="text-[11px] font-bold text-rose-600 uppercase tracking-wider">Akses Ditangguhkan</div>
-          <div className="text-2xl font-black text-rose-600 mt-1">{inactiveCount}</div>
-          <div className="text-[11px] text-slate-400 mt-0.5 font-medium">Dinonaktifkan sementara</div>
-        </div>
-
-        <div className="bg-gradient-to-br from-teal-50/60 to-emerald-50/60 p-4 rounded-2xl border border-teal-200/80 shadow-xs">
-          <div className="text-[11px] font-bold text-teal-900 uppercase tracking-wider flex items-center gap-1.5">
-            <Shield className="w-3.5 h-3.5 text-teal-600" />
-            <span>Kewenangan Operator</span>
-          </div>
-          <div className="text-xs font-bold text-slate-800 mt-1.5 leading-snug">
-            Verifikasi Berkas & Seleksi
-          </div>
-          <div className="text-[10px] text-slate-500 mt-0.5 font-medium">
-            Membantu verifikasi & kelulusan pendaftar
-          </div>
+        <div className="bg-white p-2 rounded-xl border border-slate-200/90 shadow-2xs text-center flex flex-col justify-center min-w-0">
+          <div className="text-[9px] sm:text-[10px] text-rose-700 font-bold uppercase tracking-wider truncate">Ditangguhkan</div>
+          <div className="text-base sm:text-xl font-black text-rose-600 leading-tight my-0.5 truncate">{inactiveCount}</div>
+          <div className="text-[8px] sm:text-[9px] text-rose-500 font-medium truncate">Nonaktif</div>
         </div>
       </div>
 
-      {/* Helpful Guidance Banner */}
-      <div className="p-4 bg-teal-50/70 border border-teal-200/80 rounded-2xl flex items-start gap-3 text-xs text-teal-950">
-        <FileCheck2 className="w-5 h-5 text-teal-700 shrink-0 mt-0.5" />
-        <div className="space-y-1">
-          <span className="font-bold">Fungsi dan Wewenang Akun Operator Madrasah:</span>
-          <p className="text-slate-600 text-[11px] leading-relaxed">
-            Akun operator yang Anda buat dapat langsung masuk ke portal dengan memilih tab <strong>"Admin & Operator"</strong> saat login. Operator memiliki wewenang memeriksa kelengkapan berkas murid, menyetujui/meminta perbaikan berkas pendaftar, memberi catatan verifikasi, menetapkan kelulusan seleksi, dan memantau persebaran zonasi madrasah.
-          </p>
-        </div>
-      </div>
-
-      {/* Search & Filter Bar (Compact & Practical) */}
+      {/* Search, Filter & Action Bar */}
       <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
         <div className="relative flex-1">
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -362,7 +305,7 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
           />
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as any)}
@@ -384,6 +327,18 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
               className="h-8.5 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0"
             >
               Reset
+            </button>
+          )}
+
+          {isCurrentAdmin && (
+            <button
+              type="button"
+              onClick={handleOpenCreateModal}
+              className="inline-flex items-center justify-center w-8.5 h-8.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all shadow-xs cursor-pointer shrink-0 ml-auto active:scale-95"
+              title="Tambah Akun Operator Madrasah Baru"
+              aria-label="Tambah Operator"
+            >
+              <UserPlus className="w-4 h-4" />
             </button>
           )}
         </div>
