@@ -601,8 +601,8 @@ export const ApplicantDistributionMap: React.FC<Props> = ({
 
   return (
     <div className="space-y-4" id="sipma-applicant-distribution-map-view">
-      {/* Top Metric Cards: Kotak Kecil Rapi 1 Baris Menyamping */}
-      <div className="grid grid-cols-6 gap-1.5 sm:gap-2 w-full overflow-x-auto">
+      {/* Top Metric Cards: Kotak Kecil Rapi Responsif Menyesuaikan Layar */}
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 sm:gap-2 w-full">
         <div className="bg-white p-2 rounded-xl border border-slate-200/90 shadow-2xs text-center flex flex-col justify-center min-w-[70px]">
           <div className="text-[9px] sm:text-[10px] text-slate-500 font-bold uppercase tracking-wider truncate">Pendaftar</div>
           <div className="text-sm sm:text-base md:text-lg font-black text-slate-900 leading-tight my-0.5 truncate">{stats.mapped}</div>

@@ -447,7 +447,7 @@ export const StudentDashboard: React.FC<Props> = ({
             Informasi edaran resmi dari Panitia PPDB Madrasah untuk calon murid baru.
           </p>
 
-          <div className="space-y-2.5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {announcements
               .filter((a) => a.is_published && (a.target_role === 'all' || a.target_role === 'calon_murid'))
               .map((anc) => (
@@ -463,7 +463,7 @@ export const StudentDashboard: React.FC<Props> = ({
                 </div>
               ))}
             {announcements.filter((a) => a.is_published && (a.target_role === 'all' || a.target_role === 'calon_murid')).length === 0 && (
-              <div className="text-center py-8 text-slate-400 text-xs">
+              <div className="col-span-full text-center py-8 text-slate-400 text-xs">
                 Belum ada pengumuman terbaru saat ini.
               </div>
             )}
@@ -524,11 +524,6 @@ export const StudentDashboard: React.FC<Props> = ({
 
             {/* Student Identity & Metadata */}
             <div className="min-w-0 space-y-1">
-              <div className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
-                <span>Portal Calon Murid</span>
-                <span className="text-emerald-500/60">·</span>
-                <span>PPDB Madrasah</span>
-              </div>
               <h1 className="text-lg sm:text-2xl font-bold tracking-tight text-white leading-tight truncate">
                 {student.name}
               </h1>
@@ -652,7 +647,7 @@ export const StudentDashboard: React.FC<Props> = ({
               <h3 className="text-sm sm:text-base font-black text-white">
                 Selamat! Anda Dinyatakan LULUS & DITERIMA di {safeSchool.school_name}
               </h3>
-              <p className="text-[11px] text-emerald-100/90 leading-snug max-w-2xl">
+              <p className="text-[11px] text-emerald-100/90 leading-snug">
                 Unduh Surat Keterangan Diterima resmi (PDF) berikut untuk verifikasi berkas fisik dan daftar ulang.
               </p>
             </div>

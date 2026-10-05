@@ -510,7 +510,7 @@ Waktu Cetak: ${todayStr}`;
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-5" id="sipma-print-view">
+    <div className="w-full space-y-5" id="sipma-print-view">
       {/* Alert if popup was blocked */}
       {printAlert && (
         <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 flex items-start gap-2 animate-in fade-in">
@@ -618,7 +618,7 @@ Waktu Cetak: ${todayStr}`;
       <div
         ref={printableRef}
         id="sipma-print-sheet"
-        className="bg-white p-8 sm:p-12 rounded-2xl border border-slate-300 shadow-md text-slate-900 print:border-none print:shadow-none print:p-0 print:m-0 print:rounded-none"
+        className="bg-white p-4 sm:p-12 rounded-2xl border border-slate-300 shadow-md text-slate-900 overflow-x-auto print:border-none print:shadow-none print:p-0 print:m-0 print:rounded-none"
       >
         {/* Kop Surat Resmi Madrasah */}
         <div className="flex items-center justify-between border-b-4 border-double border-slate-800 pb-5 mb-6">

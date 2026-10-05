@@ -170,22 +170,17 @@ export const CentralDashboard: React.FC<Props> = ({
           {/* Top Banner (Hanya Tampil di Halaman Awal / Overview) */}
           <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 text-white p-4 sm:p-5 rounded-xl shadow-xs border border-slate-750 w-full overflow-hidden">
             <div className="space-y-1">
-              <div className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
-                <span>Kantor Wilayah Kementerian Agama</span>
-                <span className="text-emerald-500/60">·</span>
-                <span>Dashboard Pusat PPDB</span>
-              </div>
               <h1 className="text-lg sm:text-2xl font-bold tracking-tight text-white leading-tight break-words">
                 Pusat Komando & Monitoring PPDB Madrasah
               </h1>
-              <p className="text-xs text-slate-300 max-w-2xl leading-relaxed break-words">
+              <p className="text-xs text-slate-300 max-w-5xl leading-relaxed break-words">
                 Monitoring penerimaan murid baru madrasah se-wilayah, rekapitulasi kuota, audit log, dan sinkronisasi data terpadu.
               </p>
             </div>
           </div>
 
-          {/* KPI Cards - Kotak Kecil Rapi 1 Baris Menyamping */}
-          <div className="grid grid-cols-4 gap-1.5 sm:gap-2.5 overflow-x-auto">
+          {/* KPI Cards - Kotak Kecil Rapi Responsif Menyesuaikan Layar */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2.5 w-full">
             <div className="bg-gradient-to-br from-indigo-50/80 to-white p-2 sm:p-2.5 rounded-xl border border-indigo-200/80 shadow-2xs text-center flex flex-col justify-center min-w-[75px]">
               <div className="text-[9px] sm:text-[10px] text-indigo-900 font-bold uppercase tracking-wider truncate">Madrasah</div>
               <div className="text-base sm:text-xl font-black text-indigo-950 leading-tight my-0.5">{totalSchools}</div>
@@ -212,13 +207,13 @@ export const CentralDashboard: React.FC<Props> = ({
           </div>
 
           {/* Regional Chart */}
-          <div className="bg-white/95 p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="bg-white/95 p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-sm font-extrabold text-slate-900">Statistik Pendaftar per Satuan Madrasah</h3>
                 <p className="text-xs text-slate-500 mt-0.5">Sebaran jumlah pendaftar di setiap madrasah se-wilayah</p>
               </div>
-              <div className="px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-800">
+              <div className="self-start sm:self-auto px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-800 shrink-0">
                 {totalApps} Total Calon Murid
               </div>
             </div>
@@ -235,13 +230,13 @@ export const CentralDashboard: React.FC<Props> = ({
           </div>
 
           {/* Quick List */}
-          <div className="bg-white/95 p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="bg-white/95 p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <h3 className="text-sm font-extrabold text-slate-900">Pendaftar Terbaru Wilayah</h3>
               <button
                 type="button"
                 onClick={() => handleTabSelect('applicants')}
-                className="text-xs font-bold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
+                className="self-start sm:self-auto text-xs font-bold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
               >
                 Lihat Semua ({applications.length}) →
               </button>

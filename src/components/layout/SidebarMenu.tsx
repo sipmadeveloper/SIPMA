@@ -226,9 +226,7 @@ export const SidebarMenu: React.FC<Props> = ({
 
   // Track accordion state for each menu & sub-menu
   const [openMenuIds, setOpenMenuIds] = useState<Record<string, boolean>>({});
-  const [openSubMenuIds, setOpenSubMenuIds] = useState<Record<string, boolean>>({
-    config: true,
-  });
+  const [openSubMenuIds, setOpenSubMenuIds] = useState<Record<string, boolean>>({});
 
   // Auto-expand parent menu & sub-menu that contains the current active tab
   useEffect(() => {
@@ -416,7 +414,7 @@ export const SidebarMenu: React.FC<Props> = ({
 
                   {/* Collapsible Sub-menu Items */}
                   {isMenuOpen && (
-                    <div className="ml-4 pl-2.5 border-l-2 border-emerald-300/80 my-1 space-y-1 py-0.5 animate-in fade-in duration-200">
+                    <div className="ml-3 pl-1.5 my-1 space-y-1 py-0.5 animate-in fade-in duration-200">
                       {menu.subItems.map((subItem, sIdx) => {
                         const SubIcon = subItem.icon || ChevronRight;
                         const hasSubSubItems = Boolean(subItem.subItems && subItem.subItems.length > 0);
@@ -457,7 +455,7 @@ export const SidebarMenu: React.FC<Props> = ({
 
                               {/* Sub-sub Menu Items */}
                               {isSubMenuOpen && subItem.subItems && (
-                                <div className="ml-3 pl-2.5 border-l-2 border-emerald-400/80 my-1 space-y-1 py-0.5 animate-in fade-in duration-150">
+                                <div className="ml-2.5 pl-1.5 my-1 space-y-1 py-0.5 animate-in fade-in duration-150">
                                   {subItem.subItems.map((child, cIdx) => {
                                     const ChildIcon = child.icon || ChevronRight;
                                     const isChildActive = isSubItemActive(child);

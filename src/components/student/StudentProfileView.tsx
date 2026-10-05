@@ -320,7 +320,7 @@ export const StudentProfileView: React.FC<Props> = ({
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6" id="sipma-student-profile-view">
+    <div className="w-full space-y-6" id="sipma-student-profile-view">
       {/* Top Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs gap-3">
         <button

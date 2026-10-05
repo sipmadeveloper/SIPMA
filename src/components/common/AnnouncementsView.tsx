@@ -45,26 +45,20 @@ export const AnnouncementsView: React.FC<Props> = ({
   };
 
   return (
-    <div className="space-y-6" id="sipma-announcements">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-        <div>
-          <div className="text-xs font-bold text-emerald-800 uppercase tracking-wider">
-            Pusat Informasi & Edaran
-          </div>
-          <h2 className="text-xl font-bold text-slate-900 mt-0.5">Pengumuman Resmi PPDB Madrasah</h2>
-        </div>
-
-        {canManage && (
+    <div className="space-y-4" id="sipma-announcements">
+      {canManage && (
+        <div className="flex items-center justify-end">
           <button
             type="button"
             onClick={() => setShowModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors"
+            className="inline-flex items-center justify-center w-8.5 h-8.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-lg shadow-xs transition-all cursor-pointer"
+            title="Buat Pengumuman Baru"
+            aria-label="Buat Pengumuman Baru"
           >
             <Plus className="w-4 h-4" />
-            <span>Buat Pengumuman Baru</span>
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Announcements List */}
       <div className="grid grid-cols-1 gap-4">
@@ -121,8 +115,8 @@ export const AnnouncementsView: React.FC<Props> = ({
 
       {/* Modal Buat Pengumuman */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-5 sm:p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in my-auto">
             <h3 className="font-bold text-base text-slate-900 border-b border-slate-100 pb-2">
               Terbitkan Pengumuman Baru
             </h3>

@@ -769,7 +769,7 @@ export default function App() {
       )}
 
       {/* Main Views */}
-      <main className="flex-1">
+      <main className="flex-1 w-full min-w-0 overflow-x-hidden">
         {/* ================= 1. LANDING PAGE ================= */}
         {viewMode === 'landing' && (
           <LandingPage
@@ -828,7 +828,7 @@ export default function App() {
 
             {/* Main Content Workspace */}
             <div className="flex-1 min-w-0 transition-all duration-300 w-full overflow-x-hidden">
-              <div className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 py-4 sm:py-6 w-full">
+              <div className="w-full px-3 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-4 sm:py-6">
                 {/* Calon Murid Dashboard */}
                 {currentUser.role === 'calon_murid' && (
                   (() => {
@@ -966,7 +966,7 @@ export default function App() {
 
         {/* ================= 5. PRINT PREVIEW STANDALONE ================= */}
         {viewMode === 'print_preview' && printRegNumber && (
-          <div className="max-w-4xl mx-auto py-6 px-3 sm:px-4">
+          <div className="w-full py-6 px-3 sm:px-6 md:px-8 lg:px-10 xl:px-12">
             {(() => {
               const allApps = storageService.getApplications();
               const allStudents = storageService.getStudentsMap();
@@ -1073,8 +1073,8 @@ export default function App() {
 
       {/* ================= STATUS SEARCH QUICK MODAL ================= */}
       {searchModalOpen && searchResultApp && searchResultStudent && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-5 sm:p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in my-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <Search className="w-4 h-4 text-emerald-600" />

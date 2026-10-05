@@ -61,7 +61,7 @@ export const NotificationBellDropdown: React.FC<Props> = ({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`relative p-2 rounded-xl border transition-all cursor-pointer ${
+        className={`relative p-1.5 sm:p-2 rounded-lg sm:rounded-xl border transition-all cursor-pointer ${
           isOpen
             ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
             : 'text-slate-600 hover:text-emerald-800 hover:bg-slate-100 border-transparent hover:border-slate-200'
@@ -82,7 +82,7 @@ export const NotificationBellDropdown: React.FC<Props> = ({
 
       {/* Dropdown Panel */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute right-0 mt-2 w-80 sm:w-96 max-w-[calc(100vw-1.25rem)] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150">
           {/* Header */}
           <div className="p-3.5 bg-gradient-to-r from-emerald-800 to-teal-800 text-white flex items-center justify-between">
             <div className="flex items-center gap-2">

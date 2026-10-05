@@ -97,9 +97,9 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ config, onClose })
   };
 
   return (
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-950/65 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/65 backdrop-blur-xs transition-opacity animate-in fade-in duration-200 overflow-y-auto">
       <div
-        className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200 text-center relative animate-in zoom-in-95 duration-200"
+        className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-7 shadow-2xl border border-slate-200 text-center relative animate-in zoom-in-95 duration-200 my-auto"
         role="dialog"
         aria-modal="true"
       >
@@ -213,12 +213,12 @@ export const ToastContainer: React.FC<{
 
   return (
     <div
-      className="fixed inset-0 z-[99990] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200"
+      className="fixed inset-0 z-[99990] flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto"
       aria-live="polite"
       aria-atomic="true"
     >
       <div
-        className="bg-white rounded-3xl max-w-sm sm:max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200 text-center relative overflow-hidden animate-in zoom-in-95 duration-200"
+        className="bg-white rounded-3xl max-w-sm sm:max-w-md w-full p-5 sm:p-7 shadow-2xl border border-slate-200 text-center relative overflow-hidden animate-in zoom-in-95 duration-200 my-auto"
         role="alertdialog"
       >
         {/* Note: Tanpa tombol silang (X) di pojok sesuai instruksi */}

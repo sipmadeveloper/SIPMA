@@ -178,7 +178,7 @@ export const NewApplicantNotificationBanner: React.FC<BannerProps> = ({
   return (
     <aside
       aria-label="Pemberitahuan Pendaftar Baru"
-      className="fixed top-20 right-3 sm:right-6 z-[9999] max-w-sm sm:max-w-md w-full pointer-events-auto"
+      className="fixed top-18 right-2.5 sm:right-6 left-2.5 sm:left-auto max-w-[calc(100vw-1.25rem)] sm:max-w-md w-auto sm:w-full z-[9999] pointer-events-auto"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >

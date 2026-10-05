@@ -300,8 +300,8 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
-      {/* Quick Stats Grid: Kotak Kecil Rapi 1 Baris Menyamping */}
-      <div className="grid grid-cols-4 gap-1.5 sm:gap-2 w-full overflow-x-auto">
+      {/* Quick Stats Grid: Kotak Kecil Rapi Responsif Menyesuaikan Layar */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2 w-full">
         <div className="bg-white p-2 rounded-xl border border-slate-200/90 shadow-2xs text-center flex flex-col justify-center min-w-0">
           <div className="text-[9px] sm:text-[10px] text-slate-500 font-bold uppercase tracking-wider truncate">Total Akun</div>
           <div className="text-base sm:text-xl font-black text-slate-900 leading-tight my-0.5 truncate">{totalAdmins}</div>
@@ -575,7 +575,7 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
 
       {/* MODAL: Tambah / Edit Akun Admin */}
       {isAddEditModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200 overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
           <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-100 px-5 sm:px-6 py-4 bg-white shrink-0">
               <div className="flex items-center gap-2">

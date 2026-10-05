@@ -21,11 +21,8 @@ import {
   Download,
   AlertTriangle,
   Layers,
-  ArrowUpDown,
   Globe,
   Info,
-  Wifi,
-  WifiOff,
   Maximize2,
   Minimize2,
   ShieldCheck,
@@ -85,7 +82,6 @@ export const SystemConfig: React.FC<Props> = ({
   const [isSaved, setIsSaved] = useState<boolean>(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState<boolean>(false);
   const [showFullscreenCode, setShowFullscreenCode] = useState<boolean>(false);
-  const [realtimeHealth, setRealtimeHealth] = useState(storageService.getAutoSyncStatus());
 
   // Rollover Academic Year States
   const [showRolloverModal, setShowRolloverModal] = useState<boolean>(false);
@@ -109,20 +105,6 @@ export const SystemConfig: React.FC<Props> = ({
   const unacceptedAppsCount = useMemo(() => {
     return allCurrentApps.length - acceptedAppsCount;
   }, [allCurrentApps, acceptedAppsCount]);
-
-  useEffect(() => {
-    const unsubscribe = storageService.subscribe((event) => {
-      if (
-        event === 'realtime_status' ||
-        event === 'network_status' ||
-        event === 'sync_completed' ||
-        event === 'data_mutated'
-      ) {
-        setRealtimeHealth(storageService.getAutoSyncStatus());
-      }
-    });
-    return () => unsubscribe();
-  }, []);
 
   const handleUploadAppLogo = async (file: File) => {
     if (!file) return;
@@ -477,147 +459,9 @@ export const SystemConfig: React.FC<Props> = ({
 
   return (
     <div className="space-y-6" id="sipma-system-configuration">
-      {/* Header */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <div className="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-2">
-            <span>Integrasi & Konfigurasi Sistem</span>
-            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-[10px] font-bold">
-              Vercel Ready
-            </span>
-          </div>
-          <h2 className="text-xl font-black text-slate-900 mt-0.5">
-            Google Apps Script, Sheets, Drive & Realtime Engine
-          </h2>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5">
-            <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold shadow-2xs">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Integrasi Paten Aktif</span>
-            </span>
-          </div>
-
-          {isSaved && (
-            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl">
-              ✓ Pengaturan Tersimpan
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* Active Sub-Menu Section Indicator */}
-      <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 flex items-center justify-between shadow-2xs">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold shadow-2xs">
-            {activeTab === 'config' && <Database className="w-5 h-5 text-emerald-400" />}
-            {activeTab === 'realtime' && <Cloud className="w-5 h-5 text-sky-400" />}
-            {activeTab === 'backup' && <HardDrive className="w-5 h-5 text-amber-400" />}
-            {activeTab === 'guide' && <FileText className="w-5 h-5 text-indigo-400" />}
-            {activeTab === 'code' && <Code className="w-5 h-5 text-purple-400" />}
-          </div>
-          <div>
-            <div className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-              Sub-Menu Terpilih
-            </div>
-            <h3 className="text-base font-bold text-slate-900">
-              {activeTab === 'config' && 'Konfigurasi & Koneksi Database'}
-              {activeTab === 'realtime' && 'Sinkronisasi Realtime Multi-Perangkat'}
-              {activeTab === 'backup' && 'Backup & Restore Database'}
-              {activeTab === 'guide' && 'Panduan Setup (GAS & Vercel)'}
-              {activeTab === 'code' && 'Kode Backend (Code.gs)'}
-            </h3>
-          </div>
-        </div>
-
-        <div className="text-xs font-semibold text-slate-500 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs hidden sm:block">
-          Navigasi Menu Terpisah
-        </div>
-      </div>
-
       {/* ================= TAB 1: CONFIG & TESTERS ================= */}
       {activeTab === 'config' && (
         <div className="space-y-6">
-          {/* Server Persistence Indicator */}
-          <div className="p-4 rounded-2xl bg-indigo-50/90 border border-indigo-200 text-indigo-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold shrink-0">
-                <Cloud className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h4 className="font-bold text-xs text-indigo-900">Sinkronisasi Server Pusat Aktif</h4>
-                  <span className="px-2 py-0.5 bg-indigo-200 text-indigo-800 rounded-full text-[10px] font-extrabold">
-                    Multi-Device Sync
-                  </span>
-                </div>
-                <p className="text-xs text-indigo-700 mt-0.5 leading-relaxed">
-                  ID Database Spreadsheet & Google Drive kini otomatis tersimpan di server pusat. Ketika dibuka di perangkat, laptop, atau HP lain, konfigurasi dan data tidak akan kembali ke setelan awal.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 px-3 py-2 bg-emerald-100/90 text-emerald-800 rounded-xl text-xs font-bold shrink-0 border border-emerald-300">
-              <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
-              <span>Sinkronisasi Otomatis Aktif</span>
-            </div>
-          </div>
-
-          {/* Patent Configuration Notice */}
-          <div className="p-4.5 rounded-2xl border border-emerald-200 bg-emerald-50/70 text-emerald-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold shrink-0">
-                <Database className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h4 className="font-bold text-xs text-emerald-950">
-                    Konfigurasi Backend Paten (Terkunci Permanen)
-                  </h4>
-                  <span className="text-[10px] bg-emerald-200/80 text-emerald-900 font-bold px-2 py-0.5 rounded-full">
-                    Read-Only
-                  </span>
-                </div>
-                <p className="text-xs text-emerald-800 mt-1 leading-relaxed">
-                  Data <strong>Google Apps Script URL</strong>, <strong>Spreadsheet ID</strong>, dan <strong>Google Drive Folder ID</strong> bersifat paten (tidak dapat diedit lewat aplikasi). Perubahan parameter ini hanya dapat dilakukan langsung di lembar spreadsheet database.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0 flex-wrap">
-              {formData.spreadsheet_id && !formData.spreadsheet_id.includes('SampleID') && (
-                <a
-                  href={`https://docs.google.com/spreadsheets/d/${formData.spreadsheet_id}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>Buka Spreadsheet</span>
-                </a>
-              )}
-              <button
-                type="button"
-                onClick={async () => {
-                  showLoading('Menghubungkan dan menarik parameter konfigurasi dari Google Spreadsheet...');
-                  const res = await storageService.pullAllFromGAS();
-                  hideLoading();
-                  if (res.success) {
-                    const fresh = storageService.getSettings();
-                    setFormData({ ...fresh });
-                    showToast('Konfigurasi terbaru berhasil diselaraskan dari Spreadsheet!', 'success');
-                  } else {
-                    showAlert('Gagal Menyinkronkan', res.message || 'Pastikan Web App URL aktif dan koneksi internet stabil.', 'error');
-                  }
-                }}
-                className="px-3.5 py-2 bg-white hover:bg-slate-50 text-emerald-900 border border-emerald-300 rounded-xl text-xs font-bold shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
-              >
-                <RefreshCw className="w-3.5 h-3.5 text-emerald-700" />
-                <span>Tarik dari Spreadsheet</span>
-              </button>
-            </div>
-          </div>
-
           {/* Connection Test Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Card Sheets */}
@@ -1203,61 +1047,6 @@ export const SystemConfig: React.FC<Props> = ({
             )}
           </div>
 
-          {/* Real-time Connection Health Status */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
-            <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-100 shadow-2xs">
-              <div
-                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                  realtimeHealth.isSseConnected ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                }`}
-              >
-                {realtimeHealth.isSseConnected ? <Wifi className="w-4 h-4 animate-pulse" /> : <WifiOff className="w-4 h-4" />}
-              </div>
-              <div className="min-w-0">
-                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Stream Realtime (SSE)</div>
-                <div className="text-xs font-bold text-slate-900 truncate">
-                  {realtimeHealth.isSseConnected ? 'Aktif & Terhubung (Sub-Detik)' : 'Terputus (Auto-Reconnect)'}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-100 shadow-2xs">
-              <div
-                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                  realtimeHealth.hasGasConfigured ? 'bg-sky-100 text-sky-700' : 'bg-slate-100 text-slate-500'
-                }`}
-              >
-                <Cloud className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Google Sheets Cloud</div>
-                <div className="text-xs font-bold text-slate-900 truncate">
-                  {realtimeHealth.hasGasConfigured ? 'Web App URL Terhubung' : 'Belum Dikonfigurasi'}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-100 shadow-2xs">
-              <div
-                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                  realtimeHealth.autoSyncEnabled ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-500'
-                }`}
-              >
-                <ShieldCheck className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Sinkronisasi Otomatis</div>
-                <div className="text-xs font-bold text-slate-900 truncate">
-                  {realtimeHealth.isSyncing
-                    ? 'Sedang Menyinkronkan...'
-                    : realtimeHealth.autoSyncEnabled
-                    ? 'Otomatis Tiap Mutasi Data'
-                    : 'Manual Saja'}
-                </div>
-              </div>
-            </div>
-          </div>
-
           {/* Feature: Automated Database Creation & Self-Update */}
           <div className="p-5 bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 text-white rounded-2xl border border-emerald-700/50 shadow-md space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1305,57 +1094,6 @@ export const SystemConfig: React.FC<Props> = ({
               <div className="flex items-center gap-1.5">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                 <span>Self-Healing Missing Sheets</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Action 1: Push Sync */}
-            <div className="p-5 bg-gradient-to-br from-emerald-50 to-teal-50/50 rounded-2xl border border-emerald-200 space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold">
-                  <ArrowUpDown className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-bold text-xs text-slate-900">Sinkronisasi Google Sheets</h4>
-                    <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold rounded-full">
-                      100% Otomatis
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-600 mt-0.5">
-                    Data baru (madrasah, calon siswa, berkas, seleksi) <strong>langsung otomatis tersimpan</strong> ke Google Sheets tanpa perlu klik tombol.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-emerald-100/70 border border-emerald-300 rounded-xl text-emerald-900 text-xs font-semibold">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
-                  <span>Otomatis Sinkron ke Spreadsheet</span>
-                </div>
-                <span className="text-[10px] font-bold bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-md">Realtime</span>
-              </div>
-            </div>
-
-            {/* Action 2: Pull Sync */}
-            <div className="p-5 bg-gradient-to-br from-sky-50 to-blue-50/50 rounded-2xl border border-sky-200 space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-sky-600 text-white flex items-center justify-center font-bold">
-                  <Cloud className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-xs text-slate-900">Penarikan Data Database Otomatis</h4>
-                  <p className="text-[11px] text-slate-600">Sistem otomatis mengambil data terbaru dari Google Sheets &amp; server saat aplikasi dibuka atau diperbarui.</p>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-sky-100/70 border border-sky-300 rounded-xl text-sky-900 text-xs font-semibold">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-sky-600 animate-pulse"></span>
-                  <span>Sistem Otomatis Mengambil Data Terbaru</span>
-                </div>
-                <span className="text-[10px] font-bold bg-sky-200 text-sky-900 px-2 py-0.5 rounded-md">Auto-Fetch</span>
               </div>
             </div>
           </div>

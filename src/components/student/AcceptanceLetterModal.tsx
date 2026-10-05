@@ -480,7 +480,7 @@ export const AcceptanceLetterModal: React.FC<Props> = ({
         {/* Printable Official Sheet (A4 format) */}
         <div
           id="sipma-acceptance-sheet"
-          className="bg-white p-8 sm:p-12 rounded-2xl border border-slate-300 shadow-xl text-slate-900 print:border-none print:shadow-none print:p-0 print:m-0 print:rounded-none"
+          className="bg-white p-4 sm:p-12 rounded-2xl border border-slate-300 shadow-xl text-slate-900 overflow-x-auto print:border-none print:shadow-none print:p-0 print:m-0 print:rounded-none"
         >
           {/* Official Letterhead */}
           <div className="flex items-center justify-between border-b-4 border-double border-slate-900 pb-4 mb-6">

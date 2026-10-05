@@ -90,21 +90,6 @@ export const SchoolSettings: React.FC<Props> = ({ school, onSave }) => {
 
   return (
     <div className="space-y-6" id="sipma-school-settings">
-      <div className="flex items-center justify-between bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-        <div>
-          <div className="text-xs font-bold text-emerald-800 uppercase tracking-wider">
-            Pengaturan Profil & Lokasi Zonasi
-          </div>
-          <h2 className="text-xl font-bold text-slate-900 mt-0.5">{safeSchool.school_name}</h2>
-        </div>
-
-        {isSaved && (
-          <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl">
-            ✓ Data Madrasah Berhasil Disimpan
-          </span>
-        )}
-      </div>
-
       {/* Main Form */}
       <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-6">
         <h3 className="text-sm font-bold text-slate-900 border-b border-slate-100 pb-2">

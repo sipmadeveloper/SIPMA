@@ -630,7 +630,7 @@ export const RegistrationWizard: React.FC<Props> = ({
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-5" id="sipma-registration-wizard">
+    <div className="w-full space-y-5" id="sipma-registration-wizard">
       {/* Top Navigation & Status Bar aligned with Form */}
       <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">

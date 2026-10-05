@@ -366,7 +366,7 @@ export const DispensationLetterModal: React.FC<Props> = ({
         {/* Official Printable Sheet (A4 format - identical to PrintBuktiPendaftaran) */}
         <div
           id="sipma-dispensasi-sheet"
-          className="bg-white p-8 sm:p-12 rounded-2xl border border-slate-300 shadow-lg text-slate-900 print:border-none print:shadow-none print:p-0 print:m-0 print:rounded-none"
+          className="bg-white p-4 sm:p-12 rounded-2xl border border-slate-300 shadow-lg text-slate-900 overflow-x-auto print:border-none print:shadow-none print:p-0 print:m-0 print:rounded-none"
         >
           
           {/* Kop Surat Resmi Madrasah */}

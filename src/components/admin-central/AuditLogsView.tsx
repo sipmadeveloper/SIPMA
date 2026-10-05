@@ -22,16 +22,7 @@ export const AuditLogsView: React.FC<Props> = ({ logs }) => {
   });
 
   return (
-    <div className="space-y-6" id="sipma-audit-logs">
-      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <div className="text-xs font-bold text-emerald-800 uppercase tracking-wider">
-            Sistem Keamanan & Riwayat Aktivitas
-          </div>
-          <h2 className="text-xl font-bold text-slate-900 mt-0.5">Audit Trail & Activity Logs</h2>
-        </div>
-      </div>
-
+    <div className="space-y-4" id="sipma-audit-logs">
       {/* Filter Bar (Compact & Practical) */}
       <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
         <div className="w-full sm:w-80 relative">

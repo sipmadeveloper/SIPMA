@@ -88,7 +88,7 @@ export const LandingPage: React.FC<Props> = ({
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col w-full overflow-x-hidden" id="sipma-landing-page">
       {/* Top Navbar */}
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-emerald-100/80 shadow-xs">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2">
+        <div className="w-full max-w-[96rem] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 h-16 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
             {appLogo ? (
               <img
@@ -154,8 +154,8 @@ export const LandingPage: React.FC<Props> = ({
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-gradient-to-b from-slate-950 via-emerald-950 to-teal-950 text-white py-14 sm:py-20 lg:py-24">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-600/15 via-transparent to-transparent pointer-events-none" />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="text-center max-w-3xl mx-auto space-y-5 sm:space-y-6">
+        <div className="w-full max-w-[96rem] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 relative z-10">
+          <div className="text-center max-w-5xl mx-auto space-y-5 sm:space-y-6">
             <div className="inline-flex items-center px-3.5 py-1.5 rounded-full bg-emerald-800/80 border border-emerald-400/40 text-emerald-200 text-[11px] sm:text-xs font-bold shadow-xs max-w-full backdrop-blur-xs">
               <span className="truncate">Penerimaan Peserta Didik Madrasah Tahun Ajaran {academicYearText}</span>
             </div>
@@ -164,12 +164,12 @@ export const LandingPage: React.FC<Props> = ({
               Sistem Penerimaan Murid Baru Madrasah
             </h1>
 
-            <p className="text-xs sm:text-sm lg:text-base text-emerald-100/90 leading-relaxed max-w-2xl mx-auto px-2 font-medium">
+            <p className="text-xs sm:text-sm lg:text-base text-emerald-100/90 leading-relaxed max-w-4xl mx-auto px-2 font-medium">
               Daftarkan putra-putri Anda ke Madrasah Ibtidaiyah (MI), Tsanawiyah (MTs), dan Aliyah (MA) unggulan secara transparan, akurat dengan peta zonasi koordinat rumah, dan terintegrasi secara digital.
             </p>
 
             {/* Quick Check Tracker Form */}
-            <div className="pt-3 max-w-xl mx-auto w-full px-2">
+            <div className="pt-3 max-w-2xl mx-auto w-full px-2">
               <form
                 onSubmit={handleSearch}
                 className="bg-white/95 backdrop-blur-xs p-1.5 sm:p-2 rounded-2xl shadow-xl flex flex-col sm:flex-row items-stretch sm:items-center gap-2 border border-emerald-200/80"
@@ -222,8 +222,8 @@ export const LandingPage: React.FC<Props> = ({
 
       {/* 5-Step Admission Flow */}
       <section id="alur" className="py-16 bg-gradient-to-b from-slate-50 via-emerald-50/20 to-white border-b border-emerald-100/70">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
-          <div className="text-center max-w-2xl mx-auto space-y-2">
+        <div className="w-full max-w-[96rem] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 space-y-12">
+          <div className="text-center max-w-4xl mx-auto space-y-2">
             <div className="text-xs font-black text-emerald-800 uppercase tracking-wider">
               Tahapan Mudah & Transparan
             </div>
@@ -295,8 +295,8 @@ export const LandingPage: React.FC<Props> = ({
 
       {/* Jalur Pendaftaran Section - 4 Pathways */}
       <section id="jalur" className="py-16 bg-gradient-to-b from-white via-slate-50/80 to-emerald-50/20 border-b border-emerald-100/70">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12">
-          <div className="text-center max-w-2xl mx-auto space-y-2">
+        <div className="w-full max-w-[96rem] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 space-y-12">
+          <div className="text-center max-w-4xl mx-auto space-y-2">
             <div className="text-xs font-black text-emerald-800 uppercase tracking-wider">
               Pilihan Kategori
             </div>
@@ -414,7 +414,7 @@ export const LandingPage: React.FC<Props> = ({
 
       {/* Madrasah Pilihan */}
       <section id="madrasah" className="py-16 bg-gradient-to-b from-white to-slate-50/80 border-b border-emerald-100/70">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+        <div className="w-full max-w-[96rem] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 space-y-8">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <div className="text-xs font-black text-emerald-800 uppercase tracking-wider">
@@ -482,15 +482,15 @@ export const LandingPage: React.FC<Props> = ({
       {/* Pengumuman Terbaru */}
       {announcements.length > 0 && (
         <section id="pengumuman" className="py-16 bg-gradient-to-b from-slate-50/80 via-emerald-50/20 to-white border-b border-emerald-100/70">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
-            <div className="text-center max-w-2xl mx-auto space-y-1">
+          <div className="w-full max-w-[96rem] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 space-y-6">
+            <div className="text-center max-w-4xl mx-auto space-y-1">
               <div className="text-xs font-black text-emerald-800 uppercase tracking-wider">
                 Informasi Resmi
               </div>
               <h2 className="text-2xl font-black text-slate-900">Pengumuman & Edaran PPDB</h2>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl mx-auto">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 w-full">
               {announcements.slice(0, 4).map((a) => (
                 <div
                   key={a.announcement_id}
@@ -510,15 +510,15 @@ export const LandingPage: React.FC<Props> = ({
 
       {/* FAQ Section */}
       <section id="faq" className="py-16 bg-white border-b border-emerald-100/70">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
-          <div className="text-center space-y-2">
+        <div className="w-full max-w-[96rem] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 space-y-6">
+          <div className="text-center max-w-4xl mx-auto space-y-2">
             <div className="text-xs font-black text-emerald-800 uppercase tracking-wider">
               Pusat Bantuan
             </div>
             <h2 className="text-2xl font-black text-slate-900">Pertanyaan yang Sering Diajukan</h2>
           </div>
 
-          <div className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 w-full">
             {faqs.map((f, idx) => (
               <div
                 key={f.q}
@@ -549,7 +549,7 @@ export const LandingPage: React.FC<Props> = ({
 
       {/* Footer */}
       <footer className="bg-gradient-to-r from-slate-950 via-emerald-950 to-slate-950 text-white py-12 border-t border-emerald-900/50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-6 text-xs text-slate-300">
+        <div className="w-full max-w-[96rem] mx-auto px-4 sm:px-6 lg:px-8 xl:px-10 flex flex-col md:flex-row items-center justify-between gap-6 text-xs text-slate-300">
           <div className="flex items-center gap-3">
             {appLogo ? (
               <img
