@@ -418,7 +418,7 @@ Waktu Cetak: ${todayStr}`;
 
     <div class="title-box">
       <h2>BUKTI PENDAFTARAN RESMI PENERIMAAN MURID BARU (PPDB)</h2>
-      <div style="font-size: 10px; font-weight: 600; color: #475569; margin-top: 2px;">TAHUN AJARAN ${academicYearSafe} • SISTEM INFORMASI MADRASAH (SIPMA)</div>
+      <div style="font-size: 10px; font-weight: 600; color: #475569; margin-top: 2px;">TAHUN AJARAN ${academicYearSafe}</div>
     </div>
 
     <div class="highlight-card">
@@ -502,7 +502,7 @@ Waktu Cetak: ${todayStr}`;
     </div>
 
     <div class="footer-note">
-      * Lembar bukti pendaftaran ini dicetak otomatis dari Sistem Informasi Penerimaan Murid Madrasah (SIPMA). Harap disimpan dengan baik dan dibawa saat daftar ulang fisik.
+      * Lembar bukti pendaftaran ini dicetak otomatis secara resmi. Harap disimpan dengan baik dan dibawa saat daftar ulang fisik.
     </div>
   </div>
 </body>
@@ -662,7 +662,7 @@ Waktu Cetak: ${todayStr}`;
             BUKTI PENDAFTARAN RESMI PENERIMAAN MURID BARU (PPDB)
           </h2>
           <div className="text-xs font-semibold text-slate-600 mt-1">
-            TAHUN AJARAN {academicYearSafe} • SISTEM INFORMASI MADRASAH (SIPMA)
+            TAHUN AJARAN {academicYearSafe}
           </div>
         </div>
 
@@ -762,31 +762,31 @@ Waktu Cetak: ${todayStr}`;
               <h3 className="font-bold text-slate-800 text-sm border-b pb-1 mb-2">
                 A. DATA PRIBADI CALON MURID
               </h3>
-              <table className="w-full">
+              <table className="w-full text-xs">
                 <tbody>
                   <tr className="border-b border-slate-100">
-                    <td className="py-1.5 w-40 font-semibold text-slate-600">Nama Lengkap</td>
-                    <td className="py-1.5 font-bold text-slate-900">: {studentNameSafe}</td>
+                    <td className="py-1.5 w-36 sm:w-40 font-semibold text-slate-600 shrink-0">Nama Lengkap</td>
+                    <td className="py-1.5 font-bold text-slate-900 break-words min-w-0">: {studentNameSafe}</td>
                   </tr>
                   <tr className="border-b border-slate-100">
-                    <td className="py-1.5 font-semibold text-slate-600">NIK / NISN</td>
-                    <td className="py-1.5">: {studentNikSafe} / {studentNisnSafe}</td>
+                    <td className="py-1.5 w-36 sm:w-40 font-semibold text-slate-600 shrink-0">NIK / NISN</td>
+                    <td className="py-1.5 break-words min-w-0">: {studentNikSafe} / {studentNisnSafe}</td>
                   </tr>
                   <tr className="border-b border-slate-100">
-                    <td className="py-1.5 font-semibold text-slate-600">Tempat, Tanggal Lahir</td>
-                    <td className="py-1.5">: {studentBirthPlaceSafe}, {studentBirthDateSafe}</td>
+                    <td className="py-1.5 w-36 sm:w-40 font-semibold text-slate-600 shrink-0">Tempat, Tanggal Lahir</td>
+                    <td className="py-1.5 break-words min-w-0">: {studentBirthPlaceSafe}, {studentBirthDateSafe}</td>
                   </tr>
                   <tr className="border-b border-slate-100">
-                    <td className="py-1.5 font-semibold text-slate-600">Jenis Kelamin / Agama</td>
-                    <td className="py-1.5">: {studentGenderSafe} / {studentReligionSafe}</td>
+                    <td className="py-1.5 w-36 sm:w-40 font-semibold text-slate-600 shrink-0">Jenis Kelamin / Agama</td>
+                    <td className="py-1.5 break-words min-w-0">: {studentGenderSafe} / {studentReligionSafe}</td>
                   </tr>
                   <tr className="border-b border-slate-100">
-                    <td className="py-1.5 font-semibold text-slate-600">No. Kartu Keluarga (KK)</td>
-                    <td className="py-1.5">: {studentKkSafe}</td>
+                    <td className="py-1.5 w-36 sm:w-40 font-semibold text-slate-600 shrink-0">No. Kartu Keluarga (KK)</td>
+                    <td className="py-1.5 font-mono break-words min-w-0">: {studentKkSafe}</td>
                   </tr>
                   <tr className="border-b border-slate-100">
-                    <td className="py-1.5 font-semibold text-slate-600">No. WhatsApp / Email</td>
-                    <td className="py-1.5">: {studentPhoneSafe} / {studentEmailSafe}</td>
+                    <td className="py-1.5 w-36 sm:w-40 font-semibold text-slate-600 shrink-0">No. WhatsApp / Email</td>
+                    <td className="py-1.5 break-words min-w-0">: {studentPhoneSafe} / {studentEmailSafe}</td>
                   </tr>
                 </tbody>
               </table>
@@ -797,19 +797,19 @@ Waktu Cetak: ${todayStr}`;
               <h3 className="font-bold text-slate-800 text-sm border-b pb-1 mb-2">
                 B. SEKOLAH ASAL & ORANG TUA
               </h3>
-              <table className="w-full">
+              <table className="w-full text-xs">
                 <tbody>
                   <tr className="border-b border-slate-100">
-                    <td className="py-1.5 w-40 font-semibold text-slate-600">Madrasah / Sekolah Asal</td>
-                    <td className="py-1.5 font-bold text-slate-900">: {originSchoolNameSafe} (NPSN: {originNpsnSafe})</td>
+                    <td className="py-1.5 w-36 sm:w-40 font-semibold text-slate-600 shrink-0">Madrasah / Sekolah Asal</td>
+                    <td className="py-1.5 font-bold text-slate-900 break-words min-w-0">: {originSchoolNameSafe} (NPSN: {originNpsnSafe})</td>
                   </tr>
                   <tr className="border-b border-slate-100">
-                    <td className="py-1.5 font-semibold text-slate-600">Nama Ayah / Pekerjaan</td>
-                    <td className="py-1.5">: {fatherNameSafe} / {fatherJobSafe}</td>
+                    <td className="py-1.5 w-36 sm:w-40 font-semibold text-slate-600 shrink-0">Nama Ayah / Pekerjaan</td>
+                    <td className="py-1.5 break-words min-w-0">: {fatherNameSafe} / {fatherJobSafe}</td>
                   </tr>
                   <tr className="border-b border-slate-100">
-                    <td className="py-1.5 font-semibold text-slate-600">Nama Ibu / Pekerjaan</td>
-                    <td className="py-1.5">: {motherNameSafe} / {motherJobSafe}</td>
+                    <td className="py-1.5 w-36 sm:w-40 font-semibold text-slate-600 shrink-0">Nama Ibu / Pekerjaan</td>
+                    <td className="py-1.5 break-words min-w-0">: {motherNameSafe} / {motherJobSafe}</td>
                   </tr>
                 </tbody>
               </table>
@@ -820,19 +820,19 @@ Waktu Cetak: ${todayStr}`;
               <h3 className="font-bold text-slate-800 text-sm border-b pb-1 mb-2">
                 C. ALAMAT TINGGAL & SISTEM ZONASI
               </h3>
-              <table className="w-full">
+              <table className="w-full text-xs">
                 <tbody>
                   <tr className="border-b border-slate-100">
-                    <td className="py-1.5 w-40 font-semibold text-slate-600">Alamat Lengkap Domisili</td>
-                    <td className="py-1.5">: {fullAddressSafe}</td>
+                    <td className="py-1.5 w-36 sm:w-40 font-semibold text-slate-600 shrink-0">Alamat Lengkap Domisili</td>
+                    <td className="py-1.5 break-words min-w-0">: {fullAddressSafe}</td>
                   </tr>
                   <tr className="border-b border-slate-100">
-                    <td className="py-1.5 font-semibold text-slate-600">Titik Koordinat Rumah</td>
-                    <td className="py-1.5 font-mono">: {formatCoordinates(application?.latitude, application?.longitude)}</td>
+                    <td className="py-1.5 w-36 sm:w-40 font-semibold text-slate-600 shrink-0">Titik Koordinat Rumah</td>
+                    <td className="py-1.5 font-mono break-words min-w-0">: {formatCoordinates(application?.latitude, application?.longitude)}</td>
                   </tr>
                   <tr className="border-b border-slate-100">
-                    <td className="py-1.5 font-semibold text-slate-600">Jarak ke Madrasah</td>
-                    <td className="py-1.5 font-bold text-emerald-800">
+                    <td className="py-1.5 w-36 sm:w-40 font-semibold text-slate-600 shrink-0">Jarak ke Madrasah</td>
+                    <td className="py-1.5 font-bold text-emerald-800 break-words min-w-0">
                       : {formatDistanceIndonesian(distanceKmSafe)} (Maks. Zonasi {maxDistanceKmSafe} km - {zoningStatusSafe})
                     </td>
                   </tr>
@@ -921,7 +921,7 @@ Waktu Cetak: ${todayStr}`;
 
         {/* Footer Note */}
         <div className="mt-8 pt-4 border-t border-dashed border-slate-300 text-[10px] text-slate-500 text-center">
-          * Lembar bukti pendaftaran ini dicetak otomatis dari Sistem Informasi Penerimaan Murid Madrasah (SIPMA). Harap disimpan sebagai bukti pendaftaran resmi dan dibawa saat verifikasi berkas fisik jika diminta panitia.
+          * Lembar bukti pendaftaran ini dicetak otomatis secara resmi. Harap disimpan sebagai bukti pendaftaran resmi dan dibawa saat verifikasi berkas fisik jika diminta panitia.
         </div>
       </div>
     </div>

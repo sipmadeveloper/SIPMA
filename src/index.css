@@ -14,6 +14,29 @@ img, svg, video, canvas, audio, iframe, embed, object {
   max-width: 100%;
 }
 
+/* Smooth Tab Transition Animation for Mobile & Desktop */
+@keyframes tabTransition {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-tab-pane {
+  animation: tabTransition 0.24s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: opacity, transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-tab-pane {
+    animation: none !important;
+  }
+}
+
 @media print {
   @page {
     size: A4 portrait;

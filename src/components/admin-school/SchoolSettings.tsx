@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Check, Save, School as SchoolIcon, Upload, Image as ImageIcon, Trash2, Calendar, Clock, MapPin, FileCheck, Info, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { School } from '../../types/sipma';
 import { normalizeImageUrl, handleImageError, compressAndResizeImage } from '../../utils/imageUrl';
+import { normalizeIndonesianPhone, formatPhoneOnChange } from '../../utils/phone';
 import { storageService } from '../../services/storageService';
 import { SchoolLocationSettingMap } from '../map/SchoolLocationSettingMap';
 import { useFeedback } from '../../context/FeedbackContext';
@@ -82,7 +83,10 @@ export const SchoolSettings: React.FC<Props> = ({ school, onSave }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(formData);
+    const cleanPhone = normalizeIndonesianPhone(formData.contact_phone);
+    const updated = { ...formData, contact_phone: cleanPhone };
+    setFormData(updated);
+    onSave(updated);
     setIsSaved(true);
     showAlert('Pengaturan Tersimpan', 'Pengaturan madrasah dan kuota penerimaan berhasil disimpan.', 'success');
     setTimeout(() => setIsSaved(false), 3000);
@@ -171,7 +175,9 @@ export const SchoolSettings: React.FC<Props> = ({ school, onSave }) => {
             <input
               type="text"
               value={formData.contact_phone}
-              onChange={(e) => setFormData({ ...formData, contact_phone: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, contact_phone: formatPhoneOnChange(e.target.value) })}
+              onBlur={() => setFormData({ ...formData, contact_phone: normalizeIndonesianPhone(formData.contact_phone) })}
+              placeholder="0812xxxxxxxx"
               className="w-full px-3.5 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
             />
           </div>
@@ -285,26 +291,6 @@ export const SchoolSettings: React.FC<Props> = ({ school, onSave }) => {
                     <Info className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                     <span>Otomatis dioptimalkan & disimpan langsung ke Google Drive dan Google Sheets agar muncul di seluruh perangkat.</span>
                   </p>
-
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="url"
-                      value={formData.logo_url || ''}
-                      onChange={(e) => setFormData({ ...formData, logo_url: e.target.value })}
-                      placeholder="Atau tempel URL logo: https://example.com/logo-madrasah.png"
-                      className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-lg font-mono text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onSave(formData);
-                        showToast('URL logo madrasah disimpan.', 'success');
-                      }}
-                      className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold shrink-0 transition-colors"
-                    >
-                      Terapkan URL
-                    </button>
-                  </div>
                 </div>
               </div>
               <p className="text-[11px] text-slate-500">

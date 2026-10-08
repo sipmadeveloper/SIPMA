@@ -415,7 +415,7 @@ export const AcceptanceLetterModal: React.FC<Props> = ({
   </table>
 
   <div style="margin-top: 14px; font-size: 7.5pt; color: #64748b; text-align: center; border-top: 1px dashed #cbd5e1; padding-top: 4px;">
-    * Dokumen ini sah dan diterbitkan secara digital oleh Sistem Informasi Penerimaan Murid Madrasah (SIPMA) Kementerian Agama.
+    * Dokumen ini sah dan diterbitkan secara resmi melalui sistem digital panitia PPDB madrasah.
   </div>
 </body>
 </html>
@@ -693,7 +693,7 @@ export const AcceptanceLetterModal: React.FC<Props> = ({
 
           {/* Footer note */}
           <div className="mt-8 pt-3 border-t border-dashed border-slate-300 text-center text-[10px] text-slate-400">
-            * Surat Keterangan Diterima ini sah dan diterbitkan secara digital oleh Sistem Informasi Penerimaan Murid Madrasah (SIPMA). Format resmi ini hanya dapat diunduh/dicetak dalam bentuk PDF.
+            * Surat Keterangan Diterima ini sah dan diterbitkan secara resmi melalui sistem digital panitia PPDB madrasah. Format resmi ini dapat diunduh dalam bentuk PDF.
           </div>
         </div>
       </div>

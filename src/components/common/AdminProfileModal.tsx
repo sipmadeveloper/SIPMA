@@ -31,6 +31,7 @@ import { User as UserType, School } from '../../types/sipma';
 import { storageService } from '../../services/storageService';
 import { useFeedback } from '../../context/FeedbackContext';
 import { normalizeImageUrl, handleImageError, compressAndResizeImage } from '../../utils/imageUrl';
+import { normalizeIndonesianPhone, formatPhoneOnChange } from '../../utils/phone';
 
 interface Props {
   currentUser: UserType;
@@ -163,7 +164,7 @@ export const AdminProfileModal: React.FC<Props> = ({
 
     const res = storageService.updateUserProfile(currentUser.user_id, {
       name: String(name || '').trim(),
-      phone: String(phone || '').trim(),
+      phone: normalizeIndonesianPhone(phone),
       nip: String(nip || '').trim(),
       position: String(position || '').trim(),
       photo_url: String(finalPhotoUrl || '').trim(),
@@ -463,7 +464,8 @@ export const AdminProfileModal: React.FC<Props> = ({
                   <input
                     type="text"
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
+                    onChange={(e) => setPhone(formatPhoneOnChange(e.target.value))}
+                    onBlur={() => setPhone(normalizeIndonesianPhone(phone))}
                     placeholder="08xxxxxxxxxx"
                     className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none font-medium text-xs"
                   />

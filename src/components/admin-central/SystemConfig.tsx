@@ -131,17 +131,6 @@ export const SystemConfig: React.FC<Props> = ({
     }
   };
 
-  const handleApplyLogoUrl = (url: string) => {
-    if (!url.trim()) return;
-    const cleanUrl = url.trim();
-    setFormData((prev) => ({ ...prev, app_logo: cleanUrl }));
-    const current = storageService.getSettings();
-    const updated = { ...current, ...formData, app_logo: cleanUrl };
-    storageService.saveSettings(updated);
-    onSaveSettings(updated);
-    showToast('URL logo aplikasi berhasil disimpan!', 'success');
-  };
-
   const handleRemoveLogo = async () => {
     showLoading('Menghapus logo aplikasi...', 'Menghapus berkas logo aplikasi dari Google Drive & sistem...', 'delete');
     try {
@@ -714,23 +703,6 @@ export const SystemConfig: React.FC<Props> = ({
                         <Info className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                         <span>Otomatis dioptimalkan & disimpan langsung ke Google Drive dan Google Sheets agar muncul di seluruh perangkat.</span>
                       </p>
-
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="url"
-                          value={formData.app_logo || ''}
-                          onChange={(e) => setFormData({ ...formData, app_logo: e.target.value })}
-                          placeholder="Atau tempel URL gambar logo: https://example.com/logo.png"
-                          className="flex-1 px-3 py-2 bg-white border border-slate-300 rounded-lg font-mono text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleApplyLogoUrl(formData.app_logo || '')}
-                          className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-semibold shrink-0 transition-colors"
-                        >
-                          Terapkan URL
-                        </button>
-                      </div>
                     </div>
                   </div>
                 </div>

@@ -48,6 +48,7 @@ import { formatDistanceIndonesian, formatCoordinates, checkZoningCompliance, eva
 import { DispensationLetterModal } from './DispensationLetterModal';
 import { downloadDocumentFile, formatStandardDocumentFileName } from '../../utils/fileDownload';
 import { compressAndResizeImage, normalizeImageUrl, handleImageError } from '../../utils/imageUrl';
+import { normalizeIndonesianPhone, formatPhoneOnChange } from '../../utils/phone';
 
 interface Props {
   registrationNumber: string;
@@ -1290,7 +1291,8 @@ export const RegistrationWizard: React.FC<Props> = ({
                 <input
                   type="tel"
                   value={student.phone}
-                  onChange={(e) => setStudent({ ...student, phone: e.target.value })}
+                  onChange={(e) => setStudent({ ...student, phone: formatPhoneOnChange(e.target.value) })}
+                  onBlur={() => setStudent({ ...student, phone: normalizeIndonesianPhone(student.phone) })}
                   placeholder="081234567890"
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none"
                 />
@@ -1499,7 +1501,8 @@ export const RegistrationWizard: React.FC<Props> = ({
                       <input
                         type="tel"
                         value={parent.father_phone}
-                        onChange={(e) => setParent({ ...parent, father_phone: e.target.value })}
+                        onChange={(e) => setParent({ ...parent, father_phone: formatPhoneOnChange(e.target.value) })}
+                        onBlur={() => setParent({ ...parent, father_phone: normalizeIndonesianPhone(parent.father_phone) })}
                         placeholder="081234567890"
                         className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
                       />
@@ -1666,7 +1669,8 @@ export const RegistrationWizard: React.FC<Props> = ({
                       <input
                         type="tel"
                         value={parent.mother_phone}
-                        onChange={(e) => setParent({ ...parent, mother_phone: e.target.value })}
+                        onChange={(e) => setParent({ ...parent, mother_phone: formatPhoneOnChange(e.target.value) })}
+                        onBlur={() => setParent({ ...parent, mother_phone: normalizeIndonesianPhone(parent.mother_phone) })}
                         placeholder="081234567890"
                         className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
                       />
@@ -1828,7 +1832,8 @@ export const RegistrationWizard: React.FC<Props> = ({
                     <input
                       type="tel"
                       value={parent.guardian_phone || ''}
-                      onChange={(e) => setParent({ ...parent, guardian_phone: e.target.value })}
+                      onChange={(e) => setParent({ ...parent, guardian_phone: formatPhoneOnChange(e.target.value) })}
+                      onBlur={() => setParent({ ...parent, guardian_phone: normalizeIndonesianPhone(parent.guardian_phone) })}
                       placeholder="081234567890"
                       className="w-full px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-500 outline-none"
                     />

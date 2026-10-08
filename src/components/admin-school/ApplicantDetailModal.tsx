@@ -94,55 +94,55 @@ export const ApplicantDetailModal: React.FC<Props> = ({
           {/* Section 1: Biodata Murid */}
           <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
             <h4 className="font-bold text-xs uppercase tracking-wider text-emerald-800 flex items-center gap-2">
-              <User className="w-4 h-4 text-emerald-700" />
+              <User className="w-4 h-4 text-emerald-700 shrink-0" />
               <span>Identitas & Biodata Calon Murid</span>
             </h4>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-              <div>
+              <div className="min-w-0 break-words">
                 <span className="text-slate-500 font-medium">Nama Lengkap:</span>
-                <div className="font-bold text-slate-900 mt-0.5">{student?.name || '-'}</div>
+                <div className="font-bold text-slate-900 mt-0.5 break-words">{student?.name || '-'}</div>
               </div>
-              <div>
+              <div className="min-w-0 break-words">
                 <span className="text-slate-500 font-medium">NIK:</span>
-                <div className="font-bold font-mono text-slate-900 mt-0.5">{student?.nik || '-'}</div>
+                <div className="font-bold font-mono text-slate-900 mt-0.5 break-all">{student?.nik || '-'}</div>
               </div>
-              <div>
+              <div className="min-w-0 break-words">
                 <span className="text-slate-500 font-medium">NISN:</span>
-                <div className="font-bold font-mono text-slate-900 mt-0.5">{student?.nisn || '-'}</div>
+                <div className="font-bold font-mono text-slate-900 mt-0.5 break-all">{student?.nisn || '-'}</div>
               </div>
-              <div>
+              <div className="min-w-0 break-words">
                 <span className="text-slate-500 font-medium">Tempat, Tanggal Lahir:</span>
-                <div className="font-semibold text-slate-900 mt-0.5">
+                <div className="font-semibold text-slate-900 mt-0.5 break-words">
                   {student?.birth_place || '-'}, {student?.birth_date || '-'}
                 </div>
               </div>
-              <div>
+              <div className="min-w-0 break-words">
                 <span className="text-slate-500 font-medium">Jenis Kelamin:</span>
                 <div className="font-semibold text-slate-900 mt-0.5 capitalize">
                   {student?.gender === 'L' ? 'Laki-Laki' : student?.gender === 'P' ? 'Perempuan' : '-'}
                 </div>
               </div>
-              <div>
+              <div className="min-w-0 break-words">
                 <span className="text-slate-500 font-medium">Agama:</span>
                 <div className="font-semibold text-slate-900 mt-0.5">{student?.religion || 'Islam'}</div>
               </div>
-              <div>
+              <div className="min-w-0 break-words">
                 <span className="text-slate-500 font-medium">Nomor Kartu Keluarga:</span>
-                <div className="font-bold font-mono text-slate-900 mt-0.5">
+                <div className="font-bold font-mono text-slate-900 mt-0.5 break-all">
                   {student?.family_card_number || '-'}
                 </div>
               </div>
-              <div>
+              <div className="min-w-0 break-words">
                 <span className="text-slate-500 font-medium">No. WhatsApp / HP:</span>
-                <div className="font-bold text-slate-900 mt-0.5 flex items-center gap-1">
-                  <Phone className="w-3 h-3 text-emerald-600" />
-                  <span>{student?.phone || '-'}</span>
+                <div className="font-bold text-slate-900 mt-0.5 flex items-center gap-1 break-all">
+                  <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                  <span className="truncate">{student?.phone || '-'}</span>
                 </div>
               </div>
-              <div>
+              <div className="min-w-0 break-words">
                 <span className="text-slate-500 font-medium">Email:</span>
-                <div className="font-medium text-slate-900 mt-0.5 flex items-center gap-1 truncate">
-                  <Mail className="w-3 h-3 text-emerald-600" />
+                <div className="font-medium text-slate-900 mt-0.5 flex items-center gap-1 break-all">
+                  <Mail className="w-3 h-3 text-emerald-600 shrink-0" />
                   <span className="truncate">{student?.email || '-'}</span>
                 </div>
               </div>
@@ -152,26 +152,26 @@ export const ApplicantDetailModal: React.FC<Props> = ({
           {/* Section 2: Data Orang Tua / Wali */}
           <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
             <h4 className="font-bold text-xs uppercase tracking-wider text-emerald-800 flex items-center gap-2">
-              <Users className="w-4 h-4 text-emerald-700" />
+              <Users className="w-4 h-4 text-emerald-700 shrink-0" />
               <span>Data Orang Tua / Wali</span>
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-              <div className="p-3 bg-white rounded-lg border border-slate-200">
+              <div className="p-3 bg-white rounded-lg border border-slate-200 min-w-0 break-words">
                 <span className="text-[10px] uppercase font-bold text-slate-400">Data Ayah Kandung</span>
-                <div className="font-bold text-slate-900 text-sm mt-0.5">{parent?.father_name || '-'}</div>
+                <div className="font-bold text-slate-900 text-sm mt-0.5 break-words">{parent?.father_name || '-'}</div>
                 <div className="text-[11px] text-slate-600 mt-1 space-y-0.5">
-                  <div>NIK: <span className="font-mono">{parent?.father_nik || '-'}</span></div>
-                  <div>Pekerjaan: <strong>{parent?.father_job || '-'}</strong></div>
+                  <div>NIK: <span className="font-mono break-all">{parent?.father_nik || '-'}</span></div>
+                  <div>Pekerjaan: <strong className="break-words">{parent?.father_job || '-'}</strong></div>
                   <div>Penghasilan: <strong>{parent?.father_income || '-'}</strong></div>
                 </div>
               </div>
 
-              <div className="p-3 bg-white rounded-lg border border-slate-200">
+              <div className="p-3 bg-white rounded-lg border border-slate-200 min-w-0 break-words">
                 <span className="text-[10px] uppercase font-bold text-slate-400">Data Ibu Kandung</span>
-                <div className="font-bold text-slate-900 text-sm mt-0.5">{parent?.mother_name || '-'}</div>
+                <div className="font-bold text-slate-900 text-sm mt-0.5 break-words">{parent?.mother_name || '-'}</div>
                 <div className="text-[11px] text-slate-600 mt-1 space-y-0.5">
-                  <div>NIK: <span className="font-mono">{parent?.mother_nik || '-'}</span></div>
-                  <div>Pekerjaan: <strong>{parent?.mother_job || '-'}</strong></div>
+                  <div>NIK: <span className="font-mono break-all">{parent?.mother_nik || '-'}</span></div>
+                  <div>Pekerjaan: <strong className="break-words">{parent?.mother_job || '-'}</strong></div>
                   <div>Penghasilan: <strong>{parent?.mother_income || '-'}</strong></div>
                 </div>
               </div>
@@ -181,29 +181,29 @@ export const ApplicantDetailModal: React.FC<Props> = ({
           {/* Section 3: Asal Sekolah & Alamat Domisili */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             {/* Sekolah Asal */}
-            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2 min-w-0 break-words">
               <h4 className="font-bold text-xs uppercase tracking-wider text-emerald-800 flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-emerald-700" />
+                <Building2 className="w-4 h-4 text-emerald-700 shrink-0" />
                 <span>Sekolah / Madrasah Asal</span>
               </h4>
-              <div className="text-xs">
-                <div className="font-bold text-slate-900 text-sm">{schoolOrigin?.school_name || '-'}</div>
-                <div className="text-slate-500 mt-1">
-                  NPSN / NSM: <span className="font-mono font-bold text-slate-700">{schoolOrigin?.npsn_nsm || '-'}</span>
+              <div className="text-xs space-y-0.5">
+                <div className="font-bold text-slate-900 text-sm break-words">{schoolOrigin?.school_name || '-'}</div>
+                <div className="text-slate-500">
+                  NPSN / NSM: <span className="font-mono font-bold text-slate-700 break-all">{schoolOrigin?.npsn_nsm || '-'}</span>
                 </div>
-                <div className="text-slate-500 mt-0.5">
+                <div className="text-slate-500 break-words">
                   Alamat Sekolah: {schoolOrigin?.school_address || '-'}
                 </div>
               </div>
             </div>
 
             {/* Alamat Domisili */}
-            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2 min-w-0 break-words">
               <h4 className="font-bold text-xs uppercase tracking-wider text-emerald-800 flex items-center gap-2">
-                <Home className="w-4 h-4 text-emerald-700" />
+                <Home className="w-4 h-4 text-emerald-700 shrink-0" />
                 <span>Alamat Domisili Sesuai KK</span>
               </h4>
-              <div className="text-xs text-slate-800 font-medium leading-relaxed">
+              <div className="text-xs text-slate-800 font-medium leading-relaxed break-words">
                 {address
                   ? `${address.street_address || '-'}, RT ${address.rt || '0'}/RW ${address.rw || '0'}, Kel. ${address.village || '-'}, Kec. ${address.district || '-'}, ${address.city || '-'}, ${address.province || '-'}`
                   : 'Data alamat belum lengkap'}

@@ -5,6 +5,7 @@ import {
 } from '../../types/sipma';
 import { storageService } from '../../services/storageService';
 import { useFeedback } from '../../context/FeedbackContext';
+import { normalizeIndonesianPhone, formatPhoneOnChange } from '../../utils/phone';
 import {
   Users,
   Building2,
@@ -170,7 +171,7 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
         user_id: editingAdmin ? editingAdmin.user_id : undefined,
         name: formData.name,
         email: formData.email,
-        phone: formData.phone,
+        phone: normalizeIndonesianPhone(formData.phone),
         school_id: formData.school_id,
         nip: formData.nip,
         position: formData.position,
@@ -357,9 +358,9 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
       )}
 
       {/* Filter and Search Bar (Compact & Practical) */}
-      <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-2xs">
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-          <div className="relative flex-1">
+      <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-2xs max-w-full overflow-hidden">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full min-w-0">
+          <div className="relative flex-1 min-w-0">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -370,12 +371,12 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0 overflow-x-auto max-w-full w-full sm:w-auto pb-1 sm:pb-0 touch-pan-x flex-nowrap min-w-0">
             <select
               value={schoolFilter}
               onChange={(e) => setSchoolFilter(e.target.value)}
               aria-label="Filter Berdasarkan Madrasah"
-              className="h-8.5 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer"
+              className="h-8.5 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer shrink-0 whitespace-nowrap"
             >
               <option value="all">Semua Madrasah ({schools.length})</option>
               {schools.map((s) => (
@@ -389,7 +390,7 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as any)}
               aria-label="Filter Berdasarkan Status Akses"
-              className="h-8.5 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer"
+              className="h-8.5 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer shrink-0 whitespace-nowrap"
             >
               <option value="all">Semua Status</option>
               <option value="active">Aktif Saja</option>
@@ -404,7 +405,7 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
                   setSchoolFilter('all');
                   setStatusFilter('all');
                 }}
-                className="h-8.5 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0"
+                className="h-8.5 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0 whitespace-nowrap"
               >
                 Reset
               </button>
@@ -662,7 +663,8 @@ export const SchoolAdminManagement: React.FC<Props> = ({ schools, onRefreshData 
                   <input
                     type="text"
                     value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, phone: formatPhoneOnChange(e.target.value) })}
+                    onBlur={() => setFormData({ ...formData, phone: normalizeIndonesianPhone(formData.phone) })}
                     placeholder="081234567890"
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                   />

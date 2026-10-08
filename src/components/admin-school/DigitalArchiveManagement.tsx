@@ -482,8 +482,8 @@ _Panitia PPDB ${school.school_name}_`;
         <div className="space-y-4">
           {/* Search & Filter Bar */}
           {/* Practical Compact Filters for Document Detection: Sejajar Rapi 1 Baris */}
-          <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-2xs">
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full">
+          <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-2xs max-w-full overflow-hidden">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full min-w-0">
               {/* Search Box */}
               <div className="relative flex-1 min-w-0">
                 <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -505,8 +505,8 @@ _Panitia PPDB ${school.school_name}_`;
                 )}
               </div>
 
-              {/* Action and Filter Controls Inline Sejajar */}
-              <div className="flex items-center gap-1.5 overflow-x-auto shrink-0 pb-0.5 sm:pb-0">
+              {/* Action and Filter Controls Inline Sejajar: Geser Horizontal di HP */}
+              <div className="flex items-center gap-1.5 overflow-x-auto max-w-full w-full sm:w-auto shrink-0 pb-0.5 sm:pb-0 touch-pan-x flex-nowrap min-w-0">
                 {/* Completeness Status Filter */}
                 <select
                   value={completenessFilter}
@@ -780,8 +780,8 @@ _Panitia PPDB ${school.school_name}_`;
               )}
             </div>
 
-            {/* 2. Filter Baris Bawah: Tahun Pendaftaran, Jenis Berkas, Murid, Lokasi, Status, View Switcher */}
-            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+            {/* 2. Filter Baris Bawah: Tahun Pendaftaran, Jenis Berkas, Murid, Lokasi, Status, View Switcher: Geser Horizontal di HP */}
+            <div className="flex items-center gap-2 pt-2 border-t border-slate-100 overflow-x-auto max-w-full w-full pb-1 touch-pan-x flex-nowrap min-w-0">
               {/* Filter Pilihan Tahun Pendaftaran (Cukup Satu Kotak) */}
               <select
                 value={selectedYearFilter}

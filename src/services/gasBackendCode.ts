@@ -270,6 +270,10 @@ function doPost(e) {
       case "sendEmail":
         response = handleSendNotificationEmail(payload.data, targetSpreadsheetId);
         break;
+      case "notifySchoolNewApplicant":
+      case "notifySchool":
+        response = handleNotifySchoolNewApplicant(payload.data, targetSpreadsheetId);
+        break;
       case "verifyApplication":
         response = handleVerifyApplication(payload.data, targetSpreadsheetId);
         break;
@@ -471,7 +475,7 @@ function handleSyncAllData(payload) {
   if (data.users && Array.isArray(data.users)) {
     overwriteSheetData(ss.getSheetByName(SHEETS.USERS), DB_SCHEMA["Users"], data.users.map(function(u) {
       return [
-        u.user_id || "", u.registration_number || "", u.name || "", u.email || "", u.phone || "",
+        u.user_id || "", u.registration_number || "", u.name || "", u.email || "", formatPhoneForSheetGAS(u.phone),
         u.nip || "", u.position || "", u.password_hash || "", u.role || "calon_murid", u.school_id || "",
         u.status || "active", u.photo_url || "", u.created_at || new Date().toISOString(), u.updated_at || new Date().toISOString()
       ];
@@ -499,7 +503,7 @@ function handleSyncAllData(payload) {
         s.student_id || "", s.user_id || "", s.registration_number || "", s.name || "", s.nik || "",
         s.nisn || "", s.gender || "L", s.birth_place || "", s.birth_date || "", s.religion || "Islam",
         s.family_card_number || "", s.child_order || 1, s.total_siblings || 1, s.family_status || "Anak Kandung",
-        s.hobby || "", s.living_status || "orang_tua_kandung", s.phone || "", s.email || "", s.photo_url || ""
+        s.hobby || "", s.living_status || "orang_tua_kandung", formatPhoneForSheetGAS(s.phone), s.email || "", s.photo_url || ""
       ];
     }));
   }
@@ -510,9 +514,9 @@ function handleSyncAllData(payload) {
     overwriteSheetData(ss.getSheetByName(SHEETS.PARENTS), DB_SCHEMA["Parents"], parentList.map(function(p) {
       return [
         p.parent_id || "", p.student_id || "", p.father_name || "", p.father_status || "hidup", p.father_nik || "",
-        p.father_birth_place || "", p.father_birth_date || "", p.father_education || "", p.father_job || "", p.father_income || "", p.father_phone || "",
-        p.mother_name || "", p.mother_status || "hidup", p.mother_nik || "", p.mother_birth_place || "", p.mother_birth_date || "", p.mother_education || "", p.mother_job || "", p.mother_income || "", p.mother_phone || "",
-        p.guardian_name || "", p.guardian_nik || "", p.guardian_relation || "", p.guardian_birth_place || "", p.guardian_birth_date || "", p.guardian_education || "", p.guardian_job || "", p.guardian_income || "", p.guardian_phone || "", p.guardian_address || ""
+        p.father_birth_place || "", p.father_birth_date || "", p.father_education || "", p.father_job || "", p.father_income || "", formatPhoneForSheetGAS(p.father_phone),
+        p.mother_name || "", p.mother_status || "hidup", p.mother_nik || "", p.mother_birth_place || "", p.mother_birth_date || "", p.mother_education || "", p.mother_job || "", p.mother_income || "", formatPhoneForSheetGAS(p.mother_phone),
+        p.guardian_name || "", p.guardian_nik || "", p.guardian_relation || "", p.guardian_birth_place || "", p.guardian_birth_date || "", p.guardian_education || "", p.guardian_job || "", p.guardian_income || "", formatPhoneForSheetGAS(p.guardian_phone), p.guardian_address || ""
       ];
     }));
   }
@@ -575,7 +579,7 @@ function handleSyncAllData(payload) {
         sch.level || "MA", sch.address || "", sch.village || "", sch.district || "", sch.city || "", sch.province || "",
         sch.latitude || 0, sch.longitude || 0, sch.zoning_radius_km || 5.0, sch.quota_total || 0,
         sch.quota_zonasi || 0, sch.quota_afirmasi || 0, sch.quota_prestasi || 0, sch.quota_mutasi || 0,
-        sch.status || "active", sch.principal_name || "", sch.contact_phone || "", sch.contact_email || "", sch.logo_url || ""
+        sch.status || "active", sch.principal_name || "", formatPhoneForSheetGAS(sch.contact_phone), sch.contact_email || "", sch.logo_url || ""
       ];
     }));
   }
@@ -649,10 +653,10 @@ function handlePullAllData(spreadsheetId) {
 
   var result = {
     users: readSheetAsObjects(ss.getSheetByName(SHEETS.USERS)),
-    students: arrayToMap(readSheetAsObjects(ss.getSheetByName(SHEETS.STUDENTS)), "registration_number"),
-    parents: arrayToMap(readSheetAsObjects(ss.getSheetByName(SHEETS.PARENTS)), "student_id"),
-    school_origins: arrayToMap(readSheetAsObjects(ss.getSheetByName(SHEETS.SCHOOL_ORIGINS)), "student_id"),
-    addresses: arrayToMap(readSheetAsObjects(ss.getSheetByName(SHEETS.ADDRESSES)), "student_id"),
+    students: arrayToMap(readSheetAsObjects(ss.getSheetByName(SHEETS.STUDENTS)), "registration_number", "student_id"),
+    parents: arrayToMap(readSheetAsObjects(ss.getSheetByName(SHEETS.PARENTS)), "student_id", "registration_number"),
+    school_origins: arrayToMap(readSheetAsObjects(ss.getSheetByName(SHEETS.SCHOOL_ORIGINS)), "student_id", "registration_number"),
+    addresses: arrayToMap(readSheetAsObjects(ss.getSheetByName(SHEETS.ADDRESSES)), "student_id", "registration_number"),
     applications: readSheetAsObjects(ss.getSheetByName(SHEETS.APPLICATIONS)),
     documents: readSheetAsObjects(ss.getSheetByName(SHEETS.DOCUMENTS)),
     schools: readSheetAsObjects(ss.getSheetByName(SHEETS.SCHOOLS)),
@@ -667,6 +671,37 @@ function handlePullAllData(spreadsheetId) {
     message: "Data realtime berhasil ditarik dari Google Sheets!",
     data: result
   };
+}
+
+/**
+ * Normalisasi nomor HP / WhatsApp ke format '08...' di backend Google Apps Script.
+ * Menjamin jika berawalan 08 ataupun +62 (atau 62) akan tetap tersimpan sebagai 08 di database Sheets
+ * dan tidak berubah menjadi 62 atau angka tanpa awalan 0.
+ */
+function normalizeIndonesianPhoneGAS(phone) {
+  if (phone === null || phone === undefined) return "";
+  var str = String(phone).trim();
+  if (!str) return "";
+  if (str.indexOf("'") === 0) {
+    str = str.substring(1).trim();
+  }
+  var hasPlus = str.indexOf("+") === 0;
+  var digits = str.replace(/[^\d]/g, "");
+  if (!digits) return "";
+  if (hasPlus && digits.indexOf("62") === 0) {
+    digits = "0" + digits.substring(2);
+  } else if (digits.indexOf("62") === 0) {
+    digits = "0" + digits.substring(2);
+  } else if (digits.indexOf("8") === 0) {
+    digits = "0" + digits;
+  }
+  return digits;
+}
+
+function formatPhoneForSheetGAS(phone) {
+  var norm = normalizeIndonesianPhoneGAS(phone);
+  if (!norm) return "";
+  return "'" + norm;
 }
 
 /**
@@ -698,6 +733,25 @@ function overwriteSheetData(sheet, headers, rows) {
       sheet.insertRowsAfter(currentMaxRows, neededRows - currentMaxRows);
     }
     sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+
+    // Kunci format kolom teks murni (@) untuk seluruh kolom telepon/WA, NIK, NISN, dan nomor pendaftaran
+    // agar awalan '08' tidak pernah dikonversi oleh Google Sheets menjadi angka atau '62'
+    try {
+      for (var c = 0; c < headers.length; c++) {
+        var colName = String(headers[c] || "").toLowerCase();
+        if (
+          colName.indexOf("phone") > -1 ||
+          colName.indexOf("kontak") > -1 ||
+          colName === "nik" ||
+          colName.indexOf("_nik") > -1 ||
+          colName === "nisn" ||
+          colName === "registration_number" ||
+          colName === "family_card_number"
+        ) {
+          sheet.getRange(2, c + 1, rows.length, 1).setNumberFormat("@");
+        }
+      }
+    } catch (fmtErr) {}
   }
 }
 
@@ -728,6 +782,15 @@ function readSheetAsObjects(sheet) {
       if (val !== "" && val !== null && val !== undefined) {
         hasValidData = true;
       }
+
+      // Normalisasi nilai kolom: Jika telepon/WA, kembalikan ke format '08...' yang bersih
+      var lowerKey = String(headerKey).toLowerCase();
+      if (lowerKey.indexOf("phone") > -1 || lowerKey.indexOf("kontak") > -1) {
+        val = normalizeIndonesianPhoneGAS(val);
+      } else if (typeof val === "string" && val.indexOf("'") === 0) {
+        val = val.substring(1);
+      }
+
       obj[headerKey] = val;
     }
 
@@ -753,15 +816,24 @@ function readSheetAsObjects(sheet) {
 }
 
 /**
- * Helper: Array ke Map Object dengan Key tertentu
+ * Helper: Array ke Map Object dengan Key tertentu (mendukung multiple alternate keys)
  */
-function arrayToMap(arr, keyField) {
+function arrayToMap(arr, keyField, alternateKeyField) {
   var map = {};
+  if (!arr || !Array.isArray(arr)) return map;
   for (var i = 0; i < arr.length; i++) {
     var item = arr[i];
     var k = item[keyField];
-    if (k) {
-      map[k] = item;
+    if (k !== undefined && k !== null && k !== "") {
+      var strK = String(k).trim();
+      if (strK) map[strK] = item;
+    }
+    if (alternateKeyField) {
+      var altK = item[alternateKeyField];
+      if (altK !== undefined && altK !== null && altK !== "") {
+        var strAltK = String(altK).trim();
+        if (strAltK && !map[strAltK]) map[strAltK] = item;
+      }
     }
   }
   return map;
@@ -1279,15 +1351,24 @@ function handleUploadDocument(data, rootFolderId, targetSpreadsheetId) {
 
 /**
  * Helper: Hapus baris di sheet yang kolom tertentu cocok dengan targetValue (dari bawah ke atas)
+ * Menangani konversi angka, teks, whitespace, dan artefak .0 dengan sangat presisi.
  */
 function deleteRowsMatchingColumn(sheet, colIndex1Based, targetValue) {
   if (!sheet || sheet.getLastRow() <= 1 || !targetValue) return 0;
   var values = sheet.getDataRange().getValues();
   var deletedCount = 0;
+  var target = String(targetValue).trim().toLowerCase();
+  var targetClean = target.replace(/\.0$/, "");
   for (var r = values.length - 1; r >= 1; r--) {
-    if (String(values[r][colIndex1Based - 1]).trim() === String(targetValue).trim()) {
-      sheet.deleteRow(r + 1);
-      deletedCount++;
+    if (colIndex1Based - 1 < values[r].length) {
+      var rawVal = values[r][colIndex1Based - 1];
+      if (rawVal === null || rawVal === undefined) continue;
+      var cellVal = String(rawVal).trim().toLowerCase();
+      var cellValClean = cellVal.replace(/\.0$/, "");
+      if (cellValClean === targetClean || cellVal === target) {
+        sheet.deleteRow(r + 1);
+        deletedCount++;
+      }
     }
   }
   return deletedCount;
@@ -1309,7 +1390,8 @@ function handleDeleteApplication(data, spreadsheetId, rootFolderId) {
   ensureAllSheetsExist(ss);
 
   // Jika studentId atau studentName belum ada, cari dari Sheet Students / Applications terlebih dahulu
-  if ((!studentId || !studentName) && regNumber) {
+  var userId = (data && data.user_id) ? String(data.user_id).trim() : "";
+  if ((!studentId || !studentName || !userId) && regNumber) {
     var sSheet = ss.getSheetByName(SHEETS.STUDENTS);
     if (sSheet && sSheet.getLastRow() > 1) {
       var sRows = sSheet.getDataRange().getValues();
@@ -1317,19 +1399,19 @@ function handleDeleteApplication(data, spreadsheetId, rootFolderId) {
         if (String(sRows[sr][2]).trim() === regNumber) {
           if (!studentId) studentId = String(sRows[sr][0]).trim();
           if (!studentName) studentName = String(sRows[sr][3]).trim();
+          if (!userId) userId = String(sRows[sr][1]).trim();
           break;
         }
       }
     }
-    if (!studentId) {
-      var aSheet = ss.getSheetByName(SHEETS.APPLICATIONS);
-      if (aSheet && aSheet.getLastRow() > 1) {
-        var aRows = aSheet.getDataRange().getValues();
-        for (var ar = 1; ar < aRows.length; ar++) {
-          if (String(aRows[ar][1]).trim() === regNumber) {
-            studentId = String(aRows[ar][3]).trim();
-            break;
-          }
+    var aSheet = ss.getSheetByName(SHEETS.APPLICATIONS);
+    if (aSheet && aSheet.getLastRow() > 1) {
+      var aRows = aSheet.getDataRange().getValues();
+      for (var ar = 1; ar < aRows.length; ar++) {
+        if (String(aRows[ar][1]).trim() === regNumber) {
+          if (!studentId) studentId = String(aRows[ar][3]).trim();
+          if (!userId) userId = String(aRows[ar][2]).trim();
+          break;
         }
       }
     }
@@ -1504,27 +1586,58 @@ function handleDeleteApplication(data, spreadsheetId, rootFolderId) {
     } catch(rfErr) {}
   }
 
-  // 6. Hapus seluruh baris data dari SELURUH tabel database Google Sheets
+  // 6. Hapus seluruh baris data dari SELURUH tabel database Google Sheets secara akurat
+  var deletedRowsCount = 0;
   if (regNumber) {
-    deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.APPLICATIONS), 2, regNumber); // Applications: registration_number
-    deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.STUDENTS), 3, regNumber); // Students: registration_number
-    deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.DOCUMENTS), 2, regNumber); // Documents: registration_number
-    deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.USERS), 2, regNumber); // Users: registration_number
+    deletedRowsCount += deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.APPLICATIONS), 2, regNumber); // Applications: registration_number
+    deletedRowsCount += deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.STUDENTS), 3, regNumber); // Students: registration_number
+    deletedRowsCount += deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.DOCUMENTS), 2, regNumber); // Documents: registration_number
+    deletedRowsCount += deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.USERS), 2, regNumber); // Users: registration_number
+    deletedRowsCount += deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.PARENTS), 2, regNumber); // Parents: student_id / regNumber
+    deletedRowsCount += deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.SCHOOL_ORIGINS), 2, regNumber); // SchoolOrigins
+    deletedRowsCount += deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.ADDRESSES), 2, regNumber); // Addresses
   }
 
   if (studentId) {
-    deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.APPLICATIONS), 4, studentId);
-    deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.STUDENTS), 1, studentId);
-    deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.PARENTS), 2, studentId);
-    deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.SCHOOL_ORIGINS), 2, studentId);
-    deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.ADDRESSES), 2, studentId);
+    deletedRowsCount += deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.APPLICATIONS), 4, studentId);
+    deletedRowsCount += deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.STUDENTS), 1, studentId);
+    deletedRowsCount += deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.USERS), 1, studentId);
+    deletedRowsCount += deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.PARENTS), 2, studentId);
+    deletedRowsCount += deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.SCHOOL_ORIGINS), 2, studentId);
+    deletedRowsCount += deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.ADDRESSES), 2, studentId);
   }
+
+  if (userId || (data && data.user_id)) {
+    var effectiveUserId = userId || data.user_id;
+    deletedRowsCount += deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.USERS), 1, effectiveUserId);
+    deletedRowsCount += deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.APPLICATIONS), 3, effectiveUserId);
+    deletedRowsCount += deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.STUDENTS), 2, effectiveUserId);
+  }
+
+  // Catat audit log penghapusan langsung di Sheet AuditLog
+  try {
+    var logSheet = ss.getSheetByName(SHEETS.AUDIT_LOG);
+    if (logSheet) {
+      logSheet.appendRow([
+        "LOG-DEL-" + Date.now(),
+        new Date().toISOString(),
+        userId || "SYSTEM",
+        studentName || "Panitia PPDB",
+        "panitia",
+        "DELETE_APPLICATION",
+        regNumber,
+        "Data pendaftaran " + regNumber + " (" + (studentName || "Siswa") + ") beserta seluruh file Google Drive dan baris Sheets berhasil dihapus permanen.",
+        "success"
+      ]);
+    }
+  } catch(eLog) {}
 
   return {
     success: true,
     message: "Data pendaftaran " + regNumber + " dan seluruh file serta folder data siswa di Google Drive dan Google Sheets berhasil dihapus permanen secara otomatis.",
     registration_number: regNumber,
-    deleted_files_count: deletedFilesCount
+    deleted_files_count: deletedFilesCount,
+    deleted_rows_count: deletedRowsCount
   };
 }
 
@@ -1870,6 +1983,9 @@ function handleDeleteSchool(data, spreadsheetId) {
     var rNum = regNumbers[j];
     deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.STUDENTS), 3, rNum);
     deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.DOCUMENTS), 2, rNum);
+    deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.PARENTS), 2, rNum);
+    deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.SCHOOL_ORIGINS), 2, rNum);
+    deleteRowsMatchingColumn(ss.getSheetByName(SHEETS.ADDRESSES), 2, rNum);
   }
 
   return {
@@ -1902,23 +2018,30 @@ function handleDeleteUser(data, spreadsheetId) {
 }
 
 /**
- * 8. NOTIFIKASI EMAIL OTOMATIS (TERPICU PADA PERUBAHAN VERIFIKASI BERKAS ATAU STATUS KELULUSAN)
+ * 8. NOTIFIKASI EMAIL OTOMATIS (TERPICU PADA SELURUH TAHAP PENDAFTARAN, VERIFIKASI, SELEKSI, DAN SURAT)
+ * Pengirim resmi menggunakan nama madrasah tujuan dan Reply-To diarahkan langsung ke email madrasah tujuan.
+ * Saat ada pendaftar baru, sistem secara otomatis juga mengirimkan email notifikasi ke email panitia madrasah tujuan.
  */
 function handleSendNotificationEmail(data, targetSpreadsheetId) {
   if (!data) return { success: false, message: "Data notifikasi kosong" };
+  var ss = getOrOpenSpreadsheet(targetSpreadsheetId || SPREADSHEET_ID);
+
   var email = (data.email || "").trim();
   var studentName = data.student_name || "Calon Murid";
   var regNumber = data.registration_number || "";
-  var schoolName = data.school_name || "Madrasah";
-  var schoolEmail = (data.school_email || "").trim();
-  var schoolPhone = (data.school_phone || "").trim();
-  var schoolAddress = (data.school_address || "").trim();
-  var eventType = data.event_type || "verification"; // "registration_submitted" | "verification" | "selection" | "announcement" | "transfer"
+  var eventType = data.event_type || "verification"; // "registration_submitted" | "revision_submitted" | "verification" | "selection" | "announcement" | "transfer" | "acceptance_letter" | "dispensation_letter" | "password_reset"
   var newStatus = String(data.new_status || "").toLowerCase();
   var notes = data.notes || "";
   var pathway = data.pathway || "";
   var appName = data.app_name || "SIPMA PPDB Madrasah";
   var appLogoUrl = (data.app_logo_url && data.app_logo_url.indexOf("6c787787-6585-4830-b0a6-9bfab3f1dba4") === -1) ? data.app_logo_url : "";
+
+  // Ambil data sekolah secara mandiri dari database jika belum lengkap
+  var schoolInfo = getSchoolInfoById(ss, data.school_id, regNumber);
+  var schoolName = (data.school_name || schoolInfo.school_name || "Madrasah").trim();
+  var schoolEmail = (data.school_email || schoolInfo.school_email || "").trim();
+  var schoolPhone = (data.school_phone || schoolInfo.school_phone || "").trim();
+  var schoolAddress = (data.school_address || schoolInfo.school_address || "").trim();
 
   // Validasi email penerima
   if (!email || email.indexOf("@") === -1 || email.indexOf(".") === -1) {
@@ -2043,6 +2166,40 @@ function handleSendNotificationEmail(data, targetSpreadsheetId) {
       (notes || "Berkas pendaftaran siap ditinjau oleh Panitia PPDB madrasah tujuan baru.") +
       "</div>";
   }
+  // 6. PENERBITAN SURAT BUKTI KELULUSAN / TANDA DITERIMA
+  else if (eventType === "acceptance_letter") {
+    subject = "[PPDB " + schoolName + "] Surat Tanda Diterima Resmi: " + studentName + " (" + regNumber + ")";
+    statusBadge = "SURAT BUKTI DITERIMA RESMI";
+    badgeColor = "#059669"; // Emerald
+    headline = "Surat Tanda Diterima resmi calon murid baru telah diterbitkan oleh Panitia PPDB " + schoolName + ".";
+    detailHtml = "<p>Dokumen Surat Keputusan Penerimaan Murid Baru atas nama <b>" + studentName + "</b> (" + regNumber + ") dengan verifikasi QR-Code resmi telah siap.</p>" +
+      "<div style='background-color:#ecfdf5;border-left:4px solid #10b981;padding:12px;margin:12px 0;border-radius:6px;font-size:13px;color:#065f46;'>" +
+      (notes || "Silakan login ke portal SIPMA untuk mengunduh dan mencetak dokumen Tanda Bukti Diterima resmi sebagai syarat daftar ulang.") +
+      "</div>";
+  }
+  // 7. SURAT DISPENSASI RESMI
+  else if (eventType === "dispensation_letter") {
+    subject = "[PPDB " + schoolName + "] Surat Dispensasi Pendaftaran Disetujui: " + studentName + " (" + regNumber + ")";
+    statusBadge = "SURAT DISPENSASI RESMI";
+    badgeColor = "#d97706"; // Amber
+    headline = "Surat dispensasi resmi telah disetujui dan diterbitkan oleh Panitia PPDB " + schoolName + ".";
+    detailHtml = "<p>Permohonan dispensasi untuk pendaftaran atas nama <b>" + studentName + "</b> (" + regNumber + ") telah diverifikasi dan disetujui panitia.</p>" +
+      "<div style='background-color:#fef3c7;border-left:4px solid #f59e0b;padding:12px;margin:12px 0;border-radius:6px;font-size:13px;color:#92400e;'>" +
+      (notes || "Surat dispensasi telah tercatat dalam sistem dan dapat diunduh pada portal SIPMA.") +
+      "</div>";
+  }
+  // 8. RESET PASSWORD / INFORMASI AKUN
+  else if (eventType === "password_reset" || eventType === "account_update") {
+    subject = "[PPDB " + schoolName + "] Informasi Kredensial & Reset Kata Sandi Akun - " + studentName + " (" + regNumber + ")";
+    statusBadge = "KATA SANDI AKUN DIPERBARUI";
+    badgeColor = "#2563eb"; // Blue
+    headline = "Kata sandi akun portal pendaftaran Anda telah berhasil diperbarui oleh Panitia PPDB " + schoolName + ".";
+    detailHtml = "<p>Berikut adalah informasi pembaruan akun pendaftaran Anda:</p>" +
+      "<div style='background-color:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:14px;margin:12px 0;font-size:14px;color:#1e40af;'>" +
+      (notes || "Silakan login ke portal SIPMA dengan kata sandi baru Anda dan simpan dengan aman.") +
+      "</div>" +
+      "<p style='font-size:13px;color:#64748b;'>Demi keamanan akun Anda, segera ganti kata sandi setelah berhasil login.</p>";
+  }
 
   // Fallback subjek jika belum terisi
   if (!subject) {
@@ -2075,6 +2232,7 @@ function handleSendNotificationEmail(data, targetSpreadsheetId) {
     "Status: " + statusBadge + "\\n\\n" +
     headline + "\\n\\n" +
     (notes ? ("Catatan Panitia: " + notes + "\\n\\n") : "") +
+    "Jika ada pertanyaan atau ingin menanggapi pesan ini, Anda dapat LANGSUNG MEMBALAS (REPLY) email ini ke panitia di: " + (schoolEmail || "-") + "\\n\\n" +
     "Untuk informasi selengkapnya, silakan kunjungi portal SIPMA.\\n\\n" +
     "Panitia Penerimaan Peserta Didik Baru (PPDB)\\n" +
     schoolName + "\\n" +
@@ -2084,7 +2242,7 @@ function handleSendNotificationEmail(data, targetSpreadsheetId) {
 
   // Konfigurasi pengirim email:
   // Nama Pengirim: Panitia PPDB [Nama Madrasah]
-  // Reply-To: [Email Madrasah yang dipilih saat mendaftar]
+  // Reply-To: [Email Madrasah yang dipilih saat mendaftar] -> Pendaftar bisa langsung membalas ke email madrasah
   var senderDisplayName = schoolName ? ("Panitia PPDB " + schoolName) : (appName || "SIPMA PPDB Madrasah");
   var mailOptions = {
     to: email,
@@ -2105,16 +2263,12 @@ function handleSendNotificationEmail(data, targetSpreadsheetId) {
   }
 
   // Kirim dengan perlindungan error bertingkat (MailApp -> GmailApp -> error safe return)
+  var studentSendSuccess = false;
+  var studentSendMsg = "";
   try {
     MailApp.sendEmail(mailOptions);
-    return {
-      success: true,
-      message: "Email notifikasi berhasil dikirim via MailApp ke " + email,
-      recipient: email,
-      sender_name: senderDisplayName,
-      sender_email: schoolEmail || "default",
-      status: newStatus
-    };
+    studentSendSuccess = true;
+    studentSendMsg = "Email notifikasi berhasil dikirim via MailApp ke " + email;
   } catch (errMail) {
     try {
       var gmailOptions = {
@@ -2130,22 +2284,72 @@ function handleSendNotificationEmail(data, targetSpreadsheetId) {
       } catch (e2) {}
 
       GmailApp.sendEmail(email, subject, plainTextBody, gmailOptions);
-      return {
-        success: true,
-        message: "Email notifikasi berhasil dikirim via GmailApp ke " + email,
-        recipient: email,
-        sender_name: senderDisplayName,
-        sender_email: schoolEmail || "default",
-        status: newStatus
-      };
+      studentSendSuccess = true;
+      studentSendMsg = "Email notifikasi berhasil dikirim via GmailApp ke " + email;
     } catch (errGmail) {
-      return {
-        success: false,
-        message: "Gagal mengirim email: " + (errMail ? errMail.toString() : errGmail ? errGmail.toString() : "Unknown error"),
-        recipient: email
-      };
+      studentSendSuccess = false;
+      studentSendMsg = "Gagal mengirim email: " + (errMail ? errMail.toString() : errGmail ? errGmail.toString() : "Unknown error");
     }
   }
+
+  // OTOMATIS: Kirim pesan email notifikasi ke email madrasah tujuan saat ada pendaftar baru
+  var schoolAlertResult = null;
+  if ((eventType === "registration_submitted" || eventType === "submission" || data.notify_school === true) && schoolEmail && schoolEmail.indexOf("@") > -1) {
+    try {
+      schoolAlertResult = handleNotifySchoolNewApplicant({
+        registration_number: regNumber,
+        student_name: studentName,
+        student_email: email,
+        pathway: pathway,
+        school_id: data.school_id,
+        school_name: schoolName,
+        school_email: schoolEmail,
+        school_phone: schoolPhone,
+        school_address: schoolAddress,
+        nik: data.nik || "",
+        nisn: data.nisn || "",
+        school_origin: data.school_origin || data.previous_school || "",
+        parent_name: data.parent_name || "",
+        student_phone: data.student_phone || data.phone || "",
+        distance_km: data.distance_km || 0,
+        submission_date: data.submission_date,
+        app_name: appName,
+        app_logo_url: appLogoUrl
+      }, targetSpreadsheetId);
+    } catch (schErr) {
+      Logger.log("Auto notify school error: " + schErr.toString());
+    }
+  }
+
+  // Jika pendaftar menyerahkan perbaikan berkas, beri tahu panitia madrasah juga
+  if (eventType === "revision_submitted" && schoolEmail && schoolEmail.indexOf("@") > -1) {
+    try {
+      var revSubject = "[PPDB Berkas Revisi Masuk] Penyerahan Berkas Perbaikan: " + studentName + " (" + regNumber + ")";
+      var revPlain = "Yth. Panitia PPDB " + schoolName + ",\\n\\n" +
+        "Calon murid atas nama " + studentName + " (" + regNumber + ") telah menyerahkan perbaikan berkas pendaftaran melalui portal SIPMA.\\n\\n" +
+        "Silakan masuk ke Dashboard Admin/Operator Madrasah SIPMA untuk meninjau dan memverifikasi berkas perbaikan tersebut.\\n\\n" +
+        (notes ? ("Catatan: " + notes + "\\n\\n") : "") +
+        "Anda dapat langsung membalas email ini untuk berkomunikasi dengan pendaftar di: " + email;
+      var revMail = {
+        to: schoolEmail,
+        subject: revSubject,
+        body: revPlain,
+        name: "SIPMA PPDB - Berkas Revisi",
+        replyTo: (email && email.indexOf("@") > -1) ? email : undefined
+      };
+      try { MailApp.sendEmail(revMail); } catch (eRev) {}
+    } catch (eRev2) {}
+  }
+
+  return {
+    success: studentSendSuccess,
+    message: studentSendMsg + (schoolAlertResult ? " | Notifikasi madrasah: " + schoolAlertResult.message : ""),
+    recipient: email,
+    sender_name: senderDisplayName,
+    sender_email: schoolEmail || "default",
+    status: newStatus,
+    school_alert: schoolAlertResult
+  };
 }
 
 /**
@@ -2195,7 +2399,7 @@ function buildNotificationEmailHtml(params) {
     logoCellHtml +
     '                  <td valign="middle">' +
     '                    <h1 style="margin:0;font-size:22px;font-weight:800;color:#ffffff;letter-spacing:0.5px;line-height:1.2;">' + appName + '</h1>' +
-    '                    <p style="margin:3px 0 0 0;font-size:12px;color:#a7f3d0;font-weight:500;letter-spacing:0.3px;">Sistem Informasi Penerimaan Murid Baru Madrasah</p>' +
+    '                    <p style="margin:3px 0 0 0;font-size:12px;color:#a7f3d0;font-weight:500;letter-spacing:0.3px;">Penerimaan Murid Baru Madrasah</p>' +
     '                  </td>' +
     '                </tr>' +
     '              </table>' +
@@ -2283,11 +2487,281 @@ function buildNotificationEmailHtml(params) {
 }
 
 /**
+ * 8b. NOTIFIKASI EMAIL RESMI KE MADRASAH TUJUAN SAAT ADA PENDAFTAR BARU MASUK
+ * Menjamin email resmi dikirim ke email madrasah dengan replyTo disetel ke email calon murid,
+ * sehingga pihak madrasah dapat langsung menekan tombol "Balas" / "Reply" di aplikasi email mereka.
+ */
+function handleNotifySchoolNewApplicant(data, spreadsheetId) {
+  if (!data) return { success: false, message: "Data pendaftar baru kosong" };
+
+  var regNum = String(data.registration_number || "").trim();
+  var studentName = String(data.student_name || "Calon Murid").trim();
+  var studentEmail = String(data.student_email || data.email || "").trim();
+  var pathway = String(data.pathway || "zonasi").trim();
+  var schoolId = String(data.school_id || "").trim();
+  var schoolName = String(data.school_name || "").trim();
+  var targetSchoolEmail = String(data.school_email || "").trim();
+  var schoolPhone = String(data.school_phone || "").trim();
+  var schoolAddress = String(data.school_address || "").trim();
+  var nik = String(data.nik || "-").trim();
+  var nisn = String(data.nisn || "-").trim();
+  var schoolOrigin = String(data.school_origin || data.previous_school || "-").trim();
+  var parentName = String(data.parent_name || "-").trim();
+  var studentPhone = String(data.student_phone || data.phone || "-").trim();
+  var distanceKm = data.distance_km !== undefined ? (typeof data.distance_km === 'number' ? data.distance_km.toFixed(2) : data.distance_km) : "";
+  var submissionDate = data.submission_date || (Utilities.formatDate(new Date(), "GMT+7", "dd MMMM yyyy HH:mm") + " WIB");
+  var appName = String(data.app_name || "SIPMA PPDB").trim();
+  var appLogoUrl = (data.app_logo_url && data.app_logo_url.indexOf("6c787787-6585-4830-b0a6-9bfab3f1dba4") === -1) ? data.app_logo_url : "";
+
+  var ss = getOrOpenSpreadsheet(spreadsheetId || SPREADSHEET_ID);
+  
+  // Jika targetSchoolEmail belum ada atau tidak valid, cari dari sheet Schools di Google Sheets
+  if (!targetSchoolEmail || targetSchoolEmail.indexOf("@") === -1) {
+    var schSheet = ss ? ss.getSheetByName(SHEETS.SCHOOLS) : null;
+    if (schSheet && schSheet.getLastRow() > 1) {
+      var schRows = schSheet.getDataRange().getValues();
+      for (var s = 1; s < schRows.length; s++) {
+        var rowSchId = String(schRows[s][0] || "").trim();
+        var rowSchName = String(schRows[s][1] || "").trim();
+        var match = false;
+        if (schoolId && (rowSchId === schoolId || rowSchId.toLowerCase() === schoolId.toLowerCase())) match = true;
+        if (schoolName && (rowSchName.toLowerCase() === schoolName.toLowerCase())) match = true;
+        if (match) {
+          if (!targetSchoolEmail) targetSchoolEmail = String(schRows[s][22] || "").trim(); // Col 23: contact_email
+          if (!schoolName) schoolName = rowSchName;
+          if (!schoolPhone) schoolPhone = String(schRows[s][21] || "").trim(); // Col 22: contact_phone
+          if (!schoolAddress) schoolAddress = String(schRows[s][6] || "").trim(); // Col 7: address
+          break;
+        }
+      }
+    }
+  }
+
+  // Jika masih kosong, cari user admin/operator sekolah di sheet Users
+  if (!targetSchoolEmail || targetSchoolEmail.indexOf("@") === -1) {
+    var uSheet = ss ? ss.getSheetByName(SHEETS.USERS) : null;
+    if (uSheet && uSheet.getLastRow() > 1) {
+      var uRows = uSheet.getDataRange().getValues();
+      for (var u = 1; u < uRows.length; u++) {
+        var uRole = String(uRows[u][8] || "").trim();
+        var uSchId = String(uRows[u][9] || "").trim();
+        var uEmail = String(uRows[u][3] || "").trim();
+        if ((uRole === "admin_sekolah" || uRole === "operator_sekolah") && (schoolId && uSchId === schoolId) && uEmail.indexOf("@") > -1) {
+          targetSchoolEmail = uEmail;
+          break;
+        }
+      }
+    }
+  }
+
+  // Jika tetap tidak ditemukan email madrasah, log dan laporkan
+  if (!targetSchoolEmail || targetSchoolEmail.indexOf("@") === -1) {
+    return {
+      success: false,
+      message: "Tidak dapat mengirim notifikasi pendaftar baru: Email madrasah tujuan tidak ditemukan."
+    };
+  }
+
+  var pathwayName = pathway === "zonasi" ? "Zonasi" :
+                    pathway === "afirmasi" ? "Afirmasi" :
+                    pathway === "prestasi" ? "Prestasi" :
+                    pathway === "mutasi" ? "Perpindahan Tugas Orang Tua" : pathway;
+
+  var emailSubject = "[PPDB Pendaftar Baru] Pendaftaran Masuk: " + studentName + " (" + regNum + ") - Jalur " + pathwayName;
+
+  var plainText = "Yth. Kepala Madrasah & Panitia PPDB " + (schoolName || "Madrasah") + ",\n\n" +
+    "Sistem SIPMA memberitahukan bahwa terdapat Calon Peserta Didik Baru yang resmi mendaftar ke madrasah Anda dengan rincian sebagai berikut:\n\n" +
+    "- Nomor Registrasi : " + regNum + "\n" +
+    "- Nama Lengkap     : " + studentName + "\n" +
+    "- Jalur PPDB       : " + pathwayName + "\n" +
+    "- NIK / NISN       : " + nik + " / " + nisn + "\n" +
+    "- Asal Sekolah     : " + schoolOrigin + "\n" +
+    "- Orang Tua / Wali : " + parentName + "\n" +
+    "- No. Kontak / WA  : " + studentPhone + "\n" +
+    "- Email Pendaftar  : " + (studentEmail || "-") + "\n" +
+    (distanceKm ? ("- Jarak ke Madrasah: " + distanceKm + " km\n") : "") +
+    "- Waktu Submit     : " + submissionDate + "\n\n" +
+    "Silakan buka portal Admin / Operator Madrasah SIPMA untuk memverifikasi dokumen persyaratan calon murid ini.\n\n" +
+    (studentEmail ? "PENTING: Anda dapat langsung menekan tombol Balas (Reply) pada email ini untuk membalas ke email pendaftar (" + studentEmail + ").\n\n" : "") +
+    "--\n" +
+    "Pemberitahuan Otomatis " + appName + "\n" +
+    "Kementerian Agama Republik Indonesia";
+
+  var htmlBody = buildSchoolAlertEmailHtml({
+    appName: appName,
+    appLogoUrl: appLogoUrl,
+    schoolName: schoolName || "Madrasah Pilihan",
+    targetSchoolEmail: targetSchoolEmail,
+    regNum: regNum,
+    studentName: studentName,
+    studentEmail: studentEmail,
+    pathwayName: pathwayName,
+    nik: nik,
+    nisn: nisn,
+    schoolOrigin: schoolOrigin,
+    parentName: parentName,
+    studentPhone: studentPhone,
+    distanceKm: distanceKm,
+    submissionDate: submissionDate
+  });
+
+  var mailOptions = {
+    to: targetSchoolEmail,
+    subject: emailSubject,
+    body: plainText,
+    htmlBody: htmlBody,
+    name: "SIPMA PPDB - Pendaftar Baru"
+  };
+
+  // Reply-To disetel ke email calon murid sehingga pihak madrasah dapat langsung membalas
+  if (studentEmail && studentEmail.indexOf("@") > -1) {
+    mailOptions.replyTo = studentEmail;
+  }
+
+  var sendSuccess = false;
+  var sendMsg = "";
+  try {
+    MailApp.sendEmail(mailOptions);
+    sendSuccess = true;
+    sendMsg = "Email notifikasi pendaftar baru berhasil dikirim via MailApp ke " + targetSchoolEmail;
+  } catch (errMail) {
+    try {
+      var gmailOptions = {
+        htmlBody: htmlBody,
+        name: "SIPMA PPDB - Pendaftar Baru"
+      };
+      if (studentEmail && studentEmail.indexOf("@") > -1) {
+        gmailOptions.replyTo = studentEmail;
+      }
+      GmailApp.sendEmail(targetSchoolEmail, emailSubject, plainText, gmailOptions);
+      sendSuccess = true;
+      sendMsg = "Email notifikasi pendaftar baru berhasil dikirim via GmailApp ke " + targetSchoolEmail;
+    } catch (errGmail) {
+      sendSuccess = false;
+      sendMsg = "Gagal mengirim email ke madrasah: " + (errMail ? errMail.toString() : errGmail ? errGmail.toString() : "Error");
+    }
+  }
+
+  return {
+    success: sendSuccess,
+    message: sendMsg,
+    school_email: targetSchoolEmail,
+    school_name: schoolName,
+    registration_number: regNum,
+    student_name: studentName,
+    reply_to: studentEmail
+  };
+}
+
+/**
+ * Format Template HTML Email Khusus Notifikasi Pendaftar Baru untuk Admin/Operator Madrasah
+ */
+function buildSchoolAlertEmailHtml(params) {
+  var appName = params.appName || "SIPMA PPDB";
+  var appLogoUrl = params.appLogoUrl || "";
+  var schoolName = params.schoolName || "Madrasah";
+  var targetSchoolEmail = params.targetSchoolEmail || "";
+  var regNum = params.regNum || "";
+  var studentName = params.studentName || "";
+  var studentEmail = params.studentEmail || "";
+  var pathwayName = params.pathwayName || "Zonasi";
+  var nik = params.nik || "-";
+  var nisn = params.nisn || "-";
+  var schoolOrigin = params.schoolOrigin || "-";
+  var parentName = params.parentName || "-";
+  var studentPhone = params.studentPhone || "-";
+  var distanceKm = params.distanceKm || "";
+  var submissionDate = params.submissionDate || "";
+
+  var logoCellHtml = appLogoUrl ?
+    '<td width="56" valign="middle" style="padding-right:16px;"><img src="' + appLogoUrl + '" alt="' + appName + '" width="52" height="52" style="display:block;width:52px;height:52px;border-radius:12px;background-color:#ffffff;padding:2px;box-shadow:0 2px 6px rgba(0,0,0,0.2);object-fit:contain;" /></td>' :
+    '<td width="56" valign="middle" style="padding-right:16px;"><div style="width:48px;height:48px;border-radius:12px;background-color:#047857;border:2px solid #10b981;color:#ffffff;font-size:22px;font-weight:800;text-align:center;line-height:48px;">' + (appName.charAt(0) || 'S') + '</div></td>';
+
+  return '<!DOCTYPE html>' +
+    '<html lang="id">' +
+    '<head>' +
+    '  <meta charset="UTF-8">' +
+    '  <meta name="viewport" content="width=device-width, initial-scale=1.0">' +
+    '  <title>Notifikasi Pendaftar Baru - ' + schoolName + '</title>' +
+    '</head>' +
+    '<body style="margin:0;padding:0;background-color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,\'Helvetica Neue\',Arial,sans-serif;color:#1e293b;-webkit-font-smoothing:antialiased;">' +
+    '  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f1f5f9;padding:28px 12px;">' +
+    '    <tr>' +
+    '      <td align="center">' +
+    '        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:620px;background-color:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 10px 25px -5px rgba(0,0,0,0.08),0 8px 10px -6px rgba(0,0,0,0.04);border:1px solid #e2e8f0;">' +
+    '          <tr>' +
+    '            <td style="background:linear-gradient(135deg,#064e3b 0%,#047857 50%,#059669 100%);padding:28px;color:#ffffff;">' +
+    '              <table width="100%" cellpadding="0" cellspacing="0" border="0">' +
+    '                <tr>' +
+    '                  ' + logoCellHtml +
+    '                  <td valign="middle">' +
+    '                    <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#a7f3d0;margin-bottom:4px;">Notifikasi Resmi PPDB Madrasah</div>' +
+    '                    <h1 style="margin:0;font-size:20px;font-weight:800;line-height:1.2;color:#ffffff;">' + appName + '</h1>' +
+    '                    <div style="font-size:13px;color:#ecfdf5;margin-top:4px;font-weight:500;">Pemberitahuan Pendaftar Baru Masuk</div>' +
+    '                  </td>' +
+    '                </tr>' +
+    '              </table>' +
+    '            </td>' +
+    '          </tr>' +
+    '          <tr>' +
+    '            <td style="padding:28px 28px 20px 28px;">' +
+    '              <div style="display:inline-block;padding:6px 14px;background-color:#ecfdf5;border:1px solid #a7f3d0;border-radius:9999px;font-size:12px;font-weight:700;color:#047857;margin-bottom:16px;">' +
+    '                📌 CALON PESERTA DIDIK BARU RESMI MENDAFTAR' +
+    '              </div>' +
+    '              <p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:#334155;">' +
+    '                Yth. <strong>Kepala Madrasah & Tim Panitia PPDB ' + schoolName + '</strong>,<br/>' +
+    '                Sistem SIPMA menginformasikan bahwa seorang calon peserta didik baru telah resmi menyelesaikan formulir dan mengajukan berkas pendaftaran ke madrasah Anda dengan data sebagai berikut:' +
+    '              </p>' +
+    '              <div style="background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px 20px;margin-bottom:20px;">' +
+    '                <table width="100%" cellpadding="6" cellspacing="0" border="0" style="font-size:13px;line-height:1.6;">' +
+    '                  <tr><td width="38%" style="color:#64748b;font-weight:600;">No. Pendaftaran</td><td width="62%" style="font-weight:800;font-size:14px;letter-spacing:0.5px;color:#047857;">' + regNum + '</td></tr>' +
+    '                  <tr><td style="color:#64748b;font-weight:600;border-top:1px dashed #e2e8f0;">Nama Calon Siswa</td><td style="color:#0f172a;font-weight:700;border-top:1px dashed #e2e8f0;">' + studentName + '</td></tr>' +
+    '                  <tr><td style="color:#64748b;font-weight:600;border-top:1px dashed #e2e8f0;">Jalur Pendaftaran</td><td style="color:#0f172a;font-weight:700;border-top:1px dashed #e2e8f0;"><span style="background-color:#e0e7ff;color:#3730a3;padding:2px 8px;border-radius:6px;font-size:12px;">' + pathwayName + '</span></td></tr>' +
+    '                  <tr><td style="color:#64748b;font-weight:600;border-top:1px dashed #e2e8f0;">NIK / NISN</td><td style="color:#0f172a;border-top:1px dashed #e2e8f0;">' + nik + ' / ' + nisn + '</td></tr>' +
+    '                  <tr><td style="color:#64748b;font-weight:600;border-top:1px dashed #e2e8f0;">Asal Madrasah/Sekolah</td><td style="color:#0f172a;border-top:1px dashed #e2e8f0;">' + schoolOrigin + '</td></tr>' +
+    '                  <tr><td style="color:#64748b;font-weight:600;border-top:1px dashed #e2e8f0;">Orang Tua / Wali</td><td style="color:#0f172a;border-top:1px dashed #e2e8f0;">' + parentName + '</td></tr>' +
+    '                  <tr><td style="color:#64748b;font-weight:600;border-top:1px dashed #e2e8f0;">No. Kontak / WA</td><td style="color:#0f172a;border-top:1px dashed #e2e8f0;">' + studentPhone + '</td></tr>' +
+    '                  <tr><td style="color:#64748b;font-weight:600;border-top:1px dashed #e2e8f0;">Email Pendaftar</td><td style="color:#047857;font-weight:700;border-top:1px dashed #e2e8f0;">' + (studentEmail || "-") + '</td></tr>' +
+    (distanceKm ? ('<tr><td style="color:#64748b;font-weight:600;border-top:1px dashed #e2e8f0;">Jarak Domisili</td><td style="color:#0f172a;font-weight:600;border-top:1px dashed #e2e8f0;">' + distanceKm + ' km</td></tr>') : '') +
+    '                  <tr><td style="color:#64748b;font-weight:600;border-top:1px dashed #e2e8f0;">Waktu Submit</td><td style="color:#64748b;border-top:1px dashed #e2e8f0;">' + submissionDate + '</td></tr>' +
+    '                </table>' +
+    '              </div>' +
+    '              <div style="background-color:#ecfdf5;border:1px solid #10b981;border-radius:10px;padding:14px 16px;margin-bottom:20px;">' +
+    '                <table width="100%" cellpadding="0" cellspacing="0" border="0">' +
+    '                  <tr>' +
+    '                    <td width="28" valign="top" style="font-size:18px;line-height:1;">✉️</td>' +
+    '                    <td style="font-size:13px;line-height:1.5;color:#065f46;">' +
+    '                      <strong>Fitur Balas Langsung (Direct Reply):</strong><br/>' +
+    '                      Anda dapat langsung menekan tombol <strong>Balas (Reply)</strong> pada aplikasi email Anda (Gmail/Outlook/Yahoo/dsb.) untuk mengirim pesan balasan resmi langsung ke alamat email pendaftar: <strong>' + (studentEmail || 'pendaftar') + '</strong>.' +
+    '                    </td>' +
+    '                  </tr>' +
+    '                </table>' +
+    '              </div>' +
+    '              <p style="margin:0;font-size:13px;color:#475569;line-height:1.6;">' +
+    '                Harap segera membuka Dashboard Operator Madrasah SIPMA untuk memverifikasi keabsahan dokumen dan data pendaftar ini.' +
+    '              </p>' +
+    '            </td>' +
+    '          </tr>' +
+    '          <tr>' +
+    '            <td style="background-color:#f8fafc;padding:18px 28px;border-top:1px solid #e2e8f0;font-size:12px;color:#64748b;line-height:1.5;text-align:center;">' +
+    '              <p style="margin:0 0 4px 0;font-weight:700;color:#334155;">' + appName + ' • Penerimaan Murid Baru Madrasah</p>' +
+    '              <p style="margin:0;color:#94a3b8;font-size:11px;">Notifikasi dikirimkan ke email resmi madrasah: ' + targetSchoolEmail + '</p>' +
+    '            </td>' +
+    '          </tr>' +
+    '        </table>' +
+    '      </td>' +
+    '    </tr>' +
+    '  </table>' +
+    '</body>' +
+    '</html>';
+}
+
+/**
  * 9. VERIFIKASI APLIKASI & AUTO NOTIFIKASI
  */
 function handleVerifyApplication(data, spreadsheetId) {
   if (!data) return { success: false, message: "Data verifikasi kosong" };
-  var regNum = data.registration_number;
+  var regNum = String(data.registration_number || "").trim();
   var status = data.verification_status || data.status;
   var notes = data.verification_notes || data.notes || "";
   var verifiedBy = data.verified_by || "Panitia";
@@ -2297,17 +2771,22 @@ function handleVerifyApplication(data, spreadsheetId) {
   if (appSheet && regNum) {
     var dataRows = appSheet.getDataRange().getValues();
     for (var r = 1; r < dataRows.length; r++) {
-      if (String(dataRows[r][0]) === String(regNum)) {
-        appSheet.getRange(r + 1, 9).setValue(status); // verification_status
-        appSheet.getRange(r + 1, 10).setValue(notes); // verification_notes
+      var rowReg = String(dataRows[r][1] || "").trim();
+      var rowAppId = String(dataRows[r][0] || "").trim();
+      if (rowReg === regNum || rowAppId === regNum) {
+        appSheet.getRange(r + 1, 14).setValue(status); // Column 14: verification_status
+        appSheet.getRange(r + 1, 17).setValue(notes);  // Column 17: verification_notes
         if (status === "terverifikasi") {
-          appSheet.getRange(r + 1, 13).setValue("terverifikasi");
+          appSheet.getRange(r + 1, 16).setValue("terverifikasi"); // Column 16: final_status
+          appSheet.getRange(r + 1, 29).setValue("true");          // Column 29: is_locked
         } else if (status === "perlu_perbaikan") {
-          appSheet.getRange(r + 1, 13).setValue("perlu_perbaikan");
-          appSheet.getRange(r + 1, 15).setValue(false); // unlock is_locked
+          appSheet.getRange(r + 1, 16).setValue("perlu_perbaikan");
+          appSheet.getRange(r + 1, 29).setValue("false");         // unlock for student editing
         } else if (status === "ditolak") {
-          appSheet.getRange(r + 1, 13).setValue("tidak_lulus");
+          appSheet.getRange(r + 1, 16).setValue("ditolak");
+          appSheet.getRange(r + 1, 29).setValue("false");         // unlock so student can choose alternate school
         }
+        appSheet.getRange(r + 1, 31).setValue(new Date().toISOString()); // Column 31: updated_at
         break;
       }
     }
@@ -2320,6 +2799,9 @@ function handleVerifyApplication(data, spreadsheetId) {
       student_name: data.student_name,
       registration_number: regNum,
       school_name: data.school_name,
+      school_email: data.school_email,
+      school_phone: data.school_phone,
+      school_address: data.school_address,
       event_type: "verification",
       new_status: status,
       notes: notes,
@@ -2338,21 +2820,20 @@ function handleVerifyApplication(data, spreadsheetId) {
  */
 function handleProcessSelection(data, spreadsheetId) {
   if (!data) return { success: false, message: "Data seleksi kosong" };
-  var regNum = data.registration_number;
-  var status = data.selection_status || data.status; // "lulus" | "tidak_lulus"
+  var regNum = String(data.registration_number || "").trim();
+  var status = data.selection_status || data.status; // "lulus" | "tidak_lulus" | "cadangan"
   var ss = SpreadsheetApp.openById(spreadsheetId || SPREADSHEET_ID);
   var appSheet = ss.getSheetByName(SHEETS.APPLICATIONS);
 
   if (appSheet && regNum) {
     var dataRows = appSheet.getDataRange().getValues();
     for (var r = 1; r < dataRows.length; r++) {
-      if (String(dataRows[r][0]) === String(regNum)) {
-        appSheet.getRange(r + 1, 11).setValue(status); // selection_status
-        if (status === "lulus") {
-          appSheet.getRange(r + 1, 13).setValue("lulus"); // final_status
-        } else {
-          appSheet.getRange(r + 1, 13).setValue("tidak_lulus");
-        }
+      var rowReg = String(dataRows[r][1] || "").trim();
+      var rowAppId = String(dataRows[r][0] || "").trim();
+      if (rowReg === regNum || rowAppId === regNum) {
+        appSheet.getRange(r + 1, 15).setValue(status); // Column 15: selection_status
+        appSheet.getRange(r + 1, 16).setValue(status); // Column 16: final_status
+        appSheet.getRange(r + 1, 31).setValue(new Date().toISOString()); // Column 31: updated_at
         break;
       }
     }
@@ -2365,6 +2846,9 @@ function handleProcessSelection(data, spreadsheetId) {
       student_name: data.student_name,
       registration_number: regNum,
       school_name: data.school_name,
+      school_email: data.school_email,
+      school_phone: data.school_phone,
+      school_address: data.school_address,
       event_type: "selection",
       new_status: status,
       notes: data.notes || "",
@@ -2400,6 +2884,8 @@ function handleSaveApplication(appData, spreadsheetId) {
       }
     }
 
+    var existingCreatedAt = (rowIndex > 0 && rows[rowIndex - 1][29]) ? rows[rowIndex - 1][29] : (appData.created_at || new Date().toISOString());
+
     var rowValues = [
       appData.application_id || ("APP-" + regNum),
       regNum,
@@ -2430,8 +2916,8 @@ function handleSaveApplication(appData, spreadsheetId) {
       appData.mutation_letter_date || "",
       appData.step_completed || 1,
       appData.is_locked ? "true" : "false",
-      appData.created_at || new Date().toISOString(),
-      appData.updated_at || new Date().toISOString()
+      existingCreatedAt,
+      new Date().toISOString()
     ];
 
     if (rowIndex > 0) {
@@ -2440,6 +2926,260 @@ function handleSaveApplication(appData, spreadsheetId) {
       appSheet.appendRow(rowValues);
     }
   }
+
+  // Sinkronkan data murid ke Sheet Students jika disertakan
+  var stdData = appData.student || {};
+  if (stdData.name || appData.student_name || stdData.nik || stdData.nisn) {
+    var stdSheet = ss.getSheetByName(SHEETS.STUDENTS);
+    if (stdSheet) {
+      var sRows = stdSheet.getDataRange().getValues();
+      var sRowIdx = -1;
+      var targetStdId = stdData.student_id || appData.student_id || ("STD-" + regNum);
+      for (var s = 1; s < sRows.length; s++) {
+        if (String(sRows[s][2]).trim() === String(regNum).trim() || String(sRows[s][0]).trim() === String(targetStdId).trim()) {
+          sRowIdx = s + 1;
+          break;
+        }
+      }
+      var stdRowValues = [
+        targetStdId,
+        stdData.user_id || appData.user_id || "",
+        regNum,
+        stdData.name || appData.student_name || "",
+        stdData.nik || "",
+        stdData.nisn || "",
+        stdData.gender || "L",
+        stdData.birth_place || "",
+        stdData.birth_date || "",
+        stdData.religion || "Islam",
+        stdData.family_card_number || "",
+        stdData.child_order || 1,
+        stdData.total_siblings || 1,
+        stdData.family_status || "Anak Kandung",
+        stdData.hobby || "",
+        stdData.living_status || "orang_tua_kandung",
+        formatPhoneForSheetGAS(stdData.phone || appData.student_phone),
+        stdData.email || appData.student_email || "",
+        stdData.photo_url || ""
+      ];
+      if (sRowIdx > 0) {
+        stdSheet.getRange(sRowIdx, 1, 1, stdRowValues.length).setValues([stdRowValues]);
+      } else {
+        stdSheet.appendRow(stdRowValues);
+      }
+    }
+  }
+
+  // Sinkronkan data Orang Tua / Wali ke Sheet Parents jika disertakan
+  var prtData = appData.parents || appData.parent || {};
+  if (prtData.father_name || prtData.mother_name || prtData.guardian_name || appData.father_name || appData.mother_name) {
+    var prtSheet = ss.getSheetByName(SHEETS.PARENTS);
+    if (prtSheet) {
+      var pRows = prtSheet.getDataRange().getValues();
+      var pRowIdx = -1;
+      var targetParentStdId = (stdData && stdData.student_id) || appData.student_id || ("STD-" + regNum);
+      for (var p = 1; p < pRows.length; p++) {
+        var rowStdId = String(pRows[p][1]).trim();
+        var rowParentId = String(pRows[p][0]).trim();
+        if (rowStdId === String(targetParentStdId).trim() || rowStdId === String(regNum).trim() || (prtData.parent_id && rowParentId === String(prtData.parent_id).trim())) {
+          pRowIdx = p + 1;
+          break;
+        }
+      }
+      var parentRowValues = [
+        prtData.parent_id || ("PRT-" + regNum),
+        targetParentStdId,
+        prtData.father_name || appData.father_name || "",
+        prtData.father_status || "hidup",
+        prtData.father_nik || appData.father_nik || "",
+        prtData.father_birth_place || "",
+        prtData.father_birth_date || "",
+        prtData.father_education || "",
+        prtData.father_job || appData.father_job || "",
+        prtData.father_income || "",
+        formatPhoneForSheetGAS(prtData.father_phone || appData.father_phone),
+        prtData.mother_name || appData.mother_name || "",
+        prtData.mother_status || "hidup",
+        prtData.mother_nik || appData.mother_nik || "",
+        prtData.mother_birth_place || "",
+        prtData.mother_birth_date || "",
+        prtData.mother_education || "",
+        prtData.mother_job || appData.mother_job || "",
+        prtData.mother_income || "",
+        formatPhoneForSheetGAS(prtData.mother_phone || appData.mother_phone),
+        prtData.guardian_name || appData.guardian_name || "",
+        prtData.guardian_nik || "",
+        prtData.guardian_relation || "",
+        prtData.guardian_birth_place || "",
+        prtData.guardian_birth_date || "",
+        prtData.guardian_education || "",
+        prtData.guardian_job || "",
+        prtData.guardian_income || "",
+        formatPhoneForSheetGAS(prtData.guardian_phone),
+        prtData.guardian_address || ""
+      ];
+      if (pRowIdx > 0) {
+        prtSheet.getRange(pRowIdx, 1, 1, parentRowValues.length).setValues([parentRowValues]);
+      } else {
+        prtSheet.appendRow(parentRowValues);
+      }
+    }
+  }
+
+  // Sinkronkan data Asal Sekolah ke Sheet SchoolOrigins jika disertakan
+  var oriData = appData.school_origins || appData.school_origin || {};
+  if (oriData.school_name || appData.school_origin_name || appData.previous_school) {
+    var oriSheet = ss.getSheetByName(SHEETS.SCHOOL_ORIGINS);
+    if (oriSheet) {
+      var oRows = oriSheet.getDataRange().getValues();
+      var oRowIdx = -1;
+      var targetOriStdId = (stdData && stdData.student_id) || appData.student_id || ("STD-" + regNum);
+      for (var o = 1; o < oRows.length; o++) {
+        var rowOriStdId = String(oRows[o][1]).trim();
+        if (rowOriStdId === String(targetOriStdId).trim() || rowOriStdId === String(regNum).trim()) {
+          oRowIdx = o + 1;
+          break;
+        }
+      }
+      var oriRowValues = [
+        oriData.origin_id || ("ORI-" + regNum),
+        targetOriStdId,
+        oriData.previous_level || appData.previous_level || "MI",
+        oriData.school_name || appData.school_origin_name || appData.previous_school || "",
+        oriData.npsn_nsm || appData.school_origin_npsn || "",
+        oriData.school_status || "Swasta",
+        oriData.school_address || "",
+        oriData.graduation_year || appData.graduation_year || "2026",
+        oriData.diploma_number || appData.diploma_number || ""
+      ];
+      if (oRowIdx > 0) {
+        oriSheet.getRange(oRowIdx, 1, 1, oriRowValues.length).setValues([oriRowValues]);
+      } else {
+        oriSheet.appendRow(oriRowValues);
+      }
+    }
+  }
+
+  // Sinkronkan data Alamat ke Sheet Addresses jika disertakan
+  var adrData = appData.addresses || appData.address || {};
+  if (adrData.full_address || adrData.province || adrData.city || appData.full_address) {
+    var adrSheet = ss.getSheetByName(SHEETS.ADDRESSES);
+    if (adrSheet) {
+      var aRows = adrSheet.getDataRange().getValues();
+      var aRowIdx = -1;
+      var targetAdrStdId = (stdData && stdData.student_id) || appData.student_id || ("STD-" + regNum);
+      for (var a = 1; a < aRows.length; a++) {
+        var rowAdrStdId = String(aRows[a][1]).trim();
+        if (rowAdrStdId === String(targetAdrStdId).trim() || rowAdrStdId === String(regNum).trim()) {
+          aRowIdx = a + 1;
+          break;
+        }
+      }
+      var adrRowValues = [
+        adrData.address_id || ("ADR-" + regNum),
+        targetAdrStdId,
+        adrData.province || "",
+        adrData.city || "",
+        adrData.district || "",
+        adrData.subdistrict || "",
+        adrData.neighborhood || "",
+        adrData.rt_rw || "",
+        adrData.full_address || appData.full_address || "",
+        adrData.postal_code || "",
+        adrData.latitude || appData.latitude || 0,
+        adrData.longitude || appData.longitude || 0
+      ];
+      if (aRowIdx > 0) {
+        adrSheet.getRange(aRowIdx, 1, 1, adrRowValues.length).setValues([adrRowValues]);
+      } else {
+        adrSheet.appendRow(adrRowValues);
+      }
+    }
+  }
+
+  // Jika pendaftaran baru diajukan atau flag notifikasi aktif, picu notifikasi resmi ke madrasah
+  if (appData.notify_school === true || appData.is_new_registration === true) {
+    try {
+      handleNotifySchoolNewApplicant({
+        registration_number: regNum,
+        student_name: (stdData && stdData.name) || appData.student_name,
+        student_email: (stdData && stdData.email) || appData.student_email,
+        pathway: appData.pathway || "zonasi",
+        school_id: appData.school_id,
+        school_name: appData.school_name,
+        school_email: appData.school_email,
+        school_phone: appData.school_phone,
+        school_address: appData.school_address,
+        nik: (stdData && stdData.nik) || appData.nik,
+        nisn: (stdData && stdData.nisn) || appData.nisn,
+        school_origin: (oriData && oriData.school_name) || appData.school_origin_name,
+        parent_name: (prtData && (prtData.father_name || prtData.mother_name)) || appData.father_name,
+        student_phone: (stdData && stdData.phone) || appData.student_phone,
+        distance_km: appData.distance_km || 0,
+        submission_date: appData.submission_date,
+        app_name: appData.app_name || "SIPMA",
+        app_logo_url: appData.app_logo_url
+      }, spreadsheetId);
+    } catch (eSchNotif) {
+      Logger.log("SaveApplication auto notify school warning: " + eSchNotif.toString());
+    }
+  }
+
+  // Sinkronkan data Dokumen ke Sheet Documents jika disertakan
+  if (appData.documents && Array.isArray(appData.documents)) {
+    var docSheet = ss.getSheetByName(SHEETS.DOCUMENTS);
+    if (docSheet) {
+      for (var d = 0; d < appData.documents.length; d++) {
+        var doc = appData.documents[d];
+        if (!doc) continue;
+        var docId = doc.document_id || ("DOC-" + regNum + "-" + d);
+        var docRows = docSheet.getDataRange().getValues();
+        var dRowIdx = -1;
+        for (var dr = 1; dr < docRows.length; dr++) {
+          if (String(docRows[dr][0]).trim() === String(docId).trim() ||
+              (String(docRows[dr][1]).trim() === String(regNum).trim() && String(docRows[dr][2]).trim() === String(doc.document_type).trim())) {
+            dRowIdx = dr + 1;
+            break;
+          }
+        }
+        var docValues = [
+          docId,
+          regNum,
+          doc.document_type || "dokumen",
+          doc.file_name || "",
+          doc.file_size_kb || 0,
+          doc.drive_file_id || "",
+          doc.drive_url || doc.view_url || "",
+          doc.upload_time || new Date().toISOString(),
+          doc.verification_status || "menunggu",
+          doc.notes || ""
+        ];
+        if (dRowIdx > 0) {
+          docSheet.getRange(dRowIdx, 1, 1, docValues.length).setValues([docValues]);
+        } else {
+          docSheet.appendRow(docValues);
+        }
+      }
+    }
+  }
+
+  // Catat audit log penyimpanan di Google Sheets
+  try {
+    var auditSheet = ss.getSheetByName(SHEETS.AUDIT_LOG);
+    if (auditSheet) {
+      auditSheet.appendRow([
+        "LOG-SAVE-" + Date.now(),
+        new Date().toISOString(),
+        appData.user_id || "SYSTEM",
+        (stdData && stdData.name) || appData.student_name || "Calon Murid",
+        "calon_murid",
+        "SAVE_APPLICATION",
+        regNum,
+        "Data formulir pendaftaran " + regNum + " berhasil disimpan dan disinkronkan ke Google Sheets.",
+        "success"
+      ]);
+    }
+  } catch(eAud) {}
 
   return { success: true, message: "Data pendaftaran " + regNum + " berhasil disimpan", registration_number: regNum };
 }
@@ -2486,7 +3226,7 @@ function handleSaveSchool(schoolData, spreadsheetId) {
     schoolData.quota_mutasi || 0,
     schoolData.status || "active",
     schoolData.principal_name || "",
-    schoolData.contact_phone || "",
+    formatPhoneForSheetGAS(schoolData.contact_phone),
     schoolData.contact_email || "",
     schoolData.logo_url || ""
   ];
@@ -2776,6 +3516,73 @@ function getSchoolNameById(ss, schoolId) {
     }
   } catch(e) {}
   return "";
+}
+
+/**
+ * Helper: Ambil Data Kontak Lengkap Madrasah dari Database Sheets (Nama, Email, Telp, Alamat)
+ */
+function getSchoolInfoById(ss, schoolId, regNumber) {
+  var schoolInfo = {
+    school_name: "Madrasah",
+    school_email: "",
+    school_phone: "",
+    school_address: ""
+  };
+  if (!ss) return schoolInfo;
+
+  var targetSchoolId = schoolId || "";
+  if (!targetSchoolId && regNumber) {
+    var aSheet = ss.getSheetByName(SHEETS.APPLICATIONS);
+    if (aSheet && aSheet.getLastRow() > 1) {
+      var aRows = aSheet.getDataRange().getValues();
+      for (var ar = 1; ar < aRows.length; ar++) {
+        if (String(aRows[ar][1]).trim() === String(regNumber).trim()) {
+          targetSchoolId = String(aRows[ar][4]).trim();
+          break;
+        }
+      }
+    }
+  }
+
+  var sSheet = ss.getSheetByName(SHEETS.SCHOOLS);
+  if (sSheet && sSheet.getLastRow() > 1) {
+    var sRows = sSheet.getDataRange().getValues();
+    for (var sr = 1; sr < sRows.length; sr++) {
+      var sId = String(sRows[sr][0]).trim();
+      if ((targetSchoolId && sId === targetSchoolId) || (!targetSchoolId && sr === 1)) {
+        schoolInfo.school_name = String(sRows[sr][1] || "").trim() || "Madrasah";
+        schoolInfo.school_address = String(sRows[sr][6] || "").trim();
+        schoolInfo.school_phone = String(sRows[sr][21] || sRows[sr][22] || "").trim();
+        schoolInfo.school_email = String(sRows[sr][22] || sRows[sr][23] || "").trim();
+        break;
+      }
+    }
+  }
+
+  if (!schoolInfo.school_email && targetSchoolId) {
+    var uSheet = ss.getSheetByName(SHEETS.USERS);
+    if (uSheet && uSheet.getLastRow() > 1) {
+      var uRows = uSheet.getDataRange().getValues();
+      for (var ur = 1; ur < uRows.length; ur++) {
+        var uSchId = String(uRows[ur][9]).trim();
+        var uRole = String(uRows[ur][8]).trim();
+        var uEmail = String(uRows[ur][3]).trim();
+        if (uSchId === targetSchoolId && (uRole === "admin_sekolah" || uRole === "operator_sekolah") && uEmail.indexOf("@") > -1) {
+          schoolInfo.school_email = uEmail;
+          break;
+        }
+      }
+    }
+  }
+
+  if (!schoolInfo.school_email) {
+    schoolInfo.school_email = "mi02jatibarang.brebes@gmail.com";
+  }
+  if (!schoolInfo.school_phone) {
+    schoolInfo.school_phone = "08988857555";
+  }
+
+  return schoolInfo;
 }
 
 /**

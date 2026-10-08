@@ -8,7 +8,7 @@ import {
   PathwayType,
   VerificationStatus,
 } from '../../types/sipma';
-import { formatDistanceIndonesian, formatCoordinates } from '../../utils/geo';
+import { formatDistanceIndonesian, formatCoordinates, calculateHaversineDistance } from '../../utils/geo';
 import {
   MapPin,
   Layers,
@@ -63,26 +63,79 @@ export const ApplicantDistributionMap: React.FC<Props> = ({
   const [activeApplicant, setActiveApplicant] = useState<Application | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
+  // Ensure only applicants registered to this school are considered
+  const safeSchool: School = useMemo(() => {
+    return (
+      school || storageService.getSchools()[0] || {
+        school_id: '',
+        npsn: '',
+        school_name: 'Madrasah',
+        level: 'MI',
+        status: 'active',
+        address: '-',
+        village: '',
+        district: '',
+        city: '',
+        province: '',
+        latitude: -6.964,
+        longitude: 109.056,
+        radius_zonasi_km: 1,
+        zoning_radius_km: 1,
+        quota_total: 0,
+        quota_zonasi: 0,
+        quota_afirmasi: 0,
+        quota_prestasi: 0,
+        quota_mutasi: 0,
+      }
+    );
+  }, [school]);
+
+  // Strictly filter applications to ONLY students who applied to this madrasah
+  const schoolScopedApplicants = useMemo(() => {
+    if (!safeSchool?.school_id) return [];
+    return applications.filter((app) => app.school_id === safeSchool.school_id);
+  }, [applications, safeSchool?.school_id]);
+
+  // Exact distance calculation relative to this school
+  const getApplicantDistanceKm = (app: Application): number => {
+    if (
+      app.latitude !== undefined &&
+      app.latitude !== null &&
+      app.longitude !== undefined &&
+      app.longitude !== null &&
+      safeSchool.latitude &&
+      safeSchool.longitude
+    ) {
+      return calculateHaversineDistance(
+        app.latitude,
+        app.longitude,
+        safeSchool.latitude,
+        safeSchool.longitude
+      );
+    }
+    return app.distance_km ?? 999;
+  };
+
   // Category counts and quick selection for single filter box
   const pathwayCounts = useMemo(() => {
     const counts = { zonasi: 0, afirmasi: 0, prestasi: 0, mutasi: 0 };
-    applications.forEach((a) => {
+    schoolScopedApplicants.forEach((a) => {
       if (a.pathway in counts) {
         counts[a.pathway as keyof typeof counts]++;
       }
     });
     return counts;
-  }, [applications]);
+  }, [schoolScopedApplicants]);
 
   const { verifiedCount, unverifiedCount } = useMemo(() => {
     let ver = 0;
     let unver = 0;
-    applications.forEach((a) => {
+    schoolScopedApplicants.forEach((a) => {
       if (a.verification_status === 'terverifikasi') ver++;
       else unver++;
     });
     return { verifiedCount: ver, unverifiedCount: unver };
-  }, [applications]);
+  }, [schoolScopedApplicants]);
 
   const activeCategoryFilter = useMemo(() => {
     if (selectedPathway !== 'all') return `pathway:${selectedPathway}`;
@@ -134,37 +187,11 @@ export const ApplicantDistributionMap: React.FC<Props> = ({
     setSearchQuery('');
   };
 
-  const safeSchool: School = useMemo(() => {
-    return (
-      school || storageService.getSchools()[0] || {
-        school_id: '',
-        npsn: '',
-        school_name: 'Madrasah',
-        level: 'MI',
-        status: 'active',
-        address: '-',
-        village: '',
-        district: '',
-        city: '',
-        province: '',
-        latitude: -6.964,
-        longitude: 109.056,
-        radius_zonasi_km: 1,
-        zoning_radius_km: 1,
-        quota_total: 0,
-        quota_zonasi: 0,
-        quota_afirmasi: 0,
-        quota_prestasi: 0,
-        quota_mutasi: 0,
-      }
-    );
-  }, [school]);
-
   const zoningRadiusKm = safeSchool.zoning_radius_km || safeSchool.radius_zonasi_km || 5;
 
-  // Filter applications
+  // Filter applications specifically for this madrasah
   const filteredApplicants = useMemo(() => {
-    return applications.filter((app) => {
+    return schoolScopedApplicants.filter((app) => {
       // Must have valid coordinates
       if (
         app.latitude === undefined ||
@@ -199,7 +226,8 @@ export const ApplicantDistributionMap: React.FC<Props> = ({
         return false;
       }
 
-      const isInside = (app.distance_km ?? 999) <= zoningRadiusKm;
+      const applicantDist = getApplicantDistanceKm(app);
+      const isInside = applicantDist <= zoningRadiusKm;
       if (selectedZoningFilter === 'inside' && !isInside) {
         return false;
       }
@@ -210,7 +238,7 @@ export const ApplicantDistributionMap: React.FC<Props> = ({
       return true;
     });
   }, [
-    applications,
+    schoolScopedApplicants,
     students,
     searchQuery,
     selectedPathway,
@@ -218,6 +246,8 @@ export const ApplicantDistributionMap: React.FC<Props> = ({
     selectedStatusFilter,
     selectedZoningFilter,
     zoningRadiusKm,
+    safeSchool.latitude,
+    safeSchool.longitude,
   ]);
 
   // Statistics calculation for zoning reach
@@ -230,7 +260,7 @@ export const ApplicantDistributionMap: React.FC<Props> = ({
     let avgDistanceKm = 0;
     let totalDist = 0;
 
-    applications.forEach((app) => {
+    schoolScopedApplicants.forEach((app) => {
       if (
         app.latitude !== undefined &&
         app.latitude !== null &&
@@ -239,7 +269,7 @@ export const ApplicantDistributionMap: React.FC<Props> = ({
         !(app.latitude === 0 && app.longitude === 0)
       ) {
         validCoords++;
-        const dist = app.distance_km ?? 0;
+        const dist = getApplicantDistanceKm(app);
         totalDist += dist;
         if (dist <= zoningRadiusKm) {
           insideZoning++;
@@ -255,17 +285,17 @@ export const ApplicantDistributionMap: React.FC<Props> = ({
     if (nearestKm === Infinity) nearestKm = 0;
 
     return {
-      total: applications.length,
+      total: schoolScopedApplicants.length,
       mapped: validCoords,
-      unmapped: applications.length - validCoords,
+      unmapped: schoolScopedApplicants.length - validCoords,
       insideZoning,
       outsideZoning,
       zoningReachPercent: validCoords > 0 ? Math.round((insideZoning / validCoords) * 100) : 0,
       nearestKm,
       furthestKm,
-      avgDistanceKm,
+      avgDistanceKm: Math.round(avgDistanceKm * 10) / 10,
     };
-  }, [applications, zoningRadiusKm]);
+  }, [schoolScopedApplicants, zoningRadiusKm]);
 
   // Initialize Map
   useEffect(() => {
@@ -422,7 +452,8 @@ export const ApplicantDistributionMap: React.FC<Props> = ({
         bounds.extend([app.latitude, app.longitude]);
 
         const student = students[app.registration_number];
-        const isInsideZoning = (app.distance_km ?? 999) <= zoningRadiusKm;
+        const applicantDist = getApplicantDistanceKm(app);
+        const isInsideZoning = applicantDist <= zoningRadiusKm;
 
         // Color scheme based on pathway and zoning compliance
         let badgeBg = 'bg-emerald-600';
@@ -490,6 +521,7 @@ export const ApplicantDistributionMap: React.FC<Props> = ({
             <h4 class="font-extrabold text-sm text-slate-900 leading-snug">
               ${student?.name || 'Calon Murid'}
             </h4>
+            <div class="text-[10px] text-emerald-700 font-semibold mt-0.5">${safeSchool.school_name}</div>
 
             <div class="mt-2 space-y-1 text-xs text-slate-600 bg-slate-50 p-2 rounded-xl border border-slate-200">
               <div class="flex justify-between">
@@ -499,7 +531,7 @@ export const ApplicantDistributionMap: React.FC<Props> = ({
               <div class="flex justify-between">
                 <span class="text-slate-500">Jarak ke Madrasah:</span>
                 <span class="font-black ${isInsideZoning ? 'text-emerald-700' : 'text-rose-700'}">
-                  ${formatDistanceIndonesian(app.distance_km)}
+                  ${formatDistanceIndonesian(applicantDist)}
                 </span>
               </div>
               <div class="flex justify-between">
@@ -641,9 +673,9 @@ export const ApplicantDistributionMap: React.FC<Props> = ({
       </div>
 
       {/* Control Toolbar: Ringkas Cukup 1 Kotak Filter dengan Banyak Pilihan Kategori */}
-      <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+      <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 max-w-full overflow-hidden">
         {/* Search input */}
-        <div className="relative flex-1 sm:max-w-xs">
+        <div className="relative flex-1 sm:max-w-xs min-w-0">
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
@@ -654,10 +686,10 @@ export const ApplicantDistributionMap: React.FC<Props> = ({
           />
         </div>
 
-        {/* 1 Kotak Ringkas Filter Peta dengan Banyak Pilihan Kategori & Aksi Peta */}
-        <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
+        {/* 1 Kotak Ringkas Filter Peta dengan Banyak Pilihan Kategori & Aksi Peta: Geser Horizontal di HP */}
+        <div className="flex items-center gap-1.5 overflow-x-auto max-w-full w-full sm:w-auto pb-1 sm:pb-0 touch-pan-x flex-nowrap min-w-0">
           {/* Cukup 1 Kotak dengan Banyak Pilihan Kategori */}
-          <div className="relative flex-1 sm:w-72">
+          <div className="relative min-w-[210px] sm:w-72 shrink-0">
             <Filter className="w-3.5 h-3.5 text-emerald-600 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none z-10" />
             <select
               value={activeCategoryFilter}
@@ -702,7 +734,7 @@ export const ApplicantDistributionMap: React.FC<Props> = ({
             <button
               type="button"
               onClick={handleResetFilters}
-              className="h-8.5 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0"
+              className="h-8.5 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0 whitespace-nowrap"
               title="Reset seluruh filter ke pengaturan awal"
             >
               Reset
@@ -713,21 +745,21 @@ export const ApplicantDistributionMap: React.FC<Props> = ({
           <button
             type="button"
             onClick={handleRecenterSchool}
-            className="inline-flex items-center gap-1.5 h-8.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0 active:scale-95"
+            className="inline-flex items-center gap-1.5 h-8.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
             title="Kembalikan fokus ke titik koordinat madrasah"
           >
             <Compass className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Pusat Madrasah</span>
+            <span>Pusat Madrasah</span>
           </button>
 
           <button
             type="button"
             onClick={handleFitAllApplicants}
-            className="inline-flex items-center gap-1.5 h-8.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 active:scale-95"
+            className="inline-flex items-center gap-1.5 h-8.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold transition-all cursor-pointer shrink-0 whitespace-nowrap active:scale-95"
             title="Sesuaikan zoom layar mencakup seluruh pendaftar"
           >
             <Maximize2 className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Semua Titik</span>
+            <span>Semua Titik</span>
           </button>
         </div>
       </div>

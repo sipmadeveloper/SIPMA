@@ -277,6 +277,13 @@ export const ResetPasswordModal: React.FC<Props> = ({
               </div>
             </div>
 
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 text-[11px] flex items-start gap-2">
+              <span className="text-sm">📧</span>
+              <div>
+                <strong>Notifikasi Email Otomatis:</strong> Kredensial baru juga telah otomatis dikirimkan ke email pendaftar (<strong>{result.email}</strong>) lengkap dengan identitas madrasah sehingga pendaftar dapat langsung membalas ke email madrasah.
+              </div>
+            </div>
+
             <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
               {studentPhone && (
                 <a

@@ -844,7 +844,7 @@ export const StudentDashboard: React.FC<Props> = ({
               {timelineSteps.map((step, idx) => (
                 <div
                   key={step.title}
-                  className={`p-2 rounded-md border text-center relative flex flex-col items-center justify-center space-y-0.5 ${
+                  className={`p-2 rounded-md border text-center relative flex flex-col items-center justify-center space-y-0.5 min-w-0 overflow-hidden ${
                     step.status === 'completed'
                       ? 'bg-emerald-50/70 border-emerald-200 text-emerald-900'
                       : step.status === 'current'

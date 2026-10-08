@@ -608,7 +608,7 @@ export const DispensationLetterModal: React.FC<Props> = ({
 
           {/* Footer Note */}
           <div className="mt-8 pt-4 border-t border-dashed border-slate-300 text-[10px] text-slate-500 text-center">
-            * Lembar surat permohonan dispensasi ini dibuat secara otomatis melalui Sistem Informasi Penerimaan Murid Madrasah (SIPMA). Harap dibubuhi Materai Rp 10.000 dan ditandatangani oleh orang tua/wali serta calon murid sebelum diunggah pada formulir pendaftaran.
+            * Lembar surat permohonan dispensasi ini dibuat secara resmi melalui sistem digital panitia PPDB madrasah. Harap dibubuhi Materai Rp 10.000 dan ditandatangani oleh orang tua/wali serta calon murid sebelum diunggah pada formulir pendaftaran.
           </div>
         </div>
 

@@ -567,7 +567,7 @@ export const LandingPage: React.FC<Props> = ({
             <div>
               <div className="font-bold text-white">{appName} - {appTagline}</div>
               <div className="text-[11px] text-emerald-300/80">
-                Madrasah Mandiri Berprestasi &bull; Sistem Informasi Digital Terpadu
+                Madrasah Mandiri Berprestasi
               </div>
             </div>
           </div>

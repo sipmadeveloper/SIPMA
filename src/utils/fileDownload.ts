@@ -178,7 +178,7 @@ export async function downloadDocumentFile(doc: DocumentItem, accountName?: stri
     }
 
     // 5. Fallback printable information file
-    const mockContent = `SIPMA - SISTEM INFORMASI PPDB MADRASAH
+    const mockContent = `SIPMA - PENERIMAAN MURID BARU MADRASAH
 =====================================================
 DOKUMEN PERSYARATAN RESMI PPDB
 -----------------------------------------------------

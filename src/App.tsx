@@ -666,10 +666,15 @@ export default function App() {
   };
 
   // Get active school for current user with fallback
-  const currentSchool =
-    schools.find((s) => s.school_id === currentUser?.school_id) ||
-    schools[0] ||
-    storageService.getSchools()[0];
+  const currentSchool = useMemo(() => {
+    if (currentUser?.school_id) {
+      const match = schools.find((s) => s.school_id === currentUser.school_id);
+      if (match) return match;
+      const matchStorage = storageService.getSchoolById(currentUser.school_id);
+      if (matchStorage) return matchStorage;
+    }
+    return schools[0] || storageService.getSchools()[0];
+  }, [currentUser?.school_id, schools]);
 
   const currentActiveTab = useMemo(() => {
     if (currentUser?.role === 'admin_pusat') {

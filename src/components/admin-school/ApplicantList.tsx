@@ -266,10 +266,10 @@ export const ApplicantList: React.FC<Props> = ({
   return (
     <div className="space-y-4" id="sipma-applicant-list">
       {/* Search & Practical Compact Filter Toolbar */}
-      <div className="bg-white p-2 sm:p-2.5 rounded-xl border border-slate-200/90 shadow-2xs">
-        <div className="flex flex-wrap lg:flex-nowrap items-center gap-1.5 sm:gap-2">
+      <div className="bg-white p-2 sm:p-2.5 rounded-xl border border-slate-200/90 shadow-2xs max-w-full overflow-hidden">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5 sm:gap-2 w-full min-w-0">
           {/* Search Input */}
-          <div className="relative flex-1 min-w-[180px]">
+          <div className="relative flex-1 min-w-0">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             <input
               type="text"
@@ -289,13 +289,13 @@ export const ApplicantList: React.FC<Props> = ({
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 overflow-x-auto max-w-full w-full sm:w-auto shrink-0 pb-1 sm:pb-0 touch-pan-x flex-nowrap min-w-0">
             {/* Pathway filter */}
             <select
               value={pathwayFilter}
               onChange={(e) => setPathwayFilter(e.target.value)}
               aria-label="Filter Jalur Pendaftaran"
-              className={`h-8.5 px-2 bg-slate-50 border rounded-lg text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none cursor-pointer ${
+              className={`h-8.5 px-2 bg-slate-50 border rounded-lg text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none cursor-pointer shrink-0 whitespace-nowrap ${
                 pathwayFilter !== 'all' ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-bold' : 'border-slate-300 text-slate-700'
               }`}
             >
@@ -311,7 +311,7 @@ export const ApplicantList: React.FC<Props> = ({
               value={verificationFilter}
               onChange={(e) => setVerificationFilter(e.target.value)}
               aria-label="Filter Status Verifikasi"
-              className={`h-8.5 px-2 bg-slate-50 border rounded-lg text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none cursor-pointer ${
+              className={`h-8.5 px-2 bg-slate-50 border rounded-lg text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none cursor-pointer shrink-0 whitespace-nowrap ${
                 verificationFilter !== 'all' ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-bold' : 'border-slate-300 text-slate-700'
               }`}
             >
@@ -327,7 +327,7 @@ export const ApplicantList: React.FC<Props> = ({
               value={selectionFilter}
               onChange={(e) => setSelectionFilter(e.target.value as any)}
               aria-label="Filter Hasil Seleksi"
-              className={`h-8.5 px-2 bg-slate-50 border rounded-lg text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none cursor-pointer ${
+              className={`h-8.5 px-2 bg-slate-50 border rounded-lg text-xs font-medium focus:ring-2 focus:ring-emerald-500 outline-none cursor-pointer shrink-0 whitespace-nowrap ${
                 selectionFilter !== 'all' ? 'border-emerald-500 bg-emerald-50 text-emerald-900 font-bold' : 'border-slate-300 text-slate-700'
               }`}
               title="Filter hasil seleksi"
@@ -348,7 +348,7 @@ export const ApplicantList: React.FC<Props> = ({
                   setVerificationFilter('all');
                   setSelectionFilter('all');
                 }}
-                className="h-8.5 px-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0"
+                className="h-8.5 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0 whitespace-nowrap"
                 title="Bersihkan Semua Filter"
               >
                 Reset
@@ -359,11 +359,11 @@ export const ApplicantList: React.FC<Props> = ({
             <button
               type="button"
               onClick={() => setIsScannerOpen(true)}
-              className="h-8.5 inline-flex items-center gap-1.5 px-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0"
+              className="h-8.5 inline-flex items-center gap-1.5 px-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition-all shadow-2xs cursor-pointer shrink-0 whitespace-nowrap"
               title="Pindai QR Code Bukti Pendaftaran calon murid untuk verifikasi berkas otomatis"
             >
               <QrCode className="w-3.5 h-3.5 text-emerald-300" />
-              <span className="hidden sm:inline">Pindai QR</span>
+              <span>Pindai QR</span>
             </button>
 
             {/* Tombol Aksi Unduh Excel: Cukup Gambar Icon File Excel Hijau dengan Tanda Panah Kebawah Tanpa Tulisan */}
@@ -379,9 +379,9 @@ export const ApplicantList: React.FC<Props> = ({
                 <ArrowDown className="w-2.5 h-2.5 text-emerald-700 absolute -bottom-1 -right-1 bg-white rounded-full ring-1 ring-emerald-500 stroke-[3]" />
               </span>
             </button>
+          </div>
         </div>
       </div>
-    </div>
 
       {/* Modern Data Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
@@ -487,16 +487,16 @@ export const ApplicantList: React.FC<Props> = ({
                               <User className="w-4 h-4 text-slate-400" />
                             )}
                           </button>
-                          <div className="min-w-0">
+                          <div className="min-w-0 max-w-[180px] sm:max-w-[260px]">
                             <button
                               type="button"
                               onClick={() => setSelectedAppForDetail(app)}
-                              className="font-bold text-slate-900 truncate hover:text-emerald-700 hover:underline cursor-pointer text-left block"
+                              className="font-bold text-slate-900 truncate hover:text-emerald-700 hover:underline cursor-pointer text-left block w-full"
                               title="Klik untuk melihat Detail Profil Calon Murid (Terpisah)"
                             >
                               {student?.name || '-'}
                             </button>
-                            <div className="text-[11px] text-slate-500 font-mono">NIK: {student?.nik || '-'}</div>
+                            <div className="text-[11px] text-slate-500 font-mono truncate">NIK: {student?.nik || '-'}</div>
                           </div>
                         </div>
                       </td>

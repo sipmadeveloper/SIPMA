@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Plus, Edit, Check, X, MapPin, Search, School as SchoolIcon, Trash2, AlertTriangle, Users, FileText, ShieldAlert, Upload, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { School } from '../../types/sipma';
 import { normalizeImageUrl, handleImageError, compressAndResizeImage } from '../../utils/imageUrl';
+import { normalizeIndonesianPhone, formatPhoneOnChange } from '../../utils/phone';
 import { storageService } from '../../services/storageService';
 import { useFeedback } from '../../context/FeedbackContext';
 
@@ -88,7 +89,8 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingSchool) return;
-    onSaveSchool(editingSchool);
+    const cleanPhone = normalizeIndonesianPhone(editingSchool.contact_phone);
+    onSaveSchool({ ...editingSchool, contact_phone: cleanPhone });
     setEditingSchool(null);
     setIsNew(false);
   };
@@ -483,14 +485,15 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
                   <input
                     type="text"
                     value={editingSchool.contact_phone || ''}
-                    onChange={(e) => setEditingSchool({ ...editingSchool, contact_phone: e.target.value })}
-                    placeholder="Contoh: 021-1234567 atau 08123456789"
+                    onChange={(e) => setEditingSchool({ ...editingSchool, contact_phone: formatPhoneOnChange(e.target.value) })}
+                    onBlur={() => setEditingSchool({ ...editingSchool, contact_phone: normalizeIndonesianPhone(editingSchool.contact_phone) })}
+                    placeholder="Contoh: 081234567890"
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none"
                   />
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="block font-semibold text-slate-700 mb-1">Logo Madrasah (Upload / URL)</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Logo Resmi Madrasah (Upload Google Drive)</label>
                   <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
                     {editingSchool.logo_url ? (
                       <div className="relative group shrink-0">
@@ -529,7 +532,7 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
                           ) : (
                             <Upload className="w-3.5 h-3.5" />
                           )}
-                          <span>{isUploadingLogo ? 'Mengunggah ke Drive...' : 'Pilih Gambar Logo'}</span>
+                          <span>{isUploadingLogo ? 'Mengunggah ke Drive...' : 'Unggah Gambar Logo'}</span>
                           <input
                             type="file"
                             accept="image/*"
@@ -545,13 +548,9 @@ export const SchoolManagement: React.FC<Props> = ({ schools, onSaveSchool, onDel
                           />
                         </label>
                       </div>
-                      <input
-                        type="url"
-                        placeholder="Atau tempel URL gambar logo..."
-                        value={editingSchool.logo_url || ''}
-                        onChange={(e) => setEditingSchool({ ...editingSchool, logo_url: e.target.value })}
-                        className="w-full px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-xs outline-none"
-                      />
+                      <p className="text-[11px] text-slate-500">
+                        Gambar diunggah dan disimpan langsung ke Google Drive & Cloud Database madrasah.
+                      </p>
                     </div>
                   </div>
                 </div>

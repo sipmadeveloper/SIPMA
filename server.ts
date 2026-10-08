@@ -296,6 +296,24 @@ export function broadcastServerDbChange(reason: string = 'data_changed') {
   }
 }
 
+function normalizeIndonesianPhone(phone: any): string {
+  if (phone === null || phone === undefined) return '';
+  let str = String(phone).trim();
+  if (!str) return '';
+  if (str.startsWith("'")) str = str.substring(1).trim();
+  const hasPlus = str.startsWith('+');
+  let digits = str.replace(/[^\d]/g, '');
+  if (!digits) return '';
+  if (hasPlus && digits.startsWith('62')) {
+    digits = '0' + digits.slice(2);
+  } else if (digits.startsWith('62')) {
+    digits = '0' + digits.slice(2);
+  } else if (digits.startsWith('8')) {
+    digits = '0' + digits;
+  }
+  return digits;
+}
+
 // Auto-enrich schools with official contact email & phone to guarantee correct sender identity
 function enrichServerDbSchools() {
   try {
@@ -1305,6 +1323,7 @@ app.post('/api/data/sync', async (req: Request, res: Response) => {
           const ex = existingUsers.find((eu: any) => eu.user_id === pu.user_id || (eu.email && pu.email && eu.email.toLowerCase() === pu.email.toLowerCase()) || (eu.registration_number && pu.registration_number && eu.registration_number === pu.registration_number));
           return {
             ...pu,
+            phone: pu.phone ? normalizeIndonesianPhone(pu.phone) : (ex?.phone ? normalizeIndonesianPhone(ex.phone) : ''),
             photo_url: pu.photo_url !== undefined ? pu.photo_url : (ex?.photo_url || ''),
           };
         });
@@ -1317,6 +1336,7 @@ app.post('/api/data/sync', async (req: Request, res: Response) => {
           const ex = existingStudents[k];
           cleanStudents[k] = {
             ...(v as any),
+            phone: (v as any)?.phone ? normalizeIndonesianPhone((v as any).phone) : (ex?.phone ? normalizeIndonesianPhone(ex.phone) : ''),
             photo_url: (v as any)?.photo_url !== undefined ? (v as any).photo_url : (ex?.photo_url || ''),
           };
         }
@@ -1327,7 +1347,13 @@ app.post('/api/data/sync', async (req: Request, res: Response) => {
       const cleanParents: Record<string, any> = {};
       for (const [k, v] of Object.entries(payload.parents)) {
         if (!isDemoStudentRecord(k, (v as any)?.student_id)) {
-          cleanParents[k] = v;
+          const pObj = v as any;
+          cleanParents[k] = {
+            ...pObj,
+            father_phone: pObj?.father_phone ? normalizeIndonesianPhone(pObj.father_phone) : '',
+            mother_phone: pObj?.mother_phone ? normalizeIndonesianPhone(pObj.mother_phone) : '',
+            guardian_phone: pObj?.guardian_phone ? normalizeIndonesianPhone(pObj.guardian_phone) : '',
+          };
         }
       }
       serverDb.parents = cleanParents;
@@ -1394,6 +1420,7 @@ app.post('/api/data/sync', async (req: Request, res: Response) => {
         const ex = existingSchools.find((s: any) => s.school_id === ps.school_id || s.school_code === ps.school_code);
         return {
           ...ps,
+          contact_phone: ps.contact_phone ? normalizeIndonesianPhone(ps.contact_phone) : (ex?.contact_phone ? normalizeIndonesianPhone(ex.contact_phone) : ''),
           logo_url: ps.logo_url !== undefined ? ps.logo_url : (ex?.logo_url || ''),
         };
       });
@@ -2786,6 +2813,10 @@ app.post('/api/user/update-profile', (req: Request, res: Response) => {
     let updatedUser: any = null;
     const now = new Date().toISOString();
 
+    if (updates.phone !== undefined) {
+      updates.phone = normalizeIndonesianPhone(updates.phone);
+    }
+
     if (idx >= 0) {
       serverDb.users[idx] = {
         ...serverDb.users[idx],
@@ -2984,6 +3015,153 @@ app.post('/api/notifications/send-status-email', async (req: Request, res: Respo
     res.status(500).json({
       success: false,
       message: `Gagal memproses notifikasi email: ${err?.message || 'Server error'}`,
+    });
+  }
+});
+
+// 5d. Notifikasi Resmi Otomatis ke Email Madrasah Tujuan saat Ada Pendaftar Baru Masuk
+app.post('/api/notifications/notify-school-new-applicant', async (req: Request, res: Response) => {
+  try {
+    const {
+      registration_number,
+      student_name,
+      student_email,
+      pathway,
+      school_id,
+      school_name,
+      school_email,
+      school_phone,
+      school_address,
+      nik,
+      nisn,
+      school_origin,
+      parent_name,
+      student_phone,
+      distance_km,
+      submission_date,
+      app_name,
+      app_logo_url,
+    } = req.body;
+
+    const settings = serverDb.settings || {};
+    const gasUrl = req.body.gas_web_app_url || settings.gas_web_app_url;
+    const ssId = req.body.spreadsheet_id || settings.spreadsheet_id;
+
+    // Resolve target school
+    let targetSchool: any = null;
+    if (school_id && serverDb.schools) {
+      targetSchool = serverDb.schools.find((s: any) => s.school_id === school_id);
+    }
+    if (!targetSchool && school_name && serverDb.schools) {
+      targetSchool = serverDb.schools.find((s: any) => s.school_name?.toLowerCase() === school_name?.toLowerCase());
+    }
+    if (!targetSchool && registration_number && serverDb.applications) {
+      const app = serverDb.applications.find((a: any) => a.registration_number === registration_number);
+      if (app?.school_id && serverDb.schools) {
+        targetSchool = serverDb.schools.find((s: any) => s.school_id === app.school_id);
+      }
+    }
+
+    const finalSchoolName = school_name || targetSchool?.school_name || 'Madrasah Pilihan';
+    let finalSchoolEmail = school_email || targetSchool?.contact_email || '';
+    let finalSchoolPhone = school_phone || targetSchool?.contact_phone || '';
+    const finalSchoolAddress = school_address || targetSchool?.address || '';
+
+    if (!finalSchoolEmail) {
+      const schId = targetSchool?.school_id || school_id;
+      const schAdmin = serverDb.users?.find((u: any) =>
+        (schId && u.school_id === schId) &&
+        (u.role === 'admin_sekolah' || u.role === 'operator_sekolah')
+      );
+      if (schAdmin?.email) {
+        finalSchoolEmail = schAdmin.email;
+      } else {
+        finalSchoolEmail = 'mi02jatibarang.brebes@gmail.com';
+      }
+    }
+
+    let finalAppLogo = app_logo_url || settings.app_logo || '';
+    if (finalAppLogo.includes('drive.google.com') || (finalAppLogo.length > 20 && !finalAppLogo.includes('/') && !finalAppLogo.startsWith('data:'))) {
+      const driveId = extractDriveFileId(finalAppLogo) || finalAppLogo;
+      finalAppLogo = `https://lh3.googleusercontent.com/d/${driveId}`;
+    }
+
+    const payload = {
+      action: 'notifySchoolNewApplicant',
+      spreadsheet_id: ssId,
+      data: {
+        registration_number,
+        student_name: student_name || 'Calon Murid',
+        student_email: student_email || '',
+        pathway: pathway || 'zonasi',
+        school_id: targetSchool?.school_id || school_id || '',
+        school_name: finalSchoolName,
+        school_email: finalSchoolEmail,
+        school_phone: finalSchoolPhone,
+        school_address: finalSchoolAddress,
+        nik: nik || '',
+        nisn: nisn || '',
+        school_origin: school_origin || '',
+        parent_name: parent_name || '',
+        student_phone: student_phone || '',
+        distance_km: distance_km || 0,
+        submission_date: submission_date || new Date().toISOString(),
+        app_name: app_name || settings.app_name || 'SIPMA',
+        app_logo_url: finalAppLogo,
+      },
+    };
+
+    let gasSent = false;
+    let gasMessage = '';
+
+    if (gasUrl && gasUrl.startsWith('http')) {
+      try {
+        const gasRes = await fetch(gasUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(payload),
+          redirect: 'follow',
+        });
+        const parsed = await parseGasJsonResponse(gasRes);
+        if (parsed.isJson && parsed.data && parsed.data.success) {
+          gasSent = true;
+          gasMessage = parsed.data.message || 'Notifikasi email berhasil dikirim ke madrasah via GAS.';
+        } else {
+          gasMessage = parsed.data?.message || 'Gagal mengirim email notifikasi ke madrasah via GAS.';
+        }
+      } catch (err: any) {
+        gasMessage = err?.message || 'Koneksi ke GAS gagal';
+      }
+    }
+
+    const logItem = {
+      log_id: `LOG-MAIL-SCH-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      user_id: 'SYSTEM',
+      username: 'Sistem Notifikasi PPDB',
+      role: 'system',
+      action: 'NOTIFY_SCHOOL_NEW_APPLICANT',
+      target: finalSchoolEmail,
+      description: `Notifikasi email pendaftar baru [${student_name} - ${registration_number}] dikirim ke madrasah '${finalSchoolName}' (${finalSchoolEmail}). Balas langsung ke: ${student_email || 'email calon murid'}. ${gasSent ? '(Terkirim via GAS)' : '(Tersimpan)'}`,
+      status: gasSent ? 'success' : 'queued',
+    };
+
+    if (!serverDb.audit_logs) serverDb.audit_logs = [];
+    serverDb.audit_logs.unshift(logItem);
+    persistServerDb();
+
+    res.json({
+      success: true,
+      message: gasSent ? gasMessage : `Notifikasi pendaftar baru untuk madrasah '${finalSchoolName}' berhasil disiapkan.`,
+      school_email: finalSchoolEmail,
+      school_name: finalSchoolName,
+      registration_number,
+      reply_to: student_email,
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      message: `Gagal memproses notifikasi ke madrasah: ${err?.message || 'Server error'}`,
     });
   }
 });

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User, Mail, Phone, Lock, CreditCard, ArrowRight, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { storageService } from '../../services/storageService';
+import { normalizeIndonesianPhone, formatPhoneOnChange } from '../../utils/phone';
 import { SystemSettings } from '../../types/sipma';
 import { normalizeImageUrl } from '../../utils/imageUrl';
 import { useFeedback } from '../../context/FeedbackContext';
@@ -47,11 +48,12 @@ export const RegisterPage: React.FC<Props> = ({
     }
 
     try {
+      const normalizedPhone = normalizeIndonesianPhone(phone);
       const { registration_number } = storageService.registerStudentUser({
         name,
         nik,
         email,
-        phone,
+        phone: normalizedPhone,
         password: password.trim(),
       });
 
@@ -170,7 +172,8 @@ export const RegisterPage: React.FC<Props> = ({
                 <input
                   type="tel"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => setPhone(formatPhoneOnChange(e.target.value))}
+                  onBlur={() => setPhone(normalizeIndonesianPhone(phone))}
                   placeholder="0812xxxxxxxx"
                   className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
                 />

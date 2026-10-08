@@ -24,8 +24,8 @@ export const AuditLogsView: React.FC<Props> = ({ logs }) => {
   return (
     <div className="space-y-4" id="sipma-audit-logs">
       {/* Filter Bar (Compact & Practical) */}
-      <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
-        <div className="w-full sm:w-80 relative">
+      <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 max-w-full overflow-hidden">
+        <div className="w-full sm:w-80 relative min-w-0">
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
@@ -45,12 +45,12 @@ export const AuditLogsView: React.FC<Props> = ({ logs }) => {
           )}
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0 overflow-x-auto max-w-full w-full sm:w-auto pb-1 sm:pb-0 touch-pan-x flex-nowrap min-w-0">
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
             aria-label="Filter berdasarkan Role Akun"
-            className="h-8.5 px-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-emerald-500 outline-none cursor-pointer"
+            className="h-8.5 px-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-emerald-500 outline-none cursor-pointer shrink-0 whitespace-nowrap"
           >
             <option value="all">Semua Role</option>
             <option value="calon_murid">Calon Murid</option>
@@ -65,7 +65,7 @@ export const AuditLogsView: React.FC<Props> = ({ logs }) => {
                 setSearch('');
                 setRoleFilter('all');
               }}
-              className="h-8.5 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0"
+              className="h-8.5 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0 whitespace-nowrap"
             >
               Reset
             </button>

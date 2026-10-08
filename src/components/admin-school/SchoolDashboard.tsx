@@ -11,7 +11,6 @@ import {
   Settings,
   Award,
   Layers,
-  ChevronRight,
   TrendingUp,
   User,
   UserCheck,
@@ -117,32 +116,41 @@ export const SchoolDashboard: React.FC<Props> = ({
     }
   }, [highlightRegNumber, activeTab]);
 
-  const activeSchool: School = school || storageService.getSchools()[0] || {
-    school_id: '',
-    npsn: '',
-    school_name: 'Madrasah',
-    level: 'MI',
-    status: 'active',
-    address: '-',
-    village: '',
-    district: '',
-    city: '',
-    province: '',
-    latitude: -6.964,
-    longitude: 109.056,
-    radius_zonasi_km: 1,
-    zoning_radius_km: 1,
-    quota_total: 0,
-    quota_zonasi: 0,
-    quota_afirmasi: 0,
-    quota_prestasi: 0,
-    quota_mutasi: 0,
-  };
+  const activeSchool: School = useMemo(() => {
+    if (currentUser?.school_id) {
+      const byUser = storageService.getSchoolById(currentUser.school_id);
+      if (byUser) return byUser;
+    }
+    return (
+      school || storageService.getSchools()[0] || {
+        school_id: '',
+        npsn: '',
+        school_name: 'Madrasah',
+        level: 'MI',
+        status: 'active',
+        address: '-',
+        village: '',
+        district: '',
+        city: '',
+        province: '',
+        latitude: -6.964,
+        longitude: 109.056,
+        radius_zonasi_km: 1,
+        zoning_radius_km: 1,
+        quota_total: 0,
+        quota_zonasi: 0,
+        quota_afirmasi: 0,
+        quota_prestasi: 0,
+        quota_mutasi: 0,
+      }
+    );
+  }, [school, currentUser?.school_id]);
 
-  // School-specific applications (only students that have selected this madrasah)
+  // School-specific applications (strictly only students who registered to this madrasah)
   const schoolApps = useMemo(() => {
+    if (!activeSchool?.school_id) return [];
     return applications.filter((a) => a.school_id === activeSchool.school_id);
-  }, [applications, activeSchool.school_id]);
+  }, [applications, activeSchool?.school_id]);
 
   // KPI Calculations
   const stats = useMemo(() => {
@@ -214,7 +222,7 @@ export const SchoolDashboard: React.FC<Props> = ({
     <div className="space-y-4" id="sipma-school-dashboard">
       {/* ================= TAB 1: OVERVIEW ================= */}
       {activeTab === 'overview' && (
-        <div className="space-y-4">
+        <div key="overview" className="space-y-4 animate-tab-pane">
           {/* Top Banner (Hanya Tampil di Halaman Awal / Overview) */}
           <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 text-white p-4 sm:p-5 rounded-xl shadow-xs border border-slate-750 w-full overflow-hidden">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -238,37 +246,37 @@ export const SchoolDashboard: React.FC<Props> = ({
 
           {/* KPI Cards Grid - Kotak Kecil Rapi Responsif Menyesuaikan Layar */}
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 sm:gap-2.5 w-full">
-            <div className="bg-gradient-to-br from-slate-50 to-white p-2 sm:p-2.5 rounded-xl border border-slate-200/90 shadow-2xs text-center flex flex-col justify-center min-w-[70px]">
+            <div className="bg-gradient-to-br from-slate-50 to-white p-2 sm:p-2.5 rounded-xl border border-slate-200/90 shadow-2xs text-center flex flex-col justify-center min-w-0">
               <div className="text-[9px] sm:text-[10px] text-slate-700 font-bold uppercase tracking-wider truncate">Total</div>
               <div className="text-base sm:text-xl font-black text-slate-950 leading-tight my-0.5">{stats.total}</div>
               <div className="text-[8px] sm:text-[9px] text-slate-400 font-medium truncate">Pendaftar</div>
             </div>
 
-            <div className="bg-gradient-to-br from-emerald-50/80 to-white p-2 sm:p-2.5 rounded-xl border border-emerald-200/80 shadow-2xs text-center flex flex-col justify-center min-w-[70px]">
+            <div className="bg-gradient-to-br from-emerald-50/80 to-white p-2 sm:p-2.5 rounded-xl border border-emerald-200/80 shadow-2xs text-center flex flex-col justify-center min-w-0">
               <div className="text-[9px] sm:text-[10px] text-emerald-900 font-bold uppercase tracking-wider truncate">Zonasi</div>
               <div className="text-base sm:text-xl font-black text-emerald-950 leading-tight my-0.5">{stats.zonasi}</div>
               <div className="text-[8px] sm:text-[9px] text-emerald-700/80 font-medium truncate">K: {activeSchool.quota_zonasi}</div>
             </div>
 
-            <div className="bg-gradient-to-br from-purple-50/80 to-white p-2 sm:p-2.5 rounded-xl border border-purple-200/80 shadow-2xs text-center flex flex-col justify-center min-w-[70px]">
+            <div className="bg-gradient-to-br from-purple-50/80 to-white p-2 sm:p-2.5 rounded-xl border border-purple-200/80 shadow-2xs text-center flex flex-col justify-center min-w-0">
               <div className="text-[9px] sm:text-[10px] text-purple-900 font-bold uppercase tracking-wider truncate">Afirmasi</div>
               <div className="text-base sm:text-xl font-black text-purple-950 leading-tight my-0.5">{stats.afirmasi}</div>
               <div className="text-[8px] sm:text-[9px] text-purple-700/80 font-medium truncate">K: {activeSchool.quota_afirmasi}</div>
             </div>
 
-            <div className="bg-gradient-to-br from-amber-50/80 to-white p-2 sm:p-2.5 rounded-xl border border-amber-200/80 shadow-2xs text-center flex flex-col justify-center min-w-[70px]">
+            <div className="bg-gradient-to-br from-amber-50/80 to-white p-2 sm:p-2.5 rounded-xl border border-amber-200/80 shadow-2xs text-center flex flex-col justify-center min-w-0">
               <div className="text-[9px] sm:text-[10px] text-amber-900 font-bold uppercase tracking-wider truncate">Prestasi</div>
               <div className="text-base sm:text-xl font-black text-amber-950 leading-tight my-0.5">{stats.prestasi}</div>
               <div className="text-[8px] sm:text-[9px] text-amber-700/80 font-medium truncate">K: {activeSchool.quota_prestasi || 40}</div>
             </div>
 
-            <div className="bg-gradient-to-br from-blue-50/80 to-white p-2 sm:p-2.5 rounded-xl border border-blue-200/80 shadow-2xs text-center flex flex-col justify-center min-w-[70px]">
+            <div className="bg-gradient-to-br from-blue-50/80 to-white p-2 sm:p-2.5 rounded-xl border border-blue-200/80 shadow-2xs text-center flex flex-col justify-center min-w-0">
               <div className="text-[9px] sm:text-[10px] text-blue-900 font-bold uppercase tracking-wider truncate">Mutasi</div>
               <div className="text-base sm:text-xl font-black text-blue-950 leading-tight my-0.5">{stats.mutasi}</div>
               <div className="text-[8px] sm:text-[9px] text-blue-700/80 font-medium truncate">K: {activeSchool.quota_mutasi || 20}</div>
             </div>
 
-            <div className="bg-gradient-to-br from-teal-50/80 to-white p-2 sm:p-2.5 rounded-xl border border-teal-200/80 shadow-2xs text-center flex flex-col justify-center min-w-[70px]">
+            <div className="bg-gradient-to-br from-teal-50/80 to-white p-2 sm:p-2.5 rounded-xl border border-teal-200/80 shadow-2xs text-center flex flex-col justify-center min-w-0">
               <div className="text-[9px] sm:text-[10px] text-teal-900 font-bold uppercase tracking-wider truncate">Verifikasi</div>
               <div className="text-base sm:text-xl font-black text-teal-950 leading-tight my-0.5">{stats.verified}</div>
               <div className="text-[8px] sm:text-[9px] text-teal-700/80 font-medium truncate">{stats.waiting} tunda</div>
@@ -323,97 +331,77 @@ export const SchoolDashboard: React.FC<Props> = ({
               </div>
             </div>
           </div>
-
-          {/* Recent Applicants Section */}
-          <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-slate-900">Pendaftar Terbaru</h3>
-              <button
-                type="button"
-                onClick={() => setActiveTab('applicants')}
-                className="self-start sm:self-auto text-xs font-bold text-emerald-700 hover:underline flex items-center gap-1 cursor-pointer"
-              >
-                <span>Lihat Semua Pendaftar</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <ApplicantList
-              applications={schoolApps.slice(0, 5)}
-              students={students}
-              parents={parents}
-              schoolOrigins={schoolOrigins}
-              addresses={addresses}
-              documents={documents}
-              school={school}
-              onVerify={onVerify}
-              onViewPrint={onViewPrint}
-              onDeleteApplicant={onDeleteApplicant}
-            />
-          </div>
         </div>
       )}
 
       {/* ================= TAB 2: APPLICANTS ================= */}
       {activeTab === 'applicants' && (
-        <ApplicantList
-          applications={schoolApps}
-          students={students}
-          parents={parents}
-          schoolOrigins={schoolOrigins}
-          addresses={addresses}
-          documents={documents}
-          school={activeSchool}
-          onVerify={onVerify}
-          onViewPrint={onViewPrint}
-          onExportCsv={onExportCsv}
-          onExportExcel={onExportExcel}
-          onDeleteApplicant={onDeleteApplicant}
-          highlightRegNumber={highlightRegNumber}
-          onClearHighlight={onClearHighlight}
-        />
+        <div key="applicants" className="animate-tab-pane">
+          <ApplicantList
+            applications={schoolApps}
+            students={students}
+            parents={parents}
+            schoolOrigins={schoolOrigins}
+            addresses={addresses}
+            documents={documents}
+            school={activeSchool}
+            onVerify={onVerify}
+            onViewPrint={onViewPrint}
+            onExportCsv={onExportCsv}
+            onExportExcel={onExportExcel}
+            onDeleteApplicant={onDeleteApplicant}
+            highlightRegNumber={highlightRegNumber}
+            onClearHighlight={onClearHighlight}
+          />
+        </div>
       )}
 
       {/* ================= TAB 3: SELECTION ================= */}
       {activeTab === 'selection' && (
-        <SelectionManagement
-          school={activeSchool}
-          applications={schoolApps}
-          students={students}
-          schoolOrigins={schoolOrigins}
-          parents={parents}
-          addresses={addresses}
-          onUpdateStatus={onUpdateSelection}
-          onBulkUpdate={onBulkSelection}
-        />
+        <div key="selection" className="animate-tab-pane">
+          <SelectionManagement
+            school={activeSchool}
+            applications={schoolApps}
+            students={students}
+            schoolOrigins={schoolOrigins}
+            parents={parents}
+            addresses={addresses}
+            onUpdateStatus={onUpdateSelection}
+            onBulkUpdate={onBulkSelection}
+          />
+        </div>
       )}
 
       {/* ================= TAB: DIGITAL ARCHIVES ================= */}
       {activeTab === 'archives' && (
-        <DigitalArchiveManagement
-          school={activeSchool}
-          applications={applications}
-          students={students}
-          parents={parents}
-          documents={documents}
-          currentUser={currentUser}
-          onRefreshData={onRefreshData}
-          initialMainTab={archiveSubTab}
-        />
+        <div key="archives" className="animate-tab-pane">
+          <DigitalArchiveManagement
+            school={activeSchool}
+            applications={applications}
+            students={students}
+            parents={parents}
+            documents={documents}
+            currentUser={currentUser}
+            onRefreshData={onRefreshData}
+            initialMainTab={archiveSubTab}
+          />
+        </div>
       )}
 
       {/* ================= TAB: OPERATORS ================= */}
       {activeTab === 'operators' && (
-        <SchoolOperatorManagement
-          school={activeSchool}
-          currentUser={currentUser}
-          onRefreshData={onRefreshData}
-        />
+        <div key="operators" className="animate-tab-pane">
+          <SchoolOperatorManagement
+            school={activeSchool}
+            currentUser={currentUser}
+            onRefreshData={onRefreshData}
+          />
+        </div>
       )}
 
       {/* ================= TAB 4: DISTRIBUTION MAP ================= */}
       {activeTab === 'map' && (
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+        <div key="map" className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4 animate-tab-pane">
           <div className="flex justify-between items-center border-b border-slate-100 pb-2.5">
             <div>
               <h3 className="text-sm font-bold text-slate-900">
@@ -435,7 +423,9 @@ export const SchoolDashboard: React.FC<Props> = ({
 
       {/* ================= TAB 5: SETTINGS ================= */}
       {activeTab === 'settings' && (
-        <SchoolSettings school={activeSchool} onSave={onSaveSchool} />
+        <div key="settings" className="animate-tab-pane">
+          <SchoolSettings school={activeSchool} onSave={onSaveSchool} />
+        </div>
       )}
     </div>
   );

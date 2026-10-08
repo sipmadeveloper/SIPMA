@@ -22,6 +22,7 @@ import {
 import { User as UserType, School } from '../../types/sipma';
 import { storageService } from '../../services/storageService';
 import { useFeedback } from '../../context/FeedbackContext';
+import { normalizeIndonesianPhone, formatPhoneOnChange } from '../../utils/phone';
 
 interface Props {
   school: School;
@@ -151,7 +152,7 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
           user_id: editingOperator ? editingOperator.user_id : undefined,
           name: formData.name,
           email: formData.email,
-          phone: formData.phone,
+          phone: normalizeIndonesianPhone(formData.phone),
           school_id: school.school_id,
           nip: formData.nip,
           position: formData.position,
@@ -293,8 +294,8 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
       </div>
 
       {/* Search, Filter & Action Bar */}
-      <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
-        <div className="relative flex-1">
+      <div className="bg-white p-2.5 sm:p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 max-w-full overflow-hidden">
+        <div className="relative flex-1 min-w-0">
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
@@ -305,12 +306,12 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
           />
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+        <div className="flex items-center gap-1.5 shrink-0 overflow-x-auto max-w-full w-full sm:w-auto pb-1 sm:pb-0 touch-pan-x flex-nowrap min-w-0">
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as any)}
             aria-label="Filter status akses operator"
-            className="h-8.5 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 cursor-pointer"
+            className="h-8.5 px-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 cursor-pointer shrink-0 whitespace-nowrap"
           >
             <option value="all">Semua Status ({schoolOperators.length})</option>
             <option value="active">Hanya Aktif ({activeCount})</option>
@@ -324,7 +325,7 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
                 setSearchQuery('');
                 setStatusFilter('all');
               }}
-              className="h-8.5 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0"
+              className="h-8.5 px-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold transition-colors cursor-pointer shrink-0 whitespace-nowrap"
             >
               Reset
             </button>
@@ -598,7 +599,8 @@ export const SchoolOperatorManagement: React.FC<Props> = ({
                   <input
                     type="tel"
                     value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, phone: formatPhoneOnChange(e.target.value) })}
+                    onBlur={() => setFormData({ ...formData, phone: normalizeIndonesianPhone(formData.phone) })}
                     placeholder="Contoh: 081234567890"
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-teal-500 focus:bg-white outline-none font-medium text-slate-900"
                   />

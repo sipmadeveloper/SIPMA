@@ -166,7 +166,7 @@ export const CentralDashboard: React.FC<Props> = ({
     <div className="space-y-4" id="sipma-central-dashboard">
       {/* ================= TAB 1: OVERVIEW ================= */}
       {activeTab === 'overview' && (
-        <div className="space-y-4">
+        <div key="overview" className="space-y-4 animate-tab-pane">
           {/* Top Banner (Hanya Tampil di Halaman Awal / Overview) */}
           <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 text-white p-4 sm:p-5 rounded-xl shadow-xs border border-slate-750 w-full overflow-hidden">
             <div className="space-y-1">
@@ -174,32 +174,32 @@ export const CentralDashboard: React.FC<Props> = ({
                 Pusat Komando & Monitoring PPDB Madrasah
               </h1>
               <p className="text-xs text-slate-300 max-w-5xl leading-relaxed break-words">
-                Monitoring penerimaan murid baru madrasah se-wilayah, rekapitulasi kuota, audit log, dan sinkronisasi data terpadu.
+                Monitoring penerimaan murid baru madrasah se-wilayah, rekapitulasi kuota, audit log, dan sinkronisasi data.
               </p>
             </div>
           </div>
 
           {/* KPI Cards - Kotak Kecil Rapi Responsif Menyesuaikan Layar */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2.5 w-full">
-            <div className="bg-gradient-to-br from-indigo-50/80 to-white p-2 sm:p-2.5 rounded-xl border border-indigo-200/80 shadow-2xs text-center flex flex-col justify-center min-w-[75px]">
+            <div className="bg-gradient-to-br from-indigo-50/80 to-white p-2 sm:p-2.5 rounded-xl border border-indigo-200/80 shadow-2xs text-center flex flex-col justify-center min-w-0">
               <div className="text-[9px] sm:text-[10px] text-indigo-900 font-bold uppercase tracking-wider truncate">Madrasah</div>
               <div className="text-base sm:text-xl font-black text-indigo-950 leading-tight my-0.5">{totalSchools}</div>
               <div className="text-[8px] sm:text-[9px] text-indigo-700/80 font-medium truncate">Satuan Pendidikan</div>
             </div>
 
-            <div className="bg-gradient-to-br from-emerald-50/80 to-white p-2 sm:p-2.5 rounded-xl border border-emerald-200/80 shadow-2xs text-center flex flex-col justify-center min-w-[75px]">
+            <div className="bg-gradient-to-br from-emerald-50/80 to-white p-2 sm:p-2.5 rounded-xl border border-emerald-200/80 shadow-2xs text-center flex flex-col justify-center min-w-0">
               <div className="text-[9px] sm:text-[10px] text-emerald-900 font-bold uppercase tracking-wider truncate">Total Murid</div>
               <div className="text-base sm:text-xl font-black text-emerald-950 leading-tight my-0.5">{totalApps}</div>
               <div className="text-[8px] sm:text-[9px] text-emerald-800/80 font-medium truncate">Semua Jalur</div>
             </div>
 
-            <div className="bg-gradient-to-br from-blue-50/80 to-white p-2 sm:p-2.5 rounded-xl border border-blue-200/80 shadow-2xs text-center flex flex-col justify-center min-w-[75px]">
+            <div className="bg-gradient-to-br from-blue-50/80 to-white p-2 sm:p-2.5 rounded-xl border border-blue-200/80 shadow-2xs text-center flex flex-col justify-center min-w-0">
               <div className="text-[9px] sm:text-[10px] text-blue-900 font-bold uppercase tracking-wider truncate">Verifikasi</div>
               <div className="text-base sm:text-xl font-black text-blue-950 leading-tight my-0.5">{totalVerified}</div>
               <div className="text-[8px] sm:text-[9px] text-blue-700/80 font-medium truncate">Berkas Valid</div>
             </div>
 
-            <div className="bg-gradient-to-br from-teal-50/80 to-white p-2 sm:p-2.5 rounded-xl border border-teal-200/80 shadow-2xs text-center flex flex-col justify-center min-w-[75px]">
+            <div className="bg-gradient-to-br from-teal-50/80 to-white p-2 sm:p-2.5 rounded-xl border border-teal-200/80 shadow-2xs text-center flex flex-col justify-center min-w-0">
               <div className="text-[9px] sm:text-[10px] text-teal-900 font-bold uppercase tracking-wider truncate">Lulus</div>
               <div className="text-base sm:text-xl font-black text-teal-950 leading-tight my-0.5">{totalLulus}</div>
               <div className="text-[8px] sm:text-[9px] text-teal-700/80 font-medium truncate">Memenuhi Kuota</div>
@@ -228,68 +228,48 @@ export const CentralDashboard: React.FC<Props> = ({
               </ResponsiveContainer>
             </div>
           </div>
-
-          {/* Quick List */}
-          <div className="bg-white/95 p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-extrabold text-slate-900">Pendaftar Terbaru Wilayah</h3>
-              <button
-                type="button"
-                onClick={() => handleTabSelect('applicants')}
-                className="self-start sm:self-auto text-xs font-bold text-emerald-700 hover:text-emerald-800 hover:underline cursor-pointer"
-              >
-                Lihat Semua ({applications.length}) →
-              </button>
-            </div>
-            <ApplicantList
-              applications={applications.slice(0, 5)}
-              students={students}
-              parents={parents}
-              schoolOrigins={schoolOrigins}
-              addresses={addresses}
-              documents={documents}
-              school={schools[0]}
-              onVerify={onVerify}
-              onViewPrint={onViewPrint}
-              onDeleteApplicant={onDeleteApplicant}
-            />
-          </div>
         </div>
       )}
 
       {/* ================= TAB 2: SCHOOLS ================= */}
       {activeTab === 'schools' && (
-        <SchoolManagement schools={schools} onSaveSchool={onSaveSchool} onDeleteSchool={onDeleteSchool} />
+        <div key="schools" className="animate-tab-pane">
+          <SchoolManagement schools={schools} onSaveSchool={onSaveSchool} onDeleteSchool={onDeleteSchool} />
+        </div>
       )}
 
       {/* ================= TAB: SCHOOL ADMINS ================= */}
       {activeTab === 'admins' && (
-        <SchoolAdminManagement schools={schools} onRefreshData={onRefreshData} />
+        <div key="admins" className="animate-tab-pane">
+          <SchoolAdminManagement schools={schools} onRefreshData={onRefreshData} />
+        </div>
       )}
 
       {/* ================= TAB 3: APPLICANTS ================= */}
       {activeTab === 'applicants' && (
-        <ApplicantList
-          applications={applications}
-          students={students}
-          parents={parents}
-          schoolOrigins={schoolOrigins}
-          addresses={addresses}
-          documents={documents}
-          school={schools[0]}
-          onVerify={onVerify}
-          onViewPrint={onViewPrint}
-          onExportCsv={onExportCsv}
-          onExportExcel={onExportExcel}
-          onDeleteApplicant={onDeleteApplicant}
-          highlightRegNumber={highlightRegNumber}
-          onClearHighlight={onClearHighlight}
-        />
+        <div key="applicants" className="animate-tab-pane">
+          <ApplicantList
+            applications={applications}
+            students={students}
+            parents={parents}
+            schoolOrigins={schoolOrigins}
+            addresses={addresses}
+            documents={documents}
+            school={schools[0]}
+            onVerify={onVerify}
+            onViewPrint={onViewPrint}
+            onExportCsv={onExportCsv}
+            onExportExcel={onExportExcel}
+            onDeleteApplicant={onDeleteApplicant}
+            highlightRegNumber={highlightRegNumber}
+            onClearHighlight={onClearHighlight}
+          />
+        </div>
       )}
 
       {/* ================= TAB 4: DISTRIBUTION MAP ================= */}
       {activeTab === 'map' && (
-        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+        <div key="map" className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-xs space-y-4 animate-tab-pane">
           <div className="border-b border-slate-100 pb-2.5">
             <h3 className="text-sm font-bold text-slate-900">Peta Sebaran Wilayah</h3>
             <p className="text-xs text-slate-500">
@@ -307,28 +287,34 @@ export const CentralDashboard: React.FC<Props> = ({
 
       {/* ================= TAB 5: GAS & SYSTEM CONFIG ================= */}
       {activeTab === 'config' && (
-        <SystemConfig
-          settings={settings}
-          onSaveSettings={onSaveSettings}
-          activeSubTab={configSubTab}
-          onSubTabChange={onConfigSubTabChange}
-        />
+        <div key="config" className="animate-tab-pane">
+          <SystemConfig
+            settings={settings}
+            onSaveSettings={onSaveSettings}
+            activeSubTab={configSubTab}
+            onSubTabChange={onConfigSubTabChange}
+          />
+        </div>
       )}
 
       {/* ================= TAB 6: AUDIT LOGS ================= */}
       {activeTab === 'logs' && (
-        <AuditLogsView logs={auditLogs} />
+        <div key="logs" className="animate-tab-pane">
+          <AuditLogsView logs={auditLogs} />
+        </div>
       )}
 
       {/* ================= TAB 7: ANNOUNCEMENTS ================= */}
       {activeTab === 'announcements' && (
-        <AnnouncementsView
-          announcements={announcements}
-          canManage={true}
-          currentUserName="Administrator Pusat"
-          onAddAnnouncement={onAddAnnouncement}
-          onDeleteAnnouncement={onDeleteAnnouncement}
-        />
+        <div key="announcements" className="animate-tab-pane">
+          <AnnouncementsView
+            announcements={announcements}
+            canManage={true}
+            currentUserName="Administrator Pusat"
+            onAddAnnouncement={onAddAnnouncement}
+            onDeleteAnnouncement={onDeleteAnnouncement}
+          />
+        </div>
       )}
     </div>
   );

@@ -322,7 +322,7 @@ export function exportApplicantsToExcel(
 
   const statsRows: (string | number)[][] = [
     ['LAPORAN REKAPITULASI PENERIMAAN MURID BARU MADRASAH (SIPMA)'],
-    ['Sistem Informasi Penerimaan Murid Baru Madrasah - Berkas Resmi (.xlsx)'],
+    ['Penerimaan Murid Baru Madrasah - Berkas Rekapitulasi Resmi (.xlsx)'],
     [''],
     ['PARAMETER LAPORAN', 'KETERANGAN'],
     ['Satuan Pendidikan / Madrasah', options?.schoolName || 'Seluruh Satuan Pendidikan Madrasah'],

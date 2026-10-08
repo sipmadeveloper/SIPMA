@@ -28,6 +28,7 @@ import {
   getDocumentUniqueKey,
   deduplicateDocuments,
 } from '../utils/fileDownload';
+import { normalizeIndonesianPhone } from '../utils/phone';
 import {
   INITIAL_SCHOOLS,
   INITIAL_USERS,
@@ -839,6 +840,7 @@ class StorageService {
           );
           return {
             ...serverUser,
+            phone: serverUser.phone ? normalizeIndonesianPhone(serverUser.phone) : (localMatch?.phone ? normalizeIndonesianPhone(localMatch.phone) : ''),
             photo_url: serverUser.photo_url || localMatch?.photo_url || '',
           };
         });
@@ -866,7 +868,7 @@ class StorageService {
         }
       }
 
-      // 3. Students - protect existing photo_url
+      // 3. Students - protect existing photo_url and normalize phone
       if (d.students && typeof d.students === 'object') {
         const localStudents = this.getStudentsMap();
         const mergedStudents: Record<string, StudentProfile> = { ...d.students };
@@ -874,6 +876,9 @@ class StorageService {
           const localS = localStudents[reg];
           if (localS?.photo_url && !sProfile.photo_url) {
             sProfile.photo_url = localS.photo_url;
+          }
+          if (sProfile.phone) {
+            sProfile.phone = normalizeIndonesianPhone(sProfile.phone);
           }
         }
         const prevStr = localStorage.getItem(STORAGE_KEYS.STUDENTS);
@@ -885,11 +890,21 @@ class StorageService {
         }
       }
 
-      // 4. Parents
+      // 4. Parents - normalize phones
       if (d.parents && typeof d.parents === 'object') {
+        const normalizedParents: Record<string, ParentData> = {};
+        for (const [k, p] of Object.entries(d.parents)) {
+          const pObj = p as ParentData;
+          normalizedParents[k] = {
+            ...pObj,
+            father_phone: pObj.father_phone ? normalizeIndonesianPhone(pObj.father_phone) : '',
+            mother_phone: pObj.mother_phone ? normalizeIndonesianPhone(pObj.mother_phone) : '',
+            guardian_phone: pObj.guardian_phone ? normalizeIndonesianPhone(pObj.guardian_phone) : '',
+          };
+        }
         const prevStr = localStorage.getItem(STORAGE_KEYS.PARENTS);
-        const newStr = JSON.stringify(d.parents);
-        this.memCache.parents = d.parents;
+        const newStr = JSON.stringify(normalizedParents);
+        this.memCache.parents = normalizedParents;
         if (prevStr !== newStr) {
           localStorage.setItem(STORAGE_KEYS.PARENTS, newStr);
           changed = true;
@@ -1783,6 +1798,24 @@ class StorageService {
         this.notifySubscribers('data_mutated');
         this.triggerAutoSync();
 
+        // Kirim email resmi notifikasi reset password ke calon murid dengan replyTo madrasah
+        if (newUser.email && newUser.email.includes('@')) {
+          const app = this.getApplication(newUser.registration_number);
+          const school = this.getSchools().find((s) => s.school_id === app?.school_id);
+          this.sendNotificationEmail({
+            email: newUser.email,
+            student_name: newUser.name,
+            registration_number: newUser.registration_number,
+            school_name: school?.school_name || 'Madrasah',
+            school_email: school?.contact_email,
+            event_type: 'announcement',
+            new_status: 'password_reset',
+            title: 'Informasi Reset Kata Sandi Akun PPDB',
+            announcement_content: `Kata sandi akun Anda telah berhasil di-reset oleh panitia/operator madrasah. Kata sandi baru Anda adalah: ${generatedPass}. Silakan segera gunakan kata sandi baru ini untuk login ke portal SIPMA. Untuk pertanyaan, Anda dapat langsung membalas email ini ke madrasah.`,
+            notes: `Kata Sandi Baru: ${generatedPass}`,
+          }).catch((e) => console.warn('Email password reset warning:', e));
+        }
+
         return {
           success: true,
           newPassword: generatedPass,
@@ -1830,6 +1863,24 @@ class StorageService {
       );
       this.notifySubscribers('data_mutated');
       this.triggerAutoSync();
+
+      // Kirim email resmi notifikasi reset password ke pengguna dengan replyTo madrasah
+      if (user.email && user.email.includes('@')) {
+        const app = this.getApplication(user.registration_number);
+        const school = this.getSchools().find((s) => s.school_id === app?.school_id);
+        this.sendNotificationEmail({
+          email: user.email,
+          student_name: user.name,
+          registration_number: user.registration_number || user.user_id,
+          school_name: school?.school_name || 'Madrasah',
+          school_email: school?.contact_email,
+          event_type: 'announcement',
+          new_status: 'password_reset',
+          title: 'Informasi Reset Kata Sandi Akun PPDB',
+          announcement_content: `Kata sandi akun Anda telah berhasil di-reset oleh panitia/operator madrasah. Kata sandi baru Anda adalah: ${generatedPass}. Silakan segera gunakan kata sandi baru ini untuk login ke portal SIPMA. Untuk pertanyaan, Anda dapat langsung membalas email ini ke madrasah.`,
+          notes: `Kata Sandi Baru: ${generatedPass}`,
+        }).catch((e) => console.warn('Email password reset warning:', e));
+      }
 
       return {
         success: true,
@@ -1911,7 +1962,7 @@ class StorageService {
           user_id: `USR-ADM-${schoolCode}-${Date.now().toString(36).toUpperCase()}`,
           name: String(userData.name || '').trim(),
           email: cleanEmail,
-          phone: userData.phone ? String(userData.phone).trim() : '',
+          phone: normalizeIndonesianPhone(userData.phone),
           school_id: userData.school_id,
           nip: userData.nip ? String(userData.nip).trim() : '',
           position: userData.position ? String(userData.position).trim() : 'Panitia PPDB Madrasah',
@@ -1936,7 +1987,7 @@ class StorageService {
           ...users[index],
           name: String(userData.name || '').trim(),
           email: cleanEmail,
-          phone: userData.phone !== undefined ? String(userData.phone).trim() : users[index].phone,
+          phone: userData.phone !== undefined ? normalizeIndonesianPhone(userData.phone) : users[index].phone,
           school_id: userData.school_id,
           nip: userData.nip !== undefined ? String(userData.nip).trim() : users[index].nip,
           position: userData.position !== undefined ? String(userData.position).trim() : users[index].position,
@@ -2116,7 +2167,7 @@ class StorageService {
           user_id: `USR-OPR-${schoolCode}-${Date.now().toString(36).toUpperCase()}`,
           name: String(userData.name || '').trim(),
           email: cleanEmail,
-          phone: userData.phone ? String(userData.phone).trim() : '',
+          phone: normalizeIndonesianPhone(userData.phone),
           school_id: userData.school_id,
           nip: userData.nip ? String(userData.nip).trim() : '',
           position: userData.position ? String(userData.position).trim() : 'Operator Seleksi & Verifikasi PPDB',
@@ -2141,7 +2192,7 @@ class StorageService {
           ...users[index],
           name: String(userData.name || '').trim(),
           email: cleanEmail,
-          phone: userData.phone !== undefined ? String(userData.phone).trim() : users[index].phone,
+          phone: userData.phone !== undefined ? normalizeIndonesianPhone(userData.phone) : users[index].phone,
           school_id: userData.school_id,
           nip: userData.nip !== undefined ? String(userData.nip).trim() : users[index].nip,
           position: userData.position !== undefined ? String(userData.position).trim() : users[index].position,
@@ -2237,13 +2288,14 @@ class StorageService {
     const studentId = `STD-${Date.now().toString(36)}`;
     const now = new Date().toISOString();
     const year = this.getSettings().application_year || '2026';
+    const normalizedPhone = normalizeIndonesianPhone(params.phone);
 
     const newUser: User = {
       user_id: userId,
       registration_number: regNum,
       name: params.name,
       email: params.email,
-      phone: params.phone,
+      phone: normalizedPhone,
       password_hash: params.password?.trim() || 'sipma123',
       role: 'calon_murid',
       school_id: targetSchoolId || undefined,
@@ -2273,7 +2325,7 @@ class StorageService {
       child_order: 1,
       total_siblings: 1,
       family_status: 'Anak Kandung',
-      phone: params.phone,
+      phone: normalizedPhone,
       email: params.email,
     };
     localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(students));
@@ -3413,6 +3465,9 @@ class StorageService {
 
   saveSchool(school: School): void {
     try {
+      if (school.contact_phone) {
+        school.contact_phone = normalizeIndonesianPhone(school.contact_phone);
+      }
       const schools = this.getSchools();
       const index = schools.findIndex((s) => s.school_id === school.school_id);
       if (index >= 0) {
@@ -3630,6 +3685,9 @@ class StorageService {
 
   saveStudentProfile(profile: StudentProfile): void {
     try {
+      if (profile.phone) {
+        profile.phone = normalizeIndonesianPhone(profile.phone);
+      }
       const map = this.getStudentsMap();
       map[profile.registration_number] = profile;
       this.memCache.students = map;
@@ -3754,6 +3812,11 @@ class StorageService {
 
   saveParentData(registrationNumber: string, data: ParentData): void {
     try {
+      if (data) {
+        if (data.father_phone) data.father_phone = normalizeIndonesianPhone(data.father_phone);
+        if (data.mother_phone) data.mother_phone = normalizeIndonesianPhone(data.mother_phone);
+        if (data.guardian_phone) data.guardian_phone = normalizeIndonesianPhone(data.guardian_phone);
+      }
       const map = this.getParentsMap();
       map[registrationNumber] = data;
       this.memCache.parents = map;
@@ -3925,6 +3988,8 @@ class StorageService {
       });
     } else {
       this.notifyStudentRegistrationEvent(registrationNumber, 'registration_submitted', 'terdaftar');
+      // Otomatis kirim pesan notifikasi resmi ke email madrasah tujuan saat ada pendaftar baru
+      this.notifySchoolNewApplicant(registrationNumber);
       // Broadcast real-time event for new applicant arrival to notify school admins immediately
       const student = this.getStudent(registrationNumber);
       this.notifySubscribers('new_applicant_arrived', {
@@ -4914,6 +4979,74 @@ class StorageService {
         });
     } catch (err) {
       console.warn(`[SIPMA Email] Error menyiapkan notifikasi ${eventType}:`, err);
+    }
+  }
+
+  /**
+   * Pemicu notifikasi email resmi ke madrasah tujuan saat ada pendaftar baru masuk
+   */
+  async notifySchoolNewApplicant(registrationNumber: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const app = this.getApplication(registrationNumber);
+      const student = this.getStudent(registrationNumber);
+      const parent = this.getParentData(registrationNumber);
+      const origin = this.getSchoolOrigin(registrationNumber);
+      const recipientInfo = this.getStudentNotificationRecipient(registrationNumber);
+      const settings = this.getSettings();
+
+      const schoolId = app?.school_id || '';
+      const school = this.getSchools().find((s) => s.school_id === schoolId);
+      const schoolName = recipientInfo.schoolName || school?.school_name || 'Madrasah';
+      const schoolEmail = recipientInfo.schoolEmail || school?.contact_email || '';
+
+      const payload = {
+        registration_number: registrationNumber,
+        student_name: student?.name || recipientInfo.studentName || 'Calon Murid',
+        student_email: recipientInfo.email || student?.email || '',
+        pathway: app?.pathway || recipientInfo.pathway || 'zonasi',
+        school_id: schoolId,
+        school_name: schoolName,
+        school_email: schoolEmail,
+        school_phone: recipientInfo.schoolPhone || school?.contact_phone || '',
+        school_address: recipientInfo.schoolAddress || school?.address || '',
+        nik: student?.nik || '',
+        nisn: student?.nisn || '',
+        school_origin: origin?.school_name || '',
+        parent_name: parent?.father_name || parent?.mother_name || parent?.guardian_name || '',
+        student_phone: student?.phone || '',
+        distance_km: app?.distance_km || 0,
+        submission_date: app?.submission_date || new Date().toISOString(),
+        app_name: settings.app_name || 'SIPMA',
+        app_logo_url: settings.app_logo || '',
+        gas_web_app_url: settings.gas_web_app_url,
+        spreadsheet_id: settings.spreadsheet_id,
+      };
+
+      const res = await fetch('/api/notifications/notify-school-new-applicant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      console.log(`[SIPMA Email] Notifikasi pendaftar baru ke madrasah (${schoolName} - ${schoolEmail}):`, data?.message);
+
+      // Direct redundancy to Google Apps Script if URL available
+      if (settings.gas_web_app_url && settings.gas_web_app_url.startsWith('http')) {
+        fetch(settings.gas_web_app_url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'notifySchoolNewApplicant',
+            spreadsheet_id: settings.spreadsheet_id,
+            data: payload,
+          }),
+        }).catch((directErr) => console.warn('Direct GAS notifySchoolNewApplicant warning:', directErr));
+      }
+
+      return data;
+    } catch (err: any) {
+      console.warn('[SIPMA Email] Gagal mengirim notifikasi pendaftar baru ke madrasah:', err);
+      return { success: false, message: err?.message || 'Gagal mengirim notifikasi ke madrasah' };
     }
   }
 
@@ -5924,10 +6057,43 @@ class StorageService {
       };
     }
 
+    const rawUsers = this.getUsers();
+    const rawStudents = this.getStudentsMap();
+    const rawParents = this.getParentsMap();
+    const rawSchools = this.getSchools();
+
+    const normalizedUsers = rawUsers.map((u) => ({
+      ...u,
+      phone: u.phone ? normalizeIndonesianPhone(u.phone) : '',
+    }));
+
+    const normalizedStudents: Record<string, StudentProfile> = {};
+    for (const [k, s] of Object.entries(rawStudents)) {
+      normalizedStudents[k] = {
+        ...s,
+        phone: s.phone ? normalizeIndonesianPhone(s.phone) : '',
+      };
+    }
+
+    const normalizedParents: Record<string, ParentData> = {};
+    for (const [k, p] of Object.entries(rawParents)) {
+      normalizedParents[k] = {
+        ...p,
+        father_phone: p.father_phone ? normalizeIndonesianPhone(p.father_phone) : '',
+        mother_phone: p.mother_phone ? normalizeIndonesianPhone(p.mother_phone) : '',
+        guardian_phone: p.guardian_phone ? normalizeIndonesianPhone(p.guardian_phone) : '',
+      };
+    }
+
+    const normalizedSchools = rawSchools.map((sch) => ({
+      ...sch,
+      contact_phone: sch.contact_phone ? normalizeIndonesianPhone(sch.contact_phone) : '',
+    }));
+
     const dataPayload = {
-      users: this.getUsers(),
-      students: this.getStudentsMap(),
-      parents: this.getParentsMap(),
+      users: normalizedUsers,
+      students: normalizedStudents,
+      parents: normalizedParents,
       school_origins: this.getSchoolOriginsMap(),
       addresses: this.getAddressesMap(),
       applications: this.getApplications(),
@@ -5945,7 +6111,7 @@ class StorageService {
         verification_status: d.verification_status,
         notes: d.notes,
       })),
-      schools: this.getSchools(),
+      schools: normalizedSchools,
       announcements: this.getAnnouncements(),
       settings: this.getSettings(),
     };
@@ -6084,24 +6250,39 @@ class StorageService {
 
       // 1. Users
       if (d.users && Array.isArray(d.users) && d.users.length > 0) {
-        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(d.users));
+        const normUsers = d.users.map((u: any) => ({
+          ...u,
+          phone: u.phone ? normalizeIndonesianPhone(u.phone) : '',
+        }));
+        localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(normUsers));
       }
 
       // 2. Students Map
+      let studentsMap: Record<string, StudentProfile> = {};
       if (d.students) {
-        let studentsMap: Record<string, StudentProfile> = {};
         if (Array.isArray(d.students)) {
           d.students.forEach((st: any) => {
             if (st.registration_number) {
-              studentsMap[st.registration_number] = st;
+              studentsMap[st.registration_number] = {
+                ...st,
+                phone: st.phone ? normalizeIndonesianPhone(st.phone) : '',
+              };
             }
           });
         } else if (typeof d.students === 'object') {
-          studentsMap = d.students;
+          for (const [k, st] of Object.entries(d.students)) {
+            const stObj = st as any;
+            studentsMap[k] = {
+              ...stObj,
+              phone: stObj.phone ? normalizeIndonesianPhone(stObj.phone) : '',
+            };
+          }
         }
         if (Object.keys(studentsMap).length > 0) {
           localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(studentsMap));
         }
+      } else {
+        studentsMap = this.getStudentsMap();
       }
 
       // 3. Parents Map
@@ -6109,11 +6290,37 @@ class StorageService {
         let parentsMap: Record<string, ParentData> = {};
         if (Array.isArray(d.parents)) {
           d.parents.forEach((p: any) => {
-            const key = p.student_id || p.parent_id;
-            if (key) parentsMap[key] = p;
+            const normP = {
+              ...p,
+              father_phone: p.father_phone ? normalizeIndonesianPhone(p.father_phone) : '',
+              mother_phone: p.mother_phone ? normalizeIndonesianPhone(p.mother_phone) : '',
+              guardian_phone: p.guardian_phone ? normalizeIndonesianPhone(p.guardian_phone) : '',
+            };
+            if (p.student_id) parentsMap[p.student_id] = normP;
+            if (p.registration_number) parentsMap[p.registration_number] = normP;
+            if (p.parent_id && !parentsMap[p.parent_id]) parentsMap[p.parent_id] = normP;
           });
         } else if (typeof d.parents === 'object') {
-          parentsMap = d.parents;
+          for (const [k, p] of Object.entries(d.parents)) {
+            const pObj = p as any;
+            parentsMap[k] = {
+              ...pObj,
+              father_phone: pObj.father_phone ? normalizeIndonesianPhone(pObj.father_phone) : '',
+              mother_phone: pObj.mother_phone ? normalizeIndonesianPhone(pObj.mother_phone) : '',
+              guardian_phone: pObj.guardian_phone ? normalizeIndonesianPhone(pObj.guardian_phone) : '',
+            };
+          }
+        }
+        if (studentsMap) {
+          Object.values(studentsMap).forEach((st: any) => {
+            if (st.registration_number && st.student_id) {
+              if (parentsMap[st.student_id] && !parentsMap[st.registration_number]) {
+                parentsMap[st.registration_number] = parentsMap[st.student_id];
+              } else if (parentsMap[st.registration_number] && !parentsMap[st.student_id]) {
+                parentsMap[st.student_id] = parentsMap[st.registration_number];
+              }
+            }
+          });
         }
         if (Object.keys(parentsMap).length > 0) {
           localStorage.setItem(STORAGE_KEYS.PARENTS, JSON.stringify(parentsMap));
@@ -6125,11 +6332,23 @@ class StorageService {
         let originMap: Record<string, SchoolOrigin> = {};
         if (Array.isArray(d.school_origins)) {
           d.school_origins.forEach((o: any) => {
-            const key = o.student_id || o.origin_id;
-            if (key) originMap[key] = o;
+            if (o.student_id) originMap[o.student_id] = o;
+            if (o.registration_number) originMap[o.registration_number] = o;
+            if (o.origin_id && !originMap[o.origin_id]) originMap[o.origin_id] = o;
           });
         } else if (typeof d.school_origins === 'object') {
-          originMap = d.school_origins;
+          originMap = { ...d.school_origins };
+        }
+        if (studentsMap) {
+          Object.values(studentsMap).forEach((st: any) => {
+            if (st.registration_number && st.student_id) {
+              if (originMap[st.student_id] && !originMap[st.registration_number]) {
+                originMap[st.registration_number] = originMap[st.student_id];
+              } else if (originMap[st.registration_number] && !originMap[st.student_id]) {
+                originMap[st.student_id] = originMap[st.registration_number];
+              }
+            }
+          });
         }
         if (Object.keys(originMap).length > 0) {
           localStorage.setItem(STORAGE_KEYS.SCHOOL_ORIGINS, JSON.stringify(originMap));
@@ -6141,11 +6360,23 @@ class StorageService {
         let addrMap: Record<string, AddressData> = {};
         if (Array.isArray(d.addresses)) {
           d.addresses.forEach((a: any) => {
-            const key = a.student_id || a.address_id;
-            if (key) addrMap[key] = a;
+            if (a.student_id) addrMap[a.student_id] = a;
+            if (a.registration_number) addrMap[a.registration_number] = a;
+            if (a.address_id && !addrMap[a.address_id]) addrMap[a.address_id] = a;
           });
         } else if (typeof d.addresses === 'object') {
-          addrMap = d.addresses;
+          addrMap = { ...d.addresses };
+        }
+        if (studentsMap) {
+          Object.values(studentsMap).forEach((st: any) => {
+            if (st.registration_number && st.student_id) {
+              if (addrMap[st.student_id] && !addrMap[st.registration_number]) {
+                addrMap[st.registration_number] = addrMap[st.student_id];
+              } else if (addrMap[st.registration_number] && !addrMap[st.student_id]) {
+                addrMap[st.student_id] = addrMap[st.registration_number];
+              }
+            }
+          });
         }
         if (Object.keys(addrMap).length > 0) {
           localStorage.setItem(STORAGE_KEYS.ADDRESSES, JSON.stringify(addrMap));
@@ -6214,6 +6445,7 @@ class StorageService {
           const loc = localSchools.find((s) => s.school_id === remSchool.school_id);
           return {
             ...remSchool,
+            contact_phone: remSchool.contact_phone ? normalizeIndonesianPhone(remSchool.contact_phone) : '',
             logo_url: remSchool.logo_url || loc?.logo_url || '',
           };
         });

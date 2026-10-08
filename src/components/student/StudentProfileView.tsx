@@ -35,6 +35,7 @@ import { normalizeImageUrl, handleImageError, compressAndResizeImage, extractDri
 import { storageService } from '../../services/storageService';
 import { useFeedback } from '../../context/FeedbackContext';
 import { formatStandardDocumentFileName } from '../../utils/fileDownload';
+import { normalizeIndonesianPhone, formatPhoneOnChange } from '../../utils/phone';
 
 interface Props {
   student: StudentProfile;
@@ -493,7 +494,8 @@ export const StudentProfileView: React.FC<Props> = ({
                 <input
                   type="tel"
                   value={student.phone || ''}
-                  onChange={(e) => setStudent({ ...student, phone: e.target.value })}
+                  onChange={(e) => setStudent({ ...student, phone: formatPhoneOnChange(e.target.value) })}
+                  onBlur={() => setStudent({ ...student, phone: normalizeIndonesianPhone(student.phone) })}
                   placeholder="081234567890"
                   className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:bg-white outline-none"
                   required
