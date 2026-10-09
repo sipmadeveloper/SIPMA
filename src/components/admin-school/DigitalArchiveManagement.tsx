@@ -9,7 +9,6 @@ import {
   Eye,
   Download,
   Trash2,
-  Grid,
   List,
   ZoomIn,
   ZoomOut,
@@ -48,7 +47,7 @@ import {
 } from '../../types/sipma';
 import { storageService } from '../../services/storageService';
 import { useFeedback } from '../../context/FeedbackContext';
-import { normalizeImageUrl } from '../../utils/imageUrl';
+import { normalizeImageUrl, handleImageError } from '../../utils/imageUrl';
 import { downloadDocumentFile } from '../../utils/fileDownload';
 
 interface Props {
@@ -111,7 +110,7 @@ export const DigitalArchiveManagement: React.FC<Props> = ({
   const [selectedStudentFilter, setSelectedStudentFilter] = useState<string>('all');
   const [cloudStatusFilter, setCloudStatusFilter] = useState<'all' | 'drive' | 'local'>('all');
   const [verifyFilter, setVerifyFilter] = useState<'all' | VerificationStatus>('all');
-  const [galleryViewMode, setGalleryViewMode] = useState<'grid' | 'table'>('grid');
+  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest' | 'name' | 'reg' | 'size'>('newest');
 
   // Modal States
   const [previewDoc, setPreviewDoc] = useState<DocumentItem | null>(null);
@@ -381,6 +380,27 @@ export const DigitalArchiveManagement: React.FC<Props> = ({
     searchFileQuery,
     students,
   ]);
+
+  // Tata urutan berkas arsip (Model List)
+  const sortedFiles = useMemo(() => {
+    const list = [...filteredFiles];
+    if (sortOrder === 'newest') {
+      list.sort((a, b) => new Date(b.upload_time || 0).getTime() - new Date(a.upload_time || 0).getTime());
+    } else if (sortOrder === 'oldest') {
+      list.sort((a, b) => new Date(a.upload_time || 0).getTime() - new Date(b.upload_time || 0).getTime());
+    } else if (sortOrder === 'name') {
+      list.sort((a, b) => {
+        const nameA = (students[a.registration_number]?.name || '').toLowerCase();
+        const nameB = (students[b.registration_number]?.name || '').toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+    } else if (sortOrder === 'reg') {
+      list.sort((a, b) => (a.registration_number || '').localeCompare(b.registration_number || ''));
+    } else if (sortOrder === 'size') {
+      list.sort((a, b) => (b.file_size_kb || 0) - (a.file_size_kb || 0));
+    }
+    return list;
+  }, [filteredFiles, sortOrder, students]);
 
   // Export CSV of Completeness Detection
   const handleExportCompletenessCsv = () => {
@@ -877,275 +897,136 @@ _Panitia PPDB ${school.school_name}_`;
                 </button>
               )}
 
-              {/* View Switcher (Grid / Table) */}
-              <div className="ml-auto flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setGalleryViewMode('grid')}
-                  className={`p-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                    galleryViewMode === 'grid'
-                      ? 'bg-white text-slate-900 shadow-2xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                  title="Tampilan Galeri Visual"
+              {/* Sort Order Selector (Tata Urutan Model List) */}
+              <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                <span className="text-[11px] text-slate-500 font-semibold hidden sm:inline">Urutkan:</span>
+                <select
+                  value={sortOrder}
+                  onChange={(e) => setSortOrder(e.target.value as any)}
+                  aria-label="Urutan Berkas"
+                  className="h-8.5 px-2.5 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-slate-50 font-medium text-slate-800 cursor-pointer"
                 >
-                  <Grid className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setGalleryViewMode('table')}
-                  className={`p-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
-                    galleryViewMode === 'table'
-                      ? 'bg-white text-slate-900 shadow-2xs'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                  title="Tampilan Tabel Rinci"
-                >
-                  <List className="w-4 h-4" />
-                </button>
+                  <option value="newest">Terbaru Diunggah</option>
+                  <option value="oldest">Terlama Diunggah</option>
+                  <option value="name">Nama Murid (A-Z)</option>
+                  <option value="reg">No. Pendaftaran</option>
+                  <option value="size">Ukuran Terbesar</option>
+                </select>
+                <div className="h-8.5 px-2.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 shadow-2xs">
+                  <List className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Model List ({sortedFiles.length})</span>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Files Content */}
-          {filteredFiles.length === 0 ? (
+          {/* Files Content - Pure List Model */}
+          {sortedFiles.length === 0 ? (
             <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs">
               <div className="w-14 h-14 mx-auto rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mb-3">
                 <Archive className="w-7 h-7" />
               </div>
-              <h3 className="text-base font-bold text-slate-900">Belum ada dokumen yang diunggah</h3>
+              <h3 className="text-base font-bold text-slate-900">Belum ada dokumen yang sesuai kriteria</h3>
               <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                Saat calon murid mengunggah berkas persyaratan pendaftaran, dokumen akan otomatis muncul di sini dan tersimpan di Google Drive serta Google Sheets.
+                Saat berkas pendaftaran diunggah atau kriteria pencarian direset, dokumen akan otomatis tersusun rapi dalam model list di sini.
               </p>
             </div>
-          ) : galleryViewMode === 'grid' ? (
-            /* Grid View */
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filteredFiles.map((doc) => {
-                const student = students[doc.registration_number];
-                const cat = getDocCategory(doc.document_type);
-                const isPdf =
-                  (doc.mime_type && doc.mime_type.includes('pdf')) ||
-                  (doc.file_name && doc.file_name.toLowerCase().endsWith('.pdf'));
-                const hasDrive = Boolean(doc.drive_file_id && doc.drive_file_id !== 'LOCAL_STORAGE');
-                const previewUrl = doc.file_data_base64 || doc.drive_url || doc.local_url || '';
-
-                const categoryLabels: Record<CategoryFilter, { bg: string; text: string; label: string }> = {
-                  all: { bg: 'bg-slate-100', text: 'text-slate-800', label: 'Dokumen' },
-                  kartu_keluarga: { bg: 'bg-blue-100', text: 'text-blue-800', label: 'Kartu Keluarga (KK)' },
-                  akta_kelahiran: { bg: 'bg-amber-100', text: 'text-amber-800', label: 'Akta Kelahiran' },
-                  ijazah_skl: { bg: 'bg-purple-100', text: 'text-purple-800', label: 'Ijazah / SKL' },
-                  pas_foto: { bg: 'bg-teal-100', text: 'text-teal-800', label: 'Pas Foto 3x4' },
-                  pendukung: { bg: 'bg-emerald-100', text: 'text-emerald-800', label: 'Dokumen Jalur' },
-                  kartu_afirmasi: { bg: 'bg-indigo-100', text: 'text-indigo-800', label: 'Kartu Afirmasi' },
-                  sertifikat_prestasi: { bg: 'bg-amber-100', text: 'text-amber-800', label: 'Sertifikat Prestasi' },
-                  surat_mutasi: { bg: 'bg-sky-100', text: 'text-sky-800', label: 'Surat Mutasi' },
-                };
-
-                const catInfo = categoryLabels[cat] || categoryLabels.all;
-
-                return (
-                  <div
-                    key={doc.document_id}
-                    className="bg-white rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md hover:border-emerald-300 transition-all flex flex-col justify-between overflow-hidden group"
-                  >
-                    {/* Visual Preview */}
-                    <div
-                      onClick={() => setPreviewDoc(doc)}
-                      className="relative h-44 bg-slate-100 border-b border-slate-100 cursor-pointer overflow-hidden flex items-center justify-center group-hover:opacity-95 transition-all"
-                    >
-                      {!isPdf && previewUrl ? (
-                        <img
-                          src={normalizeImageUrl(previewUrl)}
-                          alt={doc.document_title}
-                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                          referrerPolicy="no-referrer"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="flex flex-col items-center justify-center text-slate-400 p-4 text-center">
-                          <div className="w-12 h-12 rounded-xl bg-red-100 text-red-700 flex items-center justify-center font-bold text-sm shadow-xs mb-2">
-                            PDF
-                          </div>
-                          <span className="text-xs font-semibold text-slate-600 line-clamp-1">
-                            {doc.file_name}
-                          </span>
-                          <span className="text-[10px] text-slate-400 mt-0.5">Klik untuk pratinjau</span>
-                        </div>
-                      )}
-
-                      {/* Category Badge Floating Top Left */}
-                      <div className="absolute top-2.5 left-2.5">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.8 rounded-lg text-[10px] font-bold shadow-xs ${catInfo.bg} ${catInfo.text}`}
-                        >
-                          {catInfo.label}
-                        </span>
-                      </div>
-
-                      {/* Google Drive Status Floating Top Right */}
-                      <div className="absolute top-2.5 right-2.5">
-                        {hasDrive ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.8 rounded-lg text-[10px] font-bold bg-emerald-700 text-white shadow-xs">
-                            <Cloud className="w-3 h-3 text-emerald-200" />
-                            <span>Google Drive</span>
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.8 rounded-lg text-[10px] font-bold bg-slate-700 text-white shadow-xs">
-                            <Clock className="w-3 h-3" />
-                            <span>Lokal</span>
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Hover Overlay */}
-                      <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPreviewDoc(doc);
-                          }}
-                          className="p-2 rounded-xl bg-white text-slate-800 hover:bg-slate-100 shadow-md transition-transform hover:scale-110"
-                          title="Pratinjau Dokumen"
-                        >
-                          <Eye className="w-4 h-4 text-emerald-700" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            downloadDocumentFile(doc, student?.name);
-                          }}
-                          className="p-2 rounded-xl bg-white text-slate-800 hover:bg-slate-100 shadow-md transition-transform hover:scale-110"
-                          title="Unduh Berkas ke Komputer"
-                        >
-                          <Download className="w-4 h-4 text-blue-700" />
-                        </button>
-                        {hasDrive && (
-                          <a
-                            href={`https://drive.google.com/file/d/${doc.drive_file_id}/view?usp=drivesdk`}
-                            target="_blank"
-                            rel="noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="p-2 rounded-xl bg-white text-slate-800 hover:bg-slate-100 shadow-md transition-transform hover:scale-110"
-                            title="Buka langsung di Google Drive"
-                          >
-                            <ExternalLink className="w-4 h-4 text-teal-700" />
-                          </a>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Info */}
-                    <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
-                      <div>
-                        <h4 className="font-bold text-sm text-slate-900 line-clamp-1" title={doc.document_title}>
-                          {doc.document_title || doc.file_name}
-                        </h4>
-
-                        <div className="mt-1 flex items-center justify-between text-xs">
-                          <span className="font-semibold text-emerald-800 truncate" title={student?.name}>
-                            {student?.name || 'Calon Murid'}
-                          </span>
-                          <span className="font-mono text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
-                            {doc.registration_number}
-                          </span>
-                        </div>
-
-                        <div className="mt-2 text-[11px] text-slate-500 flex items-center justify-between border-t border-slate-100 pt-2">
-                          <span className="truncate max-w-[130px]" title={doc.file_name}>
-                            {doc.file_name}
-                          </span>
-                          <span className="font-medium text-slate-700 shrink-0">{doc.file_size_kb || 0} KB</span>
-                        </div>
-                      </div>
-
-                      {/* Bottom Status & Actions */}
-                      <div className="flex items-center justify-between border-t border-slate-100 pt-2.5">
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${
-                            doc.verification_status === 'terverifikasi'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : doc.verification_status === 'perlu_perbaikan'
-                              ? 'bg-orange-100 text-orange-800'
-                              : 'bg-amber-100 text-amber-800'
-                          }`}
-                        >
-                          {doc.verification_status || 'menunggu'}
-                        </span>
-
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => setPreviewDoc(doc)}
-                            className="p-1.5 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg cursor-pointer"
-                            title="Pratinjau Berkas"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => downloadDocumentFile(doc, student?.name)}
-                            className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg cursor-pointer"
-                            title="Unduh Berkas"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           ) : (
-            /* Table View */
             <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-600">
-                  <thead className="bg-slate-50 text-[11px] font-bold text-slate-700 uppercase tracking-wider border-b border-slate-200">
+                <table className="w-full text-left text-xs text-slate-600 border-collapse">
+                  <thead className="bg-slate-50/90 text-[11px] font-bold text-slate-700 uppercase tracking-wider border-b border-slate-200">
                     <tr>
-                      <th className="py-3 px-4">Calon Murid</th>
-                      <th className="py-3 px-4">Kategori Dokumen</th>
-                      <th className="py-3 px-4">Nama Berkas</th>
-                      <th className="py-3 px-4">Ukuran</th>
-                      <th className="py-3 px-4">Status Cloud Drive</th>
-                      <th className="py-3 px-4">Verifikasi</th>
-                      <th className="py-3 px-4 text-right whitespace-nowrap min-w-[130px]">Aksi</th>
+                      <th className="py-3.5 px-4 w-12 text-center">No</th>
+                      <th className="py-3.5 px-4">Calon Murid</th>
+                      <th className="py-3.5 px-4">Nama Berkas Dokumen</th>
+                      <th className="py-3.5 px-4">Kategori Berkas</th>
+                      <th className="py-3.5 px-4">Ukuran</th>
+                      <th className="py-3.5 px-4">Penyimpanan Cloud</th>
+                      <th className="py-3.5 px-4">Status Verifikasi</th>
+                      <th className="py-3.5 px-4 text-center whitespace-nowrap min-w-[130px]">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredFiles.map((doc) => {
+                    {sortedFiles.map((doc, idx) => {
                       const student = students[doc.registration_number];
                       const cat = getDocCategory(doc.document_type);
                       const hasDrive = Boolean(doc.drive_file_id && doc.drive_file_id !== 'LOCAL_STORAGE');
+                      const isPdf =
+                        (doc.mime_type && doc.mime_type.includes('pdf')) ||
+                        (doc.file_name && doc.file_name.toLowerCase().endsWith('.pdf'));
+                      const previewUrl = doc.file_data_base64 || doc.drive_url || doc.local_url || '';
 
                       return (
                         <tr key={doc.document_id} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="py-3 px-4">
-                            <div className="font-bold text-slate-900">{student?.name || 'Calon Murid'}</div>
-                            <div className="text-[11px] text-slate-400 font-mono">{doc.registration_number}</div>
+                          <td className="py-3.5 px-4 text-center font-mono text-slate-400 font-bold">
+                            {idx + 1}
                           </td>
-                          <td className="py-3 px-4">
-                            <span className="font-semibold text-slate-800 capitalize">
+                          <td className="py-3.5 px-4">
+                            <div className="font-bold text-slate-900">{student?.name || 'Calon Murid'}</div>
+                            <div className="text-[11px] text-slate-400 font-mono">No. Reg: {doc.registration_number}</div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-2.5">
+                              {/* Visual Preview Icon / Thumbnail */}
+                              <button
+                                type="button"
+                                onClick={() => setPreviewDoc(doc)}
+                                className="w-9 h-9 rounded-lg border border-slate-200 bg-slate-100 overflow-hidden shrink-0 flex items-center justify-center hover:ring-2 hover:ring-emerald-500 transition-all cursor-pointer shadow-2xs"
+                                title="Klik untuk pratinjau berkas"
+                              >
+                                {isPdf ? (
+                                  <div className="w-full h-full bg-rose-50 flex items-center justify-center text-rose-600 font-black text-[10px]">
+                                    PDF
+                                  </div>
+                                ) : previewUrl ? (
+                                  <img
+                                    src={normalizeImageUrl(previewUrl)}
+                                    alt={doc.file_name}
+                                    className="w-full h-full object-cover"
+                                    referrerPolicy="no-referrer"
+                                    onError={(e) => handleImageError(e)}
+                                  />
+                                ) : (
+                                  <FileText className="w-4 h-4 text-slate-400" />
+                                )}
+                              </button>
+                              <div className="min-w-0 max-w-xs">
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewDoc(doc)}
+                                  className="font-bold text-slate-800 hover:text-emerald-700 hover:underline text-left truncate block max-w-[240px] cursor-pointer"
+                                  title={doc.file_name}
+                                >
+                                  {doc.file_name}
+                                </button>
+                                <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                                  <span>Diunggah: {new Date(doc.upload_time).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className={`inline-block px-2.5 py-1 rounded-md text-[11px] font-bold ${
+                              cat === 'kartu_keluarga'
+                                ? 'bg-blue-50 text-blue-800 border border-blue-200'
+                                : cat === 'akta_kelahiran'
+                                ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                                : cat === 'ijazah_skl'
+                                ? 'bg-purple-50 text-purple-800 border border-purple-200'
+                                : cat === 'pas_foto'
+                                ? 'bg-teal-50 text-teal-800 border border-teal-200'
+                                : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            }`}>
                               {cat === 'kartu_keluarga' && 'Kartu Keluarga (KK)'}
                               {cat === 'akta_kelahiran' && 'Akta Kelahiran'}
                               {cat === 'ijazah_skl' && 'Ijazah / SKL'}
                               {cat === 'pas_foto' && 'Pas Foto 3x4'}
-                              {cat === 'pendukung' && 'Dokumen Pendukung'}
+                              {cat === 'pendukung' && 'Dokumen Jalur'}
                             </span>
                           </td>
-                          <td className="py-3 px-4">
-                            <div className="font-medium text-slate-800 truncate max-w-xs" title={doc.file_name}>
-                              {doc.file_name}
-                            </div>
-                            <div className="text-[10px] text-slate-400">
-                              Diunggah: {new Date(doc.upload_time).toLocaleDateString('id-ID')}
-                            </div>
-                          </td>
-                          <td className="py-3 px-4 font-mono">{doc.file_size_kb || 0} KB</td>
-                          <td className="py-3 px-4">
+                          <td className="py-3.5 px-4 font-mono font-medium text-slate-700">{doc.file_size_kb || 0} KB</td>
+                          <td className="py-3.5 px-4">
                             {hasDrive ? (
                               <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
                                 <Cloud className="w-3 h-3 text-emerald-600" />
@@ -1157,7 +1038,7 @@ _Panitia PPDB ${school.school_name}_`;
                               </span>
                             )}
                           </td>
-                          <td className="py-3 px-4">
+                          <td className="py-3.5 px-4">
                             <span
                               className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full capitalize ${
                                 doc.verification_status === 'terverifikasi'
@@ -1170,8 +1051,8 @@ _Panitia PPDB ${school.school_name}_`;
                               {doc.verification_status || 'menunggu'}
                             </span>
                           </td>
-                          <td className="py-3 px-4 text-right whitespace-nowrap min-w-[130px]">
-                            <div className="inline-flex items-center justify-end gap-1.5 shrink-0">
+                          <td className="py-3.5 px-4 text-center whitespace-nowrap min-w-[130px]">
+                            <div className="inline-flex items-center justify-center gap-1.5 shrink-0">
                               <button
                                 type="button"
                                 onClick={() => setPreviewDoc(doc)}

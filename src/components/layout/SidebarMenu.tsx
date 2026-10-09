@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { User as UserType, School, SystemSettings } from '../../types/sipma';
 import { normalizeImageUrl, handleImageError } from '../../utils/imageUrl';
+import { storageService } from '../../services/storageService';
 
 export interface SidebarStats {
   totalSchools?: number;
@@ -101,6 +102,23 @@ export const SidebarMenu: React.FC<Props> = ({
   const isSchoolAdmin = currentUser.role === 'admin_sekolah';
   const isCentralAdmin = currentUser.role === 'admin_pusat';
   const isStudent = currentUser.role === 'calon_murid';
+
+  const isSchoolStaff = isSchoolAdmin || isOperator;
+  const targetSchool = isSchoolStaff
+    ? currentSchool || (currentUser?.school_id ? storageService.getSchoolById(currentUser.school_id) : null)
+    : null;
+
+  const displayLogo = isSchoolStaff && targetSchool?.logo_url ? targetSchool.logo_url : appLogo;
+  const displayName = isSchoolStaff && targetSchool?.school_name ? String(targetSchool.school_name) : appName;
+
+  const nsmStr = targetSchool?.nsm !== undefined && targetSchool?.nsm !== null ? String(targetSchool.nsm).trim() : '';
+  const npsnStr = targetSchool?.npsn !== undefined && targetSchool?.npsn !== null ? String(targetSchool.npsn).trim() : '';
+
+  const displaySubtitle = isSchoolStaff
+    ? nsmStr
+      ? (nsmStr.toUpperCase().startsWith('NSM') ? nsmStr : `NSM: ${nsmStr}`)
+      : (npsnStr ? `NPSN: ${npsnStr}` : 'Madrasah')
+    : 'Menu Navigasi';
 
   // Hierarchical Menus with Sub-menus for Each User Account
   const getNavMenus = (): NavParentMenu[] => {
@@ -179,7 +197,7 @@ export const SidebarMenu: React.FC<Props> = ({
           badge: stats.schoolDocsCount,
           subItems: [
             { id: 'archives', subTab: 'detection', label: 'Deteksi Kelengkapan Berkas', icon: CheckSquare },
-            { id: 'archives', subTab: 'files_gallery', label: 'Galeri & Daftar Berkas Arsip', icon: Archive, badge: stats.schoolDocsCount },
+            { id: 'archives', subTab: 'files_gallery', label: 'Daftar Berkas Terarsip (List)', icon: Archive, badge: stats.schoolDocsCount },
           ],
         },
         ...(!isOperator
@@ -303,25 +321,25 @@ export const SidebarMenu: React.FC<Props> = ({
       <div className="flex-1 flex flex-col min-h-0">
         <div className="p-4 border-b border-slate-200/80 flex items-center justify-between bg-slate-50/70 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
-            {appLogo ? (
+            {displayLogo ? (
               <img
-                src={normalizeImageUrl(appLogo)}
-                alt={appName}
+                src={normalizeImageUrl(displayLogo)}
+                alt={displayName}
                 className="w-8 h-8 object-contain rounded-xl border border-emerald-200 bg-white p-0.5 shadow-2xs shrink-0"
                 referrerPolicy="no-referrer"
                 onError={(e) => handleImageError(e)}
               />
             ) : (
               <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-emerald-800 to-teal-600 text-white flex items-center justify-center font-black text-sm shadow-2xs shrink-0">
-                {appName.charAt(0) || 'S'}
+                {displayName.charAt(0) || 'M'}
               </div>
             )}
             <div className="min-w-0">
-              <div className="font-black text-sm text-slate-900 leading-tight truncate">
-                {appName}
+              <div className="font-black text-sm text-slate-900 leading-tight truncate" title={displayName}>
+                {displayName}
               </div>
-              <div className="text-[10px] font-bold text-emerald-800 tracking-wider truncate uppercase">
-                Menu Navigasi
+              <div className="text-[10px] font-bold text-emerald-800 tracking-wider truncate uppercase font-mono">
+                {displaySubtitle}
               </div>
             </div>
           </div>
