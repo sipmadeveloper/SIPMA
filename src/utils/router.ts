@@ -18,7 +18,7 @@ export type CentralTab =
 
 export type SchoolTab = 'overview' | 'applicants' | 'selection' | 'operators' | 'archives' | 'map' | 'settings';
 
-export type StudentTab = 'overview' | 'form' | 'print' | 'announcements' | 'profile';
+export type StudentTab = 'overview' | 'form' | 'print' | 'announcements' | 'profile' | 'download_bukti';
 
 export interface AppRoute {
   viewMode: ViewMode;

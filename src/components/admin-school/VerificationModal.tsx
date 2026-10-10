@@ -487,21 +487,11 @@ export const VerificationModal: React.FC<Props> = ({
                             href={doc.file_data_base64}
                             target="_blank"
                             rel="noreferrer"
-                            className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-lg text-xs font-semibold"
+                            className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-lg text-xs font-semibold cursor-pointer"
                           >
                             Preview
                           </a>
                         )}
-                        <a
-                          href={doc.drive_file_id ? `https://drive.google.com/file/d/${doc.drive_file_id}/view?usp=drivesdk` : (doc.drive_url || doc.local_url)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg text-xs font-semibold flex items-center gap-1"
-                          title="Buka langsung di Google Drive"
-                        >
-                          <span>Buka di Drive</span>
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
                       </div>
                     </div>
                   );

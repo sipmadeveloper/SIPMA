@@ -24,6 +24,7 @@ import {
   Building,
   HeartHandshake,
   Download,
+  FileDown,
   Info,
   AlertCircle,
   Lock,
@@ -49,6 +50,8 @@ import { DispensationLetterModal } from './DispensationLetterModal';
 import { downloadDocumentFile, formatStandardDocumentFileName } from '../../utils/fileDownload';
 import { compressAndResizeImage, normalizeImageUrl, handleImageError } from '../../utils/imageUrl';
 import { normalizeIndonesianPhone, formatPhoneOnChange } from '../../utils/phone';
+import { downloadElementAsPdf } from '../../utils/pdfGenerator';
+import { PrintBuktiPendaftaran } from './PrintBuktiPendaftaran';
 
 interface Props {
   registrationNumber: string;
@@ -586,6 +589,56 @@ export const RegistrationWizard: React.FC<Props> = ({
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     showToast('Template Surat Dispensasi berhasil diunduh.', 'success');
+  };
+
+  const [isDownloadingDispensationPdf, setIsDownloadingDispensationPdf] = useState<boolean>(false);
+  const handleDirectDownloadDispensationPdf = async () => {
+    setIsDownloadingDispensationPdf(true);
+    showToast('Menyiapkan berkas Surat Dispensasi (PDF)...', 'info');
+    try {
+      const regSafe = activeRegNumber || registrationNumber || 'SIPMA';
+      const fileName = `Surat_Dispensasi_${regSafe}.pdf`;
+      const success = await downloadElementAsPdf('sipma-dispensasi-sheet-wizard', fileName);
+      if (success) {
+        showToast('Surat Dispensasi berhasil diunduh.', 'success');
+      } else {
+        handleDownloadDispensationTemplateDoc();
+      }
+    } catch {
+      handleDownloadDispensationTemplateDoc();
+    } finally {
+      setIsDownloadingDispensationPdf(false);
+    }
+  };
+
+  const [isDownloadingBuktiPdf, setIsDownloadingBuktiPdf] = useState<boolean>(false);
+  const handleDirectDownloadBukti = async () => {
+    setIsDownloadingBuktiPdf(true);
+    showToast('Menyiapkan berkas Bukti Pendaftaran (PDF)...', 'info');
+    try {
+      const regSafe = registrationNumber || application.registration_number || 'SIPMA';
+      const fileName = `Bukti_Pendaftaran_${regSafe}.pdf`;
+      const success = await downloadElementAsPdf('sipma-print-sheet-wizard', fileName);
+      if (success) {
+        showToast('Bukti Pendaftaran berhasil diunduh.', 'success');
+      } else {
+        const docHtml = `<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><title>Bukti Pendaftaran - ${regSafe}</title></head><body><h1>BUKTI PENDAFTARAN RESMI PPDB</h1><p>Nomor Pendaftaran: <b>${regSafe}</b></p><p>Nama Calon Murid: <b>${student?.name}</b></p><p>NIK: ${student?.nik || '-'}</p><p>NISN: ${student?.nisn || '-'}</p><p>Madrasah Tujuan: <b>${effectiveSchool?.school_name || '-'}</b></p><p>Jalur: ${(application?.pathway || 'ZONASI').toUpperCase()}</p></body></html>`;
+        const blob = new Blob([docHtml], { type: 'application/msword;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Bukti_Pendaftaran_${regSafe}.doc`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('Bukti Pendaftaran berhasil diunduh.', 'success');
+      }
+    } catch {
+      showToast('Gagal mengunduh berkas PDF.', 'error');
+    } finally {
+      setIsDownloadingBuktiPdf(false);
+    }
   };
 
   const handleSubmitFinal = () => {
@@ -2259,11 +2312,17 @@ export const RegistrationWizard: React.FC<Props> = ({
 
                 <button
                   type="button"
-                  onClick={() => setShowDispensationModal(true)}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-amber-800 hover:bg-amber-900 text-white rounded-xl text-xs font-bold shrink-0 shadow-sm transition-colors cursor-pointer"
+                  onClick={handleDirectDownloadDispensationPdf}
+                  disabled={isDownloadingDispensationPdf}
+                  title="Langsung unduh Surat Dispensasi resmi (PDF) tanpa preview cetak"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-amber-800 hover:bg-amber-900 text-white rounded-xl text-xs font-bold shrink-0 shadow-sm transition-colors cursor-pointer disabled:opacity-60"
                 >
-                  <FileText className="w-4 h-4" />
-                  <span>Lihat Template Dispensasi</span>
+                  {isDownloadingDispensationPdf ? (
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Download className="w-4 h-4" />
+                  )}
+                  <span>{isDownloadingDispensationPdf ? 'Mengunduh...' : 'Unduh Surat Dispensasi (PDF)'}</span>
                 </button>
               </div>
             )}
@@ -2587,11 +2646,17 @@ export const RegistrationWizard: React.FC<Props> = ({
                     <div className="pt-2 flex flex-wrap items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => setShowDispensationModal(true)}
-                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                        onClick={handleDirectDownloadDispensationPdf}
+                        disabled={isDownloadingDispensationPdf}
+                        title="Langsung unduh Surat Dispensasi resmi (PDF) tanpa preview cetak"
+                        className="inline-flex items-center gap-2 px-4 py-2.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer disabled:opacity-60"
                       >
-                        <FileText className="w-4 h-4" />
-                        <span>📄 Buka, Unduh & Cetak Template Surat Dispensasi</span>
+                        {isDownloadingDispensationPdf ? (
+                          <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <Download className="w-4 h-4" />
+                        )}
+                        <span>{isDownloadingDispensationPdf ? 'Mengunduh...' : 'Unduh Surat Dispensasi (PDF)'}</span>
                       </button>
                     </div>
                   </div>
@@ -2779,21 +2844,22 @@ export const RegistrationWizard: React.FC<Props> = ({
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
                   <button
                     type="button"
-                    onClick={handleDownloadDispensationTemplateDoc}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer"
-                    title="Langsung unduh template Surat Dispensasi ke komputer/HP tanpa preview"
+                    onClick={handleDirectDownloadDispensationPdf}
+                    disabled={isDownloadingDispensationPdf}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all cursor-pointer disabled:opacity-60"
+                    title="Langsung unduh Surat Dispensasi resmi (PDF) ke perangkat tanpa preview"
                   >
                     <Download className="w-4 h-4" />
-                    <span>Unduh Template (.doc)</span>
+                    <span>{isDownloadingDispensationPdf ? 'Mengunduh...' : 'Unduh Surat Dispensasi (PDF)'}</span>
                   </button>
                   <button
                     type="button"
-                    onClick={() => setShowDispensationModal(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-2.5 bg-purple-100 hover:bg-purple-200 text-purple-900 rounded-xl text-xs font-bold transition-all cursor-pointer"
-                    title="Lihat format surat dispensasi"
+                    onClick={handleDownloadDispensationTemplateDoc}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-purple-100 hover:bg-purple-200 text-purple-900 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                    title="Langsung unduh template Surat Dispensasi format Word (.doc) tanpa preview"
                   >
-                    <FileText className="w-3.5 h-3.5 text-purple-700" />
-                    <span>Lihat Format</span>
+                    <FileDown className="w-4 h-4 text-purple-700" />
+                    <span>Unduh Format (.doc)</span>
                   </button>
                 </div>
               </div>
@@ -2926,11 +2992,22 @@ export const RegistrationWizard: React.FC<Props> = ({
                           <div className="flex flex-wrap items-center gap-2 mt-2">
                             <button
                               type="button"
-                              onClick={() => setShowDispensationModal(true)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-900 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                              onClick={handleDirectDownloadDispensationPdf}
+                              disabled={isDownloadingDispensationPdf}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer disabled:opacity-60"
+                              title="Langsung unduh template Surat Dispensasi (PDF) tanpa preview"
                             >
-                              <FileText className="w-3.5 h-3.5 text-purple-700" />
-                              <span>Buka Template (A4 / Unduh)</span>
+                              <Download className="w-3.5 h-3.5" />
+                              <span>{isDownloadingDispensationPdf ? 'Mengunduh...' : 'Unduh Surat Dispensasi (PDF)'}</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleDownloadDispensationTemplateDoc}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-900 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                              title="Langsung unduh template format Word (.doc) tanpa preview"
+                            >
+                              <FileDown className="w-3.5 h-3.5 text-purple-700" />
+                              <span>Unduh Word (.doc)</span>
                             </button>
                           </div>
                         )}
@@ -2977,26 +3054,10 @@ export const RegistrationWizard: React.FC<Props> = ({
                             href={uploaded.file_data_base64 || uploaded.drive_url}
                             target="_blank"
                             rel="noreferrer"
-                            className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-lg text-xs font-semibold"
+                            className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-lg text-xs font-semibold cursor-pointer"
                           >
                             Preview
                           </a>
-                          {(uploaded.drive_file_id || uploaded.drive_url) && (
-                            <a
-                              href={
-                                uploaded.drive_file_id
-                                  ? `https://drive.google.com/file/d/${uploaded.drive_file_id}/view?usp=drivesdk`
-                                  : uploaded.drive_url
-                              }
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 rounded-lg text-xs font-semibold"
-                              title="Buka file ini langsung di Google Drive"
-                            >
-                              <ExternalLink className="w-3.5 h-3.5" />
-                              <span>Drive</span>
-                            </a>
-                          )}
                           <button
                             type="button"
                             onClick={() => handleDeleteDocument(uploaded.document_id)}
@@ -3485,30 +3546,32 @@ export const RegistrationWizard: React.FC<Props> = ({
               {application.pathway === 'afirmasi' && application.afirmasi_category === 'luar_zonasi' && (
                 <button
                   type="button"
-                  onClick={() => setShowDispensationModal(true)}
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-purple-700 hover:bg-purple-800 text-white rounded-xl font-bold text-sm shadow-md transition-all cursor-pointer"
+                  onClick={handleDirectDownloadDispensationPdf}
+                  disabled={isDownloadingDispensationPdf}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-purple-700 hover:bg-purple-800 text-white rounded-xl font-bold text-sm shadow-md transition-all cursor-pointer disabled:opacity-60"
+                  title="Langsung unduh berkas PDF Surat Dispensasi resmi tanpa preview"
                 >
-                  <FileText className="w-4 h-4" />
-                  <span>Cetak / Unduh Surat Dispensasi</span>
+                  <Download className="w-4 h-4" />
+                  <span>{isDownloadingDispensationPdf ? 'Mengunduh PDF...' : 'Unduh Surat Dispensasi (PDF)'}</span>
                 </button>
               )}
 
-              {onOpenPrint && (
-                <button
-                  type="button"
-                  onClick={onOpenPrint}
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm shadow-md transition-all"
-                >
-                  <Printer className="w-4 h-4" />
-                  <span>Cetak Bukti Pendaftaran (A4)</span>
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={handleDirectDownloadBukti}
+                disabled={isDownloadingBuktiPdf}
+                className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm shadow-md transition-all cursor-pointer disabled:opacity-60"
+                title="Langsung unduh berkas PDF Bukti Pendaftaran resmi tanpa preview"
+              >
+                <Download className="w-4 h-4" />
+                <span>{isDownloadingBuktiPdf ? 'Mengunduh PDF...' : 'Unduh Bukti Pendaftaran (PDF)'}</span>
+              </button>
 
               {onFinish && (
                 <button
                   type="button"
                   onClick={onFinish}
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold text-sm transition-all"
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold text-sm transition-all cursor-pointer"
                 >
                   <span>Lihat Status di Dashboard</span>
                 </button>
@@ -3575,6 +3638,32 @@ export const RegistrationWizard: React.FC<Props> = ({
             onClose={() => setShowDispensationModal(false)}
           />
         )}
+
+        {/* Offscreen background sheets for instant direct PDF download without preview */}
+        <div className="fixed -left-[9999px] top-0 opacity-0 pointer-events-none w-[850px] overflow-hidden" aria-hidden="true">
+          <PrintBuktiPendaftaran
+            application={application}
+            student={student}
+            parent={parent}
+            schoolOrigin={schoolOrigin}
+            address={address}
+            school={effectiveSchool}
+            sheetId="sipma-print-sheet-wizard"
+            onBack={() => {}}
+          />
+          <DispensationLetterModal
+            sheetOnly={true}
+            sheetId="sipma-dispensasi-sheet-wizard"
+            student={student}
+            parent={parent}
+            schoolOrigin={schoolOrigin}
+            school={selectedSchool || effectiveSchool}
+            address={address}
+            application={application}
+            reason={application?.dispensation_reason}
+            onClose={() => {}}
+          />
+        </div>
       </div>
     </div>
   );

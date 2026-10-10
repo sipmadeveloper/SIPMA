@@ -19,6 +19,7 @@ import {
   Camera,
   Upload,
   Download,
+  FileDown,
   Eye,
 } from 'lucide-react';
 import {
@@ -41,6 +42,7 @@ import { StudentProfileView } from './StudentProfileView';
 import { RejectedSchoolSelectionCard } from './RejectedSchoolSelectionCard';
 import { useFeedback } from '../../context/FeedbackContext';
 import { storageService } from '../../services/storageService';
+import { StudentTab } from '../../utils/router';
 
 interface Props {
   student: StudentProfile;
@@ -51,8 +53,8 @@ interface Props {
   school: School;
   announcements: Announcement[];
   onRefresh: () => void;
-  activeTab?: 'overview' | 'form' | 'print' | 'announcements' | 'profile';
-  onTabChange?: (tab: 'overview' | 'form' | 'print' | 'announcements' | 'profile') => void;
+  activeTab?: StudentTab;
+  onTabChange?: (tab: StudentTab) => void;
 }
 
 export const StudentDashboard: React.FC<Props> = ({
@@ -68,7 +70,7 @@ export const StudentDashboard: React.FC<Props> = ({
   onTabChange,
 }) => {
   const { showAlert, showConfirm, showToast, showLoading, hideLoading } = useFeedback();
-  const [internalTab, setInternalTab] = useState<'overview' | 'form' | 'print' | 'announcements' | 'profile'>('overview');
+  const [internalTab, setInternalTab] = useState<StudentTab>('overview');
   const [profileTab, setProfileTab] = useState<'profile' | 'password'>('profile');
   const activeTab = controlledTab !== undefined ? controlledTab : internalTab;
 
@@ -79,8 +81,17 @@ export const StudentDashboard: React.FC<Props> = ({
   // Direct download states without preview
   const [isDownloadingBukti, setIsDownloadingBukti] = useState<boolean>(false);
   const [isDownloadingLetter, setIsDownloadingLetter] = useState<boolean>(false);
+  const [isDownloadingDispensationPdf, setIsDownloadingDispensationPdf] = useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Auto-trigger direct download if user clicked download bukti menu or print tab
+  useEffect(() => {
+    if (activeTab === 'print' || activeTab === 'download_bukti') {
+      setActiveTab('overview');
+      handleDirectDownloadBuktiPdf();
+    }
+  }, [activeTab]);
 
   // Direct Download Bukti Pendaftaran Word (.doc) fallback
   const handleDirectDownloadBuktiDoc = () => {
@@ -149,6 +160,37 @@ export const StudentDashboard: React.FC<Props> = ({
     }
   };
 
+  // Direct Download Surat Dispensasi PDF without preview
+  const handleDirectDownloadDispensationPdf = async () => {
+    setIsDownloadingDispensationPdf(true);
+    showToast('Menyiapkan dan mengunduh berkas Surat Dispensasi (PDF)...', 'info');
+    try {
+      const regSafe = application?.registration_number || student?.registration_number || 'SIPMA';
+      const fileName = `Surat_Dispensasi_${regSafe}.pdf`;
+      const success = await downloadElementAsPdf('sipma-dispensasi-sheet', fileName);
+      if (success) {
+        showToast('Surat Dispensasi berhasil diunduh.', 'success');
+      } else {
+        const targetSchoolName = safeSchool?.school_name || 'Madrasah Pilihan';
+        const docHtml = `<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><title>Template Surat Dispensasi - ${regSafe}</title><style>body { font-family: 'Times New Roman', serif; font-size: 12pt; line-height: 1.5; padding: 20px; } .kop { text-align: center; border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 16px; font-weight: bold; } .title { text-align: center; font-weight: bold; text-decoration: underline; margin-bottom: 15px; } table { width: 100%; border-collapse: collapse; margin-bottom: 12px; } td { padding: 4px 0; vertical-align: top; } .lbl { width: 220px; font-weight: bold; }</style></head><body><div class="kop">PANITIA PENERIMAAN MURID BARU (PPDB)<br>${targetSchoolName.toUpperCase()}</div><div class="title">SURAT PERNYATAAN & PERMOHONAN DISPENSASI PENDAFTARAN</div><p>Yang bertanda tangan di bawah ini:</p><table><tr><td class="lbl">Nama Orang Tua / Wali</td><td>: ${parent?.father_name || parent?.mother_name || '...........................................'}</td></tr><tr><td class="lbl">NIK Orang Tua / Wali</td><td>: ${parent?.father_nik || parent?.mother_nik || '...........................................'}</td></tr><tr><td class="lbl">Nomor HP / WhatsApp</td><td>: ${parent?.father_phone || parent?.mother_phone || student?.phone || '...........................................'}</td></tr></table><p>Dengan ini mengajukan permohonan dispensasi pendaftaran PPDB untuk calon murid:</p><table><tr><td class="lbl">Nama Calon Murid</td><td>: <b>${student?.name || '...........................................'}</b></td></tr><tr><td class="lbl">Nomor Pendaftaran</td><td>: <b>${regSafe}</b></td></tr><tr><td class="lbl">Madrasah Tujuan</td><td>: <b>${targetSchoolName}</b></td></tr></table><p>Demikian surat permohonan dispensasi ini kami buat dengan sebenar-benarnya untuk digunakan sebagaimana mestinya.</p></body></html>`;
+        const blob = new Blob([docHtml], { type: 'application/msword;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Surat_Dispensasi_${regSafe}.doc`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('Surat Dispensasi berhasil diunduh.', 'success');
+      }
+    } catch {
+      showToast('Gagal memproses berkas Surat Dispensasi.', 'error');
+    } finally {
+      setIsDownloadingDispensationPdf(false);
+    }
+  };
+
   const handleDirectPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -206,7 +248,7 @@ export const StudentDashboard: React.FC<Props> = ({
     }
   };
 
-  const setActiveTab = (tab: 'overview' | 'form' | 'print' | 'announcements' | 'profile') => {
+  const setActiveTab = (tab: StudentTab) => {
     setInternalTab(tab);
     if (onTabChange) {
       onTabChange(tab);
@@ -559,7 +601,7 @@ export const StudentDashboard: React.FC<Props> = ({
               type="button"
               onClick={handleDirectDownloadBuktiPdf}
               disabled={isDownloadingBukti}
-              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold rounded-lg shadow-2xs transition-colors cursor-pointer disabled:opacity-60"
+              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold rounded-lg shadow-2xs transition-colors cursor-pointer disabled:opacity-60"
               title="Langsung unduh file PDF Bukti Pendaftaran resmi ke perangkat tanpa preview"
             >
               <Download className="w-3.5 h-3.5" />
@@ -567,12 +609,12 @@ export const StudentDashboard: React.FC<Props> = ({
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab('print')}
-              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold rounded-lg border border-white/20 shadow-2xs transition-colors cursor-pointer"
-              title="Pratinjau lembar cetak bukti pendaftaran"
+              onClick={handleDirectDownloadBuktiDoc}
+              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-lg border border-slate-700 shadow-2xs transition-colors cursor-pointer"
+              title="Langsung unduh berkas Bukti Pendaftaran format Word (.doc) tanpa preview"
             >
-              <Eye className="w-3.5 h-3.5" />
-              <span>Lihat Bukti</span>
+              <FileDown className="w-3.5 h-3.5 text-blue-300" />
+              <span>Unduh Word (.doc)</span>
             </button>
           </div>
         </div>
@@ -749,22 +791,34 @@ export const StudentDashboard: React.FC<Props> = ({
               {application.final_status === 'lulus' && (
                 <button
                   type="button"
-                  onClick={() => setShowAcceptanceModal(true)}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-800 text-white rounded-md text-xs font-bold hover:bg-emerald-900 shadow-2xs transition-colors cursor-pointer"
+                  onClick={handleDirectDownloadAcceptanceLetter}
+                  disabled={isDownloadingLetter}
+                  title="Langsung unduh berkas Surat Keterangan Diterima (PDF) tanpa preview"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-800 text-white rounded-md text-xs font-bold hover:bg-emerald-900 shadow-2xs transition-colors cursor-pointer disabled:opacity-60"
                 >
-                  <Printer className="w-3 h-3" />
-                  <span>Surat Keterangan Diterima (PDF)</span>
+                  {isDownloadingLetter ? (
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5" />
+                  )}
+                  <span>{isDownloadingLetter ? 'Mengunduh...' : 'Surat Keterangan Diterima (PDF)'}</span>
                 </button>
               )}
 
               {application.school_id && (
                 <button
                   type="button"
-                  onClick={() => setShowDispensationModal(true)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-slate-300 text-slate-700 rounded-md text-xs font-semibold hover:bg-slate-50 transition-colors cursor-pointer"
+                  onClick={handleDirectDownloadDispensationPdf}
+                  disabled={isDownloadingDispensationPdf}
+                  title="Langsung unduh berkas PDF Surat Permohonan Dispensasi resmi tanpa preview cetak"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 text-white rounded-md text-xs font-semibold hover:bg-emerald-800 transition-colors cursor-pointer disabled:opacity-60 shadow-2xs"
                 >
-                  <FileText className="w-3 h-3 text-slate-500" />
-                  <span>Surat Permohonan Dispensasi (PDF)</span>
+                  {isDownloadingDispensationPdf ? (
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Download className="w-3.5 h-3.5" />
+                  )}
+                  <span>{isDownloadingDispensationPdf ? 'Mengunduh...' : 'Surat Permohonan Dispensasi (PDF)'}</span>
                 </button>
               )}
             </div>
@@ -1073,7 +1127,20 @@ export const StudentDashboard: React.FC<Props> = ({
           schoolOrigin={schoolOrigin}
           address={address}
           school={safeSchool}
+          sheetId="sipma-print-sheet"
           onBack={() => {}}
+        />
+        <DispensationLetterModal
+          sheetOnly={true}
+          sheetId="sipma-dispensasi-sheet"
+          student={student}
+          parent={parent}
+          schoolOrigin={schoolOrigin}
+          school={safeSchool}
+          address={address}
+          application={application}
+          reason={application?.dispensation_reason}
+          onClose={() => {}}
         />
         {application.final_status === 'lulus' && (
           <AcceptanceLetterModal

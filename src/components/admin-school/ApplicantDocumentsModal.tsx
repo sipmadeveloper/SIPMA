@@ -338,24 +338,14 @@ export const ApplicantDocumentsModal: React.FC<Props> = ({
                         <p className="text-xs text-slate-400 mt-1">{activePreviewDoc.file_name}</p>
                       </div>
                       <div className="flex items-center justify-center gap-2 pt-2">
-                        {fileUrl && (
-                          <a
-                            href={fileUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs"
-                          >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                            <span>Buka di Tab Baru</span>
-                          </a>
-                        )}
                         <button
                           type="button"
                           onClick={() => downloadDocumentFile(activePreviewDoc, student?.name)}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-sky-700 hover:bg-sky-800 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer"
+                          className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer transition-colors"
+                          title="Langsung unduh dokumen PDF ini ke perangkat"
                         >
                           <Download className="w-3.5 h-3.5" />
-                          <span>Unduh PDF</span>
+                          <span>Unduh Dokumen PDF</span>
                         </button>
                       </div>
                     </div>

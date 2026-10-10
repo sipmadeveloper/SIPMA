@@ -1064,22 +1064,12 @@ _Panitia PPDB ${school.school_name}_`;
                               <button
                                 type="button"
                                 onClick={() => downloadDocumentFile(doc, student?.name)}
-                                className="w-8 h-8 inline-flex items-center justify-center bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-300 rounded-lg transition-all shadow-2xs shrink-0 active:scale-95 cursor-pointer"
-                                title="Unduh Berkas"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-2xs shrink-0 active:scale-95 cursor-pointer"
+                                title="Langsung unduh berkas ke perangkat tanpa masuk Google Drive"
                               >
                                 <Download className="w-3.5 h-3.5" />
+                                <span>Unduh</span>
                               </button>
-                              {hasDrive && (
-                                <a
-                                  href={`https://drive.google.com/file/d/${doc.drive_file_id}/view?usp=drivesdk`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="w-8 h-8 inline-flex items-center justify-center bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-300 rounded-lg transition-all shadow-2xs shrink-0 active:scale-95 cursor-pointer"
-                                  title="Buka di Google Drive"
-                                >
-                                  <ExternalLink className="w-3.5 h-3.5" />
-                                </a>
-                              )}
                             </div>
                           </td>
                         </tr>
@@ -1204,23 +1194,11 @@ const DocumentPreviewModal: React.FC<PreviewModalProps> = ({
               type="button"
               onClick={() => downloadDocumentFile(doc, student?.name)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+              title="Langsung unduh berkas ke perangkat"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Unduh Berkas</span>
             </button>
-
-            {hasDrive && (
-              <a
-                href={`https://drive.google.com/file/d/${doc.drive_file_id}/view?usp=drivesdk`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-xl text-xs font-bold transition-all"
-                title="Buka langsung di Google Drive"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>Google Drive</span>
-              </a>
-            )}
 
             <button
               type="button"
@@ -1306,17 +1284,6 @@ const DocumentPreviewModal: React.FC<PreviewModalProps> = ({
                       <Download className="w-4 h-4" />
                       <span>Unduh Berkas PDF</span>
                     </button>
-                    {hasDrive && (
-                      <a
-                        href={`https://drive.google.com/file/d/${doc.drive_file_id}/view?usp=drivesdk`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                        <span>Buka di Google Drive</span>
-                      </a>
-                    )}
                   </div>
                 </div>
               ) : fileUrl ? (

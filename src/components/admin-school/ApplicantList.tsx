@@ -615,15 +615,15 @@ export const ApplicantList: React.FC<Props> = ({
                             <KeyRound className="w-4 h-4" />
                           </button>
 
-                          {/* 6. Aksi Terpisah: Cetak Bukti Pendaftaran */}
+                          {/* 6. Aksi Terpisah: Unduh Bukti Pendaftaran Resmi */}
                           {onViewPrint && (
                             <button
                               type="button"
                               onClick={() => onViewPrint(app.registration_number)}
                               className="w-8.5 h-8.5 flex items-center justify-center bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-300 rounded-lg transition-all active:scale-95 cursor-pointer shrink-0 shadow-2xs"
-                              title="Cetak Bukti Pendaftaran Resmi (Terpisah)"
+                              title="Langsung Unduh Bukti Pendaftaran PDF (Tanpa Preview)"
                             >
-                              <Printer className="w-4 h-4" />
+                              <Download className="w-4 h-4" />
                             </button>
                           )}
 

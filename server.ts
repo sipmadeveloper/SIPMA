@@ -2203,6 +2203,7 @@ app.get('/api/files/download', async (req: Request, res: Response) => {
   const localUrl = (req.query.local_url as string) || '';
   const documentId = (req.query.document_id as string) || '';
   const driveUrl = (req.query.drive_url as string) || '';
+  const gasUrlParam = (req.query.gas_url as string) || '';
 
   // Clean filename for Content-Disposition header
   fileName = fileName.replace(/[\r\n"]/g, '_').trim() || 'dokumen_pendaftaran.pdf';
@@ -2252,8 +2253,32 @@ app.get('/api/files/download', async (req: Request, res: Response) => {
     (driveUrl.match(/id=([a-zA-Z0-9_-]+)/) || [])[1];
 
   if (effectiveDriveId && effectiveDriveId.length > 5) {
+    // 3a. Try Google Drive Usercontent Direct Download (Content-Disposition: attachment)
     try {
-      const googleDownloadUrl = `https://drive.google.com/uc?export=download&id=${effectiveDriveId}`;
+      const userContentDownloadUrl = `https://drive.usercontent.google.com/download?id=${effectiveDriveId}&export=download&authuser=0`;
+      const ucRes = await fetch(userContentDownloadUrl, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+      });
+
+      if (ucRes.ok) {
+        const contentType = ucRes.headers.get('content-type') || 'application/octet-stream';
+        if (!contentType.includes('text/html')) {
+          const buffer = Buffer.from(await ucRes.arrayBuffer());
+          res.setHeader('Content-Type', contentType);
+          res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+          return res.send(buffer);
+        }
+      }
+    } catch (ucErr) {
+      console.warn('Google Drive usercontent error:', ucErr);
+    }
+
+    // 3b. Try Google Drive Export Download with confirmation flag
+    try {
+      const googleDownloadUrl = `https://drive.google.com/uc?export=download&confirm=t&id=${effectiveDriveId}`;
       const driveRes = await fetch(googleDownloadUrl, {
         headers: {
           'User-Agent':
@@ -2263,20 +2288,7 @@ app.get('/api/files/download', async (req: Request, res: Response) => {
 
       if (driveRes.ok) {
         const contentType = driveRes.headers.get('content-type') || 'application/octet-stream';
-        if (contentType.includes('text/html')) {
-          // If Google returns preview HTML, fallback to direct CDN endpoint
-          const userContentUrl = `https://lh3.googleusercontent.com/d/${effectiveDriveId}`;
-          const altRes = await fetch(userContentUrl);
-          if (altRes.ok) {
-            const altBuffer = Buffer.from(await altRes.arrayBuffer());
-            res.setHeader(
-              'Content-Type',
-              altRes.headers.get('content-type') || 'application/octet-stream'
-            );
-            res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-            return res.send(altBuffer);
-          }
-        } else {
+        if (!contentType.includes('text/html')) {
           const buffer = Buffer.from(await driveRes.arrayBuffer());
           res.setHeader('Content-Type', contentType);
           res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
@@ -2286,6 +2298,51 @@ app.get('/api/files/download', async (req: Request, res: Response) => {
     } catch (gErr) {
       console.warn('Google Drive direct stream error:', gErr);
     }
+
+    // 3c. Try Google CDN direct endpoint (for images and supported assets)
+    try {
+      const cdnUrl = `https://lh3.googleusercontent.com/d/${effectiveDriveId}`;
+      const cdnRes = await fetch(cdnUrl);
+      if (cdnRes.ok) {
+        const contentType = cdnRes.headers.get('content-type') || 'application/octet-stream';
+        if (!contentType.includes('text/html')) {
+          const buffer = Buffer.from(await cdnRes.arrayBuffer());
+          res.setHeader('Content-Type', contentType);
+          res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+          return res.send(buffer);
+        }
+      }
+    } catch (cdnErr) {
+      console.warn('Google CDN error:', cdnErr);
+    }
+
+    // 3d. Try GAS Web App download endpoint if configured
+    const settings = serverDb.settings || {};
+    const gasUrl = gasUrlParam || settings.gas_web_app_url;
+    if (gasUrl && gasUrl.startsWith('http')) {
+      try {
+        const gasRes = await fetch(`${gasUrl}?action=downloadFile&drive_file_id=${effectiveDriveId}`);
+        if (gasRes.ok) {
+          const gasData: any = await gasRes.json();
+          if (gasData.success && gasData.base64) {
+            const raw = gasData.base64;
+            const matches = raw.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+            const mime = matches ? matches[1] : gasData.mime_type || 'application/octet-stream';
+            const base64Data = matches ? matches[2] : raw.includes(',') ? raw.split(',')[1] : raw;
+            const buffer = Buffer.from(base64Data, 'base64');
+            res.setHeader('Content-Type', mime);
+            res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+            return res.send(buffer);
+          }
+        }
+      } catch (gasErr) {
+        console.warn('GAS downloadFile error:', gasErr);
+      }
+    }
+
+    // 3e. Fallback redirect directly to Google Drive direct export download stream
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    return res.redirect(302, `https://drive.google.com/uc?export=download&confirm=t&id=${effectiveDriveId}`);
   }
 
   // Fallback 404

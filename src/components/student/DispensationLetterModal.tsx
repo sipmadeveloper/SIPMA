@@ -15,7 +15,7 @@ import { downloadElementAsPdf } from '../../utils/pdfGenerator';
 
 interface Props {
   isOpen?: boolean;
-  onClose: () => void;
+  onClose?: () => void;
   student?: Partial<StudentProfile> | null;
   parent?: Partial<ParentData> | null;
   schoolOrigin?: Partial<SchoolOrigin> | null;
@@ -23,6 +23,10 @@ interface Props {
   school?: Partial<School> | null;
   application?: Partial<Application> | null;
   reason?: string;
+  autoDownload?: boolean;
+  onDownloaded?: () => void;
+  sheetId?: string;
+  sheetOnly?: boolean;
 }
 
 export const DispensationLetterModal: React.FC<Props> = ({
@@ -35,6 +39,10 @@ export const DispensationLetterModal: React.FC<Props> = ({
   school,
   application,
   reason,
+  autoDownload = false,
+  onDownloaded,
+  sheetId,
+  sheetOnly = false,
 }) => {
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
@@ -161,30 +169,24 @@ export const DispensationLetterModal: React.FC<Props> = ({
       .catch((err) => console.error('Error generating QR code:', err));
   }, [studentSafeReg, studentSafeName, schoolNameSafe, distanceKmSafe]);
 
-  if (isOpen === false) return null;
+  // Trigger auto download if requested via prop
+  useEffect(() => {
+    if (autoDownload && qrDataUrl) {
+      const timer = setTimeout(() => {
+        handleDownloadPdf();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [autoDownload, qrDataUrl]);
+
+  if (isOpen === false && !autoDownload) return null;
 
   const handlePrint = () => {
-    try {
-      window.print();
-    } catch (e) {
-      console.warn('Window print error:', e);
-      handlePrintDedicatedWindow();
-    }
+    handleDownloadPdf();
   };
 
   const handlePrintDedicatedWindow = () => {
-    try {
-      const win = window.open('', '_blank', 'width=850,height=900');
-      if (win) {
-        win.document.open();
-        win.document.write(docContentHtml);
-        win.document.close();
-        win.focus();
-        setTimeout(() => win.print(), 500);
-      }
-    } catch (err) {
-      console.error('Popup error:', err);
-    }
+    handleDownloadPdf();
   };
 
   const docContentHtml = `
@@ -298,76 +300,25 @@ export const DispensationLetterModal: React.FC<Props> = ({
   const handleDownloadPdf = async () => {
     setIsGeneratingPdf(true);
     try {
-      const success = await downloadElementAsPdf('sipma-dispensasi-sheet', `Surat_Dispensasi_${studentSafeReg}.pdf`);
+      const targetSheetId = sheetId || 'sipma-dispensasi-sheet';
+      const success = await downloadElementAsPdf(targetSheetId, `Surat_Dispensasi_${studentSafeReg}.pdf`);
       if (!success) {
         handleDownloadWordDoc();
       }
+      onDownloaded?.();
     } catch {
       handleDownloadWordDoc();
+      onDownloaded?.();
     } finally {
       setIsGeneratingPdf(false);
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 print:p-0 print:bg-white print:static">
-      <div className="w-full max-w-4xl max-h-[96vh] overflow-y-auto space-y-6 print:max-h-none print:overflow-visible print:p-0 print:space-y-0" id="sipma-dispensation-view">
-        
-        {/* Action Bar (Identical style to Cetak Bukti Pendaftaran) */}
-        <div className="print:hidden flex flex-wrap items-center justify-between gap-3 p-4 bg-white rounded-xl border border-slate-200 shadow-sm sticky top-0 z-10">
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex items-center gap-2 px-4 py-2 text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-semibold transition-colors cursor-pointer"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Kembali ke Pendaftaran</span>
-          </button>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Primary Direct Download PDF Button */}
-            <button
-              type="button"
-              onClick={handleDownloadPdf}
-              disabled={isGeneratingPdf}
-              title="Langsung unduh file PDF Surat Dispensasi ke perangkat tanpa preview cetak"
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors cursor-pointer disabled:opacity-60"
-            >
-              {isGeneratingPdf ? (
-                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <Download className="w-4 h-4" />
-              )}
-              <span>{isGeneratingPdf ? 'Memproses PDF...' : 'Unduh Surat Dispensasi PDF (Langsung)'}</span>
-            </button>
-
-            {/* Secondary Print Dialog Button */}
-            <button
-              type="button"
-              onClick={handlePrint}
-              title="Buka dialog printer browser"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-semibold border border-slate-300 transition-colors cursor-pointer"
-            >
-              <Printer className="w-4 h-4 text-slate-600" />
-              <span>Dialog Cetak</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer ml-1"
-              title="Tutup"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Official Printable Sheet (A4 format - identical to PrintBuktiPendaftaran) */}
-        <div
-          id="sipma-dispensasi-sheet"
-          className="bg-white p-4 sm:p-12 rounded-2xl border border-slate-300 shadow-lg text-slate-900 overflow-x-auto print:border-none print:shadow-none print:p-0 print:m-0 print:rounded-none"
-        >
+  const renderSheet = () => (
+    <div
+      id={sheetId || 'sipma-dispensasi-sheet'}
+      className="bg-white p-4 sm:p-12 rounded-2xl border border-slate-300 shadow-lg text-slate-900 overflow-x-auto print:border-none print:shadow-none print:p-0 print:m-0 print:rounded-none"
+    >
           
           {/* Kop Surat Resmi Madrasah */}
           <div className="flex items-center justify-between border-b-4 border-double border-slate-800 pb-5 mb-6">
@@ -611,7 +562,59 @@ export const DispensationLetterModal: React.FC<Props> = ({
             * Lembar surat permohonan dispensasi ini dibuat secara resmi melalui sistem digital panitia PPDB madrasah. Harap dibubuhi Materai Rp 10.000 dan ditandatangani oleh orang tua/wali serta calon murid sebelum diunggah pada formulir pendaftaran.
           </div>
         </div>
+  );
 
+  if (sheetOnly) {
+    return renderSheet();
+  }
+
+  if (isOpen === false && !autoDownload) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 print:p-0 print:bg-white print:static">
+      <div className="w-full max-w-4xl max-h-[96vh] overflow-y-auto space-y-6 print:max-h-none print:overflow-visible print:p-0 print:space-y-0" id="sipma-dispensation-view">
+        
+        {/* Action Bar */}
+        <div className="print:hidden flex flex-wrap items-center justify-between gap-3 p-4 bg-white rounded-xl border border-slate-200 shadow-sm sticky top-0 z-10">
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center gap-2 px-4 py-2 text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-semibold transition-colors cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Kembali ke Pendaftaran</span>
+          </button>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Primary Direct Download PDF Button */}
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              disabled={isGeneratingPdf}
+              title="Langsung unduh file PDF Surat Dispensasi ke perangkat tanpa preview cetak"
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold shadow-sm transition-colors cursor-pointer disabled:opacity-60"
+            >
+              {isGeneratingPdf ? (
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              <span>{isGeneratingPdf ? 'Memproses PDF...' : 'Unduh Surat Dispensasi PDF (Langsung)'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer ml-1"
+              title="Tutup"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Official Printable Sheet */}
+        {renderSheet()}
       </div>
     </div>
   );

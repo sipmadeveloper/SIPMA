@@ -8,6 +8,37 @@ html, body {
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Prevent accidental text selection blocks on interactive UI elements */
+button,
+[role="button"],
+label,
+nav,
+th,
+summary,
+select,
+.cursor-pointer {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Ensure form inputs, textareas, and code blocks remain copyable */
+input,
+textarea,
+pre,
+code,
+[contenteditable="true"],
+.select-text {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+/* Subtle, elegant text selection style for intentionally highlighted text */
+::selection {
+  background-color: rgba(16, 185, 129, 0.22);
+  color: inherit;
 }
 
 img, svg, video, canvas, audio, iframe, embed, object {

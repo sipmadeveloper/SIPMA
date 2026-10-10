@@ -35,7 +35,7 @@ import {
   NewApplicantItem,
   playApplicantArrivalChime,
 } from './components/common/NewApplicantNotificationBanner';
-import { CheckCircle2, Clock, XCircle, Search, X, Printer, MapPin, School as SchoolIcon, ShieldAlert, Sparkles, ArrowRight } from 'lucide-react';
+import { CheckCircle2, Clock, XCircle, Search, X, Printer, Download, MapPin, School as SchoolIcon, ShieldAlert, Sparkles, ArrowRight } from 'lucide-react';
 import { formatDistanceIndonesian } from './utils/geo';
 import { exportApplicantsToExcel } from './utils/excelExport';
 import { updateAppFavicon } from './utils/favicon';
@@ -173,6 +173,7 @@ export default function App() {
   const [applicantNotificationQueue, setApplicantNotificationQueue] = useState<NewApplicantItem[]>([]);
   const [applicantNotificationHistory, setApplicantNotificationHistory] = useState<NewApplicantItem[]>([]);
   const [highlightApplicantRegNumber, setHighlightApplicantRegNumber] = useState<string | null>(null);
+  const [downloadingApplicantReg, setDownloadingApplicantReg] = useState<string | null>(null);
 
   // Left Sidebar Toggle Menu State for All Accounts
   // Strictly defaults to closed (false) upon entering account / new login unless explicitly clicked to open
@@ -633,9 +634,10 @@ export default function App() {
     }, 400);
   };
 
-  // Print single proof
+  // Direct Download single applicant proof without preview
   const handleViewPrint = (regNumber: string) => {
-    navigate({ viewMode: 'print_preview', printRegNumber: regNumber });
+    showToast('Menyiapkan berkas Bukti Pendaftaran (PDF)...', 'info');
+    setDownloadingApplicantReg(regNumber);
   };
 
   // Real-time Notification Actions for School Admins & Central Admins
@@ -1150,15 +1152,50 @@ export default function App() {
                   setSearchModalOpen(false);
                   handleViewPrint(searchResultApp.registration_number);
                 }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                title="Langsung unduh berkas Bukti Pendaftaran (PDF) tanpa preview"
               >
-                <Printer className="w-3.5 h-3.5" />
-                <span>Cetak Bukti Pendaftaran</span>
+                <Download className="w-3.5 h-3.5" />
+                <span>Unduh Bukti Pendaftaran (PDF)</span>
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Offscreen element for direct applicant Bukti Pendaftaran PDF download without preview */}
+      {downloadingApplicantReg && (() => {
+        const app = applications.find((a) => a.registration_number === downloadingApplicantReg);
+        const student = students[downloadingApplicantReg] || (app ? {
+          student_id: app.student_id,
+          registration_number: app.registration_number,
+          name: 'Calon Murid',
+        } as Partial<StudentProfile> : null);
+        const parent = parents[downloadingApplicantReg] || null;
+        const schoolOrigin = schoolOrigins[downloadingApplicantReg] || null;
+        const address = addresses[downloadingApplicantReg] || null;
+        const school = schools.find((s) => s.school_id === app?.school_id) || currentSchool || null;
+
+        return (
+          <div className="fixed -left-[9999px] top-0 opacity-0 pointer-events-none w-[850px] overflow-hidden" aria-hidden="true">
+            <PrintBuktiPendaftaran
+              application={app}
+              student={student}
+              parent={parent}
+              schoolOrigin={schoolOrigin}
+              address={address}
+              school={school}
+              autoDownload={true}
+              sheetId="sipma-print-sheet-direct-admin"
+              onDownloaded={() => {
+                setDownloadingApplicantReg(null);
+                showToast(`Bukti Pendaftaran ${downloadingApplicantReg} berhasil diunduh.`, 'success');
+              }}
+              onBack={() => setDownloadingApplicantReg(null)}
+            />
+          </div>
+        );
+      })()}
 
       {/* Admin Profile & Password Modal */}
       {isProfileModalOpen && currentUser && (

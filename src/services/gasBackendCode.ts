@@ -224,6 +224,27 @@ function doGet(e) {
       result = initDatabaseSchema(targetSpreadsheetId);
     } else if (action === "pullAllData" || action === "pull") {
       result = handlePullAllData(targetSpreadsheetId);
+    } else if (action === "downloadFile" || action === "getFile") {
+      var fileId = e.parameter.drive_file_id || e.parameter.file_id;
+      if (fileId) {
+        try {
+          var dFile = DriveApp.getFileById(fileId);
+          var blob = dFile.getBlob();
+          var b64 = Utilities.base64Encode(blob.getBytes());
+          result = {
+            success: true,
+            file_id: fileId,
+            file_name: dFile.getName(),
+            mime_type: blob.getContentType(),
+            file_size: dFile.getSize(),
+            base64: "data:" + blob.getContentType() + ";base64," + b64
+          };
+        } catch(errF) {
+          result = { success: false, message: "Gagal mengambil berkas Drive: " + errF.toString() };
+        }
+      } else {
+        result = { success: false, message: "ID berkas Google Drive tidak diberikan." };
+      }
     }
   } catch (err) {
     result = {

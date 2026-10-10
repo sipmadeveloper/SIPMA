@@ -13,6 +13,7 @@ import {
   Bell,
   FileEdit,
   Printer,
+  Download,
   User,
   KeyRound,
   LogOut,
@@ -225,7 +226,7 @@ export const SidebarMenu: React.FC<Props> = ({
         subItems: [
           { id: 'overview', label: 'Beranda & Status Seleksi', icon: TrendingUp },
           { id: 'form', label: 'Formulir Pendaftaran', icon: FileEdit },
-          { id: 'print', label: 'Cetak Bukti Pendaftaran', icon: Printer },
+          { id: 'download_bukti', label: 'Unduh Bukti Pendaftaran', icon: Download },
         ],
       },
       {

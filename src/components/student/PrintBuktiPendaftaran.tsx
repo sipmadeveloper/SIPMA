@@ -36,6 +36,8 @@ interface Props {
   onBack: () => void;
   onTriggerVerification?: (regNumber: string) => void;
   autoDownload?: boolean;
+  onDownloaded?: () => void;
+  sheetId?: string;
 }
 
 export const PrintBuktiPendaftaran: React.FC<Props> = ({
@@ -48,6 +50,8 @@ export const PrintBuktiPendaftaran: React.FC<Props> = ({
   onBack,
   onTriggerVerification,
   autoDownload = false,
+  onDownloaded,
+  sheetId,
 }) => {
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [copied, setCopied] = useState<boolean>(false);
@@ -154,13 +158,16 @@ export const PrintBuktiPendaftaran: React.FC<Props> = ({
     setIsGeneratingPdf(true);
     try {
       const fileName = `Bukti_Pendaftaran_${regNumberSafe}.pdf`;
-      const success = await downloadElementAsPdf('sipma-print-sheet', fileName);
+      const targetElementId = sheetId || 'sipma-print-sheet';
+      const success = await downloadElementAsPdf(targetElementId, fileName);
       if (!success) {
         handleDownloadWordDoc();
       }
+      onDownloaded?.();
     } catch (e) {
       console.warn('PDF download error:', e);
       handleDownloadWordDoc();
+      onDownloaded?.();
     } finally {
       setIsGeneratingPdf(false);
     }
@@ -600,24 +607,13 @@ Waktu Cetak: ${todayStr}`;
             )}
             <span>{isGeneratingPdf ? 'Memproses PDF...' : 'Unduh Bukti PDF (Langsung)'}</span>
           </button>
-
-          {/* Secondary Print Dialog Button */}
-          <button
-            type="button"
-            onClick={handlePrint}
-            title="Buka dialog printer browser"
-            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold border border-slate-300 transition-colors cursor-pointer"
-          >
-            <Printer className="w-3.5 h-3.5 text-slate-600" />
-            <span>Dialog Cetak</span>
-          </button>
         </div>
       </div>
 
       {/* Official Printable Sheet (A4 format) */}
       <div
         ref={printableRef}
-        id="sipma-print-sheet"
+        id={sheetId || 'sipma-print-sheet'}
         className="bg-white p-4 sm:p-12 rounded-2xl border border-slate-300 shadow-md text-slate-900 overflow-x-auto print:border-none print:shadow-none print:p-0 print:m-0 print:rounded-none"
       >
         {/* Kop Surat Resmi Madrasah */}

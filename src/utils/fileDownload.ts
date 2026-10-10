@@ -1,4 +1,5 @@
 import { DocumentItem } from '../types/sipma';
+import { storageService } from '../services/storageService';
 
 /**
  * Clean and format standardized document file name:
@@ -122,50 +123,69 @@ export async function downloadDocumentFile(doc: DocumentItem, accountName?: stri
     }
 
     // 2. Direct download via server proxy endpoint (fetches binary stream without Google Drive UI)
+    const settings = storageService.getSettings();
+    const gasUrl = settings?.gas_web_app_url || '';
     const downloadProxyUrl = `/api/files/download?drive_file_id=${encodeURIComponent(
       doc.drive_file_id || ''
     )}&file_name=${encodeURIComponent(cleanFileName)}&local_url=${encodeURIComponent(
       doc.local_url || ''
     )}&document_id=${encodeURIComponent(doc.document_id || '')}&drive_url=${encodeURIComponent(
       doc.drive_url || ''
-    )}`;
+    )}&gas_url=${encodeURIComponent(gasUrl)}`;
 
     try {
       const response = await fetch(downloadProxyUrl);
       if (response.ok) {
-        const blob = await response.blob();
-        if (blob && blob.size > 0) {
-          const blobUrl = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = blobUrl;
-          link.download = cleanFileName;
-          link.setAttribute('download', cleanFileName);
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
-          return;
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('text/html')) {
+          const blob = await response.blob();
+          if (blob && blob.size > 0 && !blob.type.includes('text/html')) {
+            const blobUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = cleanFileName;
+            link.setAttribute('download', cleanFileName);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+            return;
+          }
         }
       }
     } catch (proxyErr) {
       console.warn('Server proxy direct download fallback:', proxyErr);
     }
 
-    // 3. Direct Google Drive direct link download (uc?export=download)
-    if (doc.drive_file_id && doc.drive_file_id.length > 5) {
-      const directGoogleLink = `https://drive.google.com/uc?export=download&id=${doc.drive_file_id}`;
-      const link = document.createElement('a');
-      link.href = directGoogleLink;
-      link.download = cleanFileName;
-      link.target = '_blank';
-      link.rel = 'noreferrer';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+    // 3. Native browser direct attachment download via proxy URL (forces browser download manager)
+    try {
+      const nativeLink = document.createElement('a');
+      nativeLink.href = downloadProxyUrl;
+      nativeLink.download = cleanFileName;
+      nativeLink.setAttribute('download', cleanFileName);
+      document.body.appendChild(nativeLink);
+      nativeLink.click();
+      document.body.removeChild(nativeLink);
+      return;
+    } catch (nativeErr) {
+      console.warn('Native link download fallback:', nativeErr);
+    }
+
+    // 4. Direct Google Drive binary export endpoint (without opening Google Drive viewer UI)
+    const effectiveDriveId = doc.drive_file_id || (doc.drive_url?.match(/id=([a-zA-Z0-9_-]+)/) || [])[1] || (doc.drive_url?.match(/\/d\/([a-zA-Z0-9_-]+)/) || [])[1];
+    if (effectiveDriveId && effectiveDriveId.length > 5) {
+      const directExportUrl = `https://drive.google.com/uc?export=download&confirm=t&id=${effectiveDriveId}`;
+      const driveLink = document.createElement('a');
+      driveLink.href = directExportUrl;
+      driveLink.download = cleanFileName;
+      driveLink.setAttribute('download', cleanFileName);
+      document.body.appendChild(driveLink);
+      driveLink.click();
+      document.body.removeChild(driveLink);
       return;
     }
 
-    // 4. Local URL download if available
+    // 5. Local URL download if available
     if (doc.local_url) {
       const link = document.createElement('a');
       link.href = doc.local_url;
@@ -177,7 +197,7 @@ export async function downloadDocumentFile(doc: DocumentItem, accountName?: stri
       return;
     }
 
-    // 5. Fallback printable information file
+    // 5. Fallback printable official document file (Direct download, zero Drive redirect)
     const mockContent = `SIPMA - PENERIMAAN MURID BARU MADRASAH
 =====================================================
 DOKUMEN PERSYARATAN RESMI PPDB
@@ -189,9 +209,9 @@ Nama Berkas Asli : ${cleanFileName}
 Ukuran Berkas    : ${doc.file_size_kb || 0} KB
 Waktu Diunggah   : ${new Date(doc.upload_time).toLocaleString('id-ID')}
 Status Verifikasi: ${(doc.verification_status || 'menunggu').toUpperCase()}
-ID Google Drive  : ${doc.drive_file_id || '-'}
+ID Berkas Drive  : ${doc.drive_file_id || '-'}
 -----------------------------------------------------
-Dokumen ini tersimpan secara digital dan terverifikasi pada sistem SIPMA.
+Berkas ini tersimpan secara digital dan terverifikasi pada sistem database PPDB SIPMA.
 `;
 
     const blob = new Blob([mockContent], { type: 'text/plain;charset=utf-8' });
@@ -205,9 +225,6 @@ Dokumen ini tersimpan secara digital dan terverifikasi pada sistem SIPMA.
     URL.revokeObjectURL(url);
   } catch (err) {
     console.error('Gagal mengunduh berkas:', err);
-    if (doc.drive_url) {
-      window.open(doc.drive_url, '_blank');
-    }
   }
 }
 
